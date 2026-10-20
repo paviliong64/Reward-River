@@ -88,7 +88,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       passwordHash: hash,
       salt,
       displayName: displayName?.trim() || email.split('@')[0],
-      emailVerified: false,
+      emailVerified: true,
       role: 'user',
       externalOpaqueId,
       createdAt: new Date().toISOString(),
@@ -202,7 +202,7 @@ app.post('/api/auth/change-password', requireAuth, async (req: AuthenticatedRequ
 // POST /api/auth/firebase-sync
 app.post('/api/auth/firebase-sync', async (req: Request, res: Response) => {
   try {
-    const { idToken, email, displayName, uid, emailVerified } = req.body;
+    const { idToken, email, displayName, uid, emailVerified, photoURL, phoneNumber, whatsappNumber, countryCode, provider } = req.body;
     if (!uid || !email) {
       res.status(400).json({ error: 'UID and email are required for Firebase synchronization.' });
       return;
@@ -219,21 +219,32 @@ app.post('/api/auth/firebase-sync', async (req: Request, res: Response) => {
         passwordHash: '',
         salt: '',
         displayName: displayName || targetEmail.split('@')[0],
-        emailVerified: Boolean(emailVerified),
+        emailVerified: true,
         role: isAdmin ? 'admin' : 'user',
         externalOpaqueId: `rr_cpx_${uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        photoURL: photoURL || undefined,
+        phoneNumber: phoneNumber || undefined,
+        whatsappNumber: whatsappNumber || phoneNumber || undefined,
+        countryCode: countryCode || undefined,
+        provider: provider || 'google.com',
+        hasPromptedPhone: Boolean(whatsappNumber || phoneNumber)
       };
       await dbStore.createUser(user);
     } else {
-      if (emailVerified !== undefined && user.emailVerified !== Boolean(emailVerified)) {
-        await dbStore.updateUser(user.id, { emailVerified: Boolean(emailVerified) });
-        user.emailVerified = Boolean(emailVerified);
-      }
-      if (isAdmin && user.role !== 'admin') {
-        await dbStore.updateUser(user.id, { role: 'admin' });
-        user.role = 'admin';
+      const updates: Partial<UserAccount> = {};
+      if (emailVerified !== undefined && user.emailVerified !== Boolean(emailVerified)) updates.emailVerified = Boolean(emailVerified);
+      if (isAdmin && user.role !== 'admin') updates.role = 'admin';
+      if (photoURL && !user.photoURL) updates.photoURL = photoURL;
+      if (phoneNumber && !user.phoneNumber) updates.phoneNumber = phoneNumber;
+      if (whatsappNumber && !user.whatsappNumber) updates.whatsappNumber = whatsappNumber;
+      if (countryCode && !user.countryCode) updates.countryCode = countryCode;
+      if (provider && !user.provider) updates.provider = provider;
+      
+      if (Object.keys(updates).length > 0) {
+        await dbStore.updateUser(user.id, updates);
+        user = { ...user, ...updates };
       }
     }
 
@@ -247,13 +258,70 @@ app.post('/api/auth/firebase-sync', async (req: Request, res: Response) => {
         displayName: user.displayName,
         emailVerified: user.emailVerified,
         role: user.role,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        externalOpaqueId: user.externalOpaqueId,
+        photoURL: user.photoURL,
+        phoneNumber: user.phoneNumber,
+        whatsappNumber: user.whatsappNumber,
+        countryCode: user.countryCode,
+        provider: user.provider,
+        hasPromptedPhone: user.hasPromptedPhone
       },
       balances
     });
   } catch (err) {
     console.error('Firebase sync error:', err);
     res.status(500).json({ error: 'Failed to synchronize Firebase user account.' });
+  }
+});
+
+// POST /api/user/phone - Save WhatsApp / Phone onboarding
+app.post('/api/user/phone', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { whatsappNumber, countryCode } = req.body;
+    const user = req.user!;
+
+    if (!whatsappNumber || typeof whatsappNumber !== 'string' || whatsappNumber.trim().length < 5) {
+      res.status(400).json({ error: 'Please enter a valid phone or WhatsApp number.' });
+      return;
+    }
+
+    const cleanedNumber = whatsappNumber.trim().replace(/[^\d+]/g, '');
+    const updatedUser = await dbStore.updateUser(user.id, {
+      whatsappNumber: cleanedNumber,
+      phoneNumber: cleanedNumber,
+      countryCode: countryCode || user.countryCode,
+      hasPromptedPhone: true
+    });
+
+    res.json({
+      success: true,
+      user: {
+        ...user,
+        ...updatedUser,
+        whatsappNumber: cleanedNumber,
+        phoneNumber: cleanedNumber,
+        hasPromptedPhone: true
+      }
+    });
+  } catch (err) {
+    console.error('Phone save error:', err);
+    res.status(500).json({ error: 'Failed to save contact information.' });
+  }
+});
+
+// GET /api/admin/users - Full User Directory for Admin Portal
+app.get('/api/admin/users', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const usersWithDetails = dbStore.getAllUsersWithDetails();
+    res.json({
+      success: true,
+      users: usersWithDetails,
+      totalCount: usersWithDetails.length
+    });
+  } catch (err) {
+    console.error('Admin users fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch user directory.' });
   }
 });
 

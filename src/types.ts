@@ -7,6 +7,19 @@ export interface User {
   createdAt: string;
   externalOpaqueId?: string;
   updatedAt?: string;
+  phoneNumber?: string;
+  whatsappNumber?: string;
+  photoURL?: string;
+  countryCode?: string;
+  hasPromptedPhone?: boolean;
+  provider?: 'google.com' | 'password' | string;
+}
+
+export interface AdminUserDetail extends User {
+  balances: UserBalances;
+  completedSurveysCount: number;
+  totalTransactionsCount: number;
+  lastActiveAt?: string;
 }
 
 export interface UserBalances {

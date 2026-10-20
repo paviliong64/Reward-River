@@ -25,7 +25,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
   const faqs = [
     {
       q: 'How do I earn USDT on Reward River?',
-      a: 'You participate in legitimate market research surveys on Reward River. When a research sponsor confirms your completed session, your Reward River balance is automatically credited. Once you reach the minimum balance ($5.00), you can request an on-chain USDT payout directly to your wallet.'
+      a: 'You participate in legitimate market research surveys on Reward River. When a research sponsor confirms your completed session, your Reward River balance is automatically credited. Once you reach the minimum balance ($25.00), you can request an on-chain USDT payout directly to your wallet.'
     },
     {
       q: 'Which USDT networks are supported for withdrawals?',
@@ -47,7 +47,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-16">
-      {/* Live USDT Benchmark Bar */}
+      {/* Simple Top Banner */}
       <div className="bg-slate-900 text-slate-100 py-2.5 px-4 text-xs font-medium border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -55,16 +55,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="text-slate-300">Live Tether Stablecoin Peg:</span>
-            <span className="font-bold text-emerald-400 font-mono">
-              {usdtQuote ? usdtQuote.formattedPrice : '$1.0000 USD'}
-            </span>
-            <span className="text-slate-400 text-[11px]">
-              (1:1 USD Stablecoin Peg • CoinGecko)
-            </span>
+            <span className="text-emerald-400 font-bold">Reward River Surveys & USDT Rewards</span>
           </div>
-          <div className="flex items-center gap-4 text-slate-300 text-[11px]">
-            <span>Minimum payout: $5.00 USDT</span>
+          <div className="flex items-center gap-4 text-slate-300 text-xs">
+            <span>Minimum payout: $25.00 USDT</span>
             <span className="text-emerald-400 font-semibold">TRC-20 & ERC-20 Settlement</span>
           </div>
         </div>

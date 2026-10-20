@@ -17,6 +17,7 @@ import { TransactionsView } from './components/TransactionsView';
 import { SettingsView } from './components/SettingsView';
 import { AdminView } from './components/AdminView';
 import { LegalModal } from './components/LegalModal';
+import { PhoneOnboardingModal } from './components/PhoneOnboardingModal';
 import { auth, logOutFromFirebase, resendVerification } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
@@ -29,6 +30,7 @@ export default function App() {
   // Tab navigation: 'landing' (if unauthed), 'dashboard', 'surveys', 'withdraw', 'transactions', 'settings', 'admin'
   const [currentTab, setCurrentTab] = useState<string>('landing');
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'signup'>('signin');
   const [legalModalPage, setLegalModalPage] = useState<string | null>(null);
 
@@ -170,7 +172,10 @@ export default function App() {
               uid: fbUser.uid,
               email: fbUser.email,
               displayName: fbUser.displayName || fbUser.email?.split('@')[0],
-              emailVerified: fbUser.emailVerified
+              emailVerified: fbUser.emailVerified,
+              photoURL: fbUser.photoURL || undefined,
+              phoneNumber: fbUser.phoneNumber || undefined,
+              provider: fbUser.providerData?.[0]?.providerId || 'google.com'
             })
           });
 
@@ -180,6 +185,10 @@ export default function App() {
             setUser(data.user);
             setBalances(data.balances);
             setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
+
+            if (data.user && !data.user.whatsappNumber && !data.user.phoneNumber && !data.user.hasPromptedPhone && !sessionStorage.getItem('phone_prompt_dismissed')) {
+              setPhoneModalOpen(true);
+            }
           }
         } catch (e) {
           console.warn('Firebase state sync warning:', e);
@@ -350,6 +359,35 @@ export default function App() {
     }
   };
 
+  // WhatsApp / Phone onboarding save handler
+  const handleSavePhone = async (whatsappNumber: string, countryCode: string) => {
+    const token = getAuthToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch('/api/user/phone', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ whatsappNumber, countryCode })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setUser(data.user);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to save phone number:', e);
+    } finally {
+      sessionStorage.setItem('phone_prompt_dismissed', 'true');
+      setPhoneModalOpen(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-sky-500 selection:text-white">
       {/* Top Navigation */}
@@ -470,6 +508,19 @@ export default function App() {
         <LegalModal
           page={legalModalPage}
           onClose={() => setLegalModalPage(null)}
+        />
+      )}
+
+      {/* Phone & WhatsApp Onboarding Modal */}
+      {user && (
+        <PhoneOnboardingModal
+          isOpen={phoneModalOpen}
+          user={user}
+          onSave={handleSavePhone}
+          onClose={() => {
+            sessionStorage.setItem('phone_prompt_dismissed', 'true');
+            setPhoneModalOpen(false);
+          }}
         />
       )}
     </div>

@@ -9,7 +9,9 @@ import {
   AlertCircle,
   KeyRound,
   Fingerprint,
-  Info
+  Info,
+  Globe,
+  ExternalLink
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -202,6 +204,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {passwordLoading ? 'Updating...' : 'Update Password'}
           </button>
         </form>
+      </div>
+
+      {/* Official Support & Contact */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-3">
+        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <Globe className="w-4 h-4 text-emerald-600" />
+          <span>Official Contact & Support Partner</span>
+        </h3>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Reward River is proudly developed and supported by <strong>www.injazify.com</strong>. For any support inquiries, platform assistance, or corporate partnerships, please contact us at our official portal.
+        </p>
+        <div className="pt-1">
+          <a
+            href="https://www.injazify.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+          >
+            <span>Visit www.injazify.com</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
       </div>
 
       {/* Security Best Practices Reminder */}

@@ -123,17 +123,7 @@ test('isDuplicateTransaction: detects replay attacks and duplicate webhook deliv
   assert.equal(isDuplicateTransaction('cpx_trans_fresh_456', entries), false);
 });
 
-test('canSubmitWithdrawal: enforces verification, minimums, maximums, and balance', () => {
-  // Unverified email
-  const unverified = canSubmitWithdrawal({
-    amountCents: 1000,
-    availableCents: 2000,
-    emailVerified: false,
-    minCents: 500,
-    maxCents: 50000
-  });
-  assert.equal(unverified.allowed, false);
-  assert.match(unverified.reason || '', /email verification/i);
+test('canSubmitWithdrawal: enforces minimums, maximums, and balance', () => {
 
   // Below minimum
   const belowMin = canSubmitWithdrawal({

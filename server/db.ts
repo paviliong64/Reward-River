@@ -14,6 +14,12 @@ export interface UserAccount {
   externalOpaqueId: string; // Opaque ID for CPX survey sessions
   createdAt: string;
   updatedAt: string;
+  phoneNumber?: string;
+  whatsappNumber?: string;
+  photoURL?: string;
+  countryCode?: string;
+  hasPromptedPhone?: boolean;
+  provider?: string;
 }
 
 export interface WithdrawalRequestDoc {
@@ -96,7 +102,7 @@ class DatabaseStore {
       withdrawalRequests: [],
       withdrawalEvents: [],
       systemSettings: {
-        minWithdrawalCents: 500, // $5.00 min
+        minWithdrawalCents: 2500, // $25.00 min
         maxWithdrawalCents: 50000, // $500.00 max
         feeCentsTrc20: 100, // $1.00 USDT fee for TRC-20
         feeCentsErc20: 250, // $2.50 USDT fee for ERC-20
@@ -182,6 +188,23 @@ class DatabaseStore {
 
   getAllUsers(): Omit<UserAccount, 'passwordHash' | 'salt'>[] {
     return this.data.users.map(({ passwordHash, salt, ...rest }) => rest);
+  }
+
+  getAllUsersWithDetails() {
+    return this.data.users.map(({ passwordHash, salt, ...user }) => {
+      const balances = this.getUserBalances(user.id);
+      const userLedger = this.data.rewardLedger.filter(l => l.userId === user.id);
+      const completedSurveysCount = userLedger.filter(l => l.entryType === 'credit' && l.status === 'confirmed').length;
+      const userWithdrawals = this.data.withdrawalRequests.filter(w => w.userId === user.id);
+      
+      return {
+        ...user,
+        balances,
+        completedSurveysCount,
+        totalTransactionsCount: userLedger.length + userWithdrawals.length,
+        lastActiveAt: user.updatedAt || user.createdAt
+      };
+    });
   }
 
   // --- Ledger ---

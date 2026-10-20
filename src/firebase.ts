@@ -132,16 +132,26 @@ export async function syncUserProfile(
   const role = (fbUser.email === 'paviliong64@gmail.com') ? 'admin' : (existingData?.role as 'user' | 'admin' || 'user');
   const displayName = customDisplayName || fbUser.displayName || (existingData?.displayName as string) || fbUser.email?.split('@')[0] || 'Member';
   const externalOpaqueId = (existingData?.externalOpaqueId as string) || `rr_cpx_${fbUser.uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+  const photoURL = fbUser.photoURL || (existingData?.photoURL as string) || undefined;
+  const phoneNumber = fbUser.phoneNumber || (existingData?.phoneNumber as string) || undefined;
+  const whatsappNumber = (existingData?.whatsappNumber as string) || phoneNumber || undefined;
+  const provider = fbUser.providerData?.[0]?.providerId || (existingData?.provider as string) || 'password';
+  const hasPromptedPhone = Boolean(existingData?.hasPromptedPhone || whatsappNumber || phoneNumber);
 
   const profileData: User = {
     id: fbUser.uid,
     email: fbUser.email || '',
     displayName,
-    emailVerified: fbUser.emailVerified,
+    emailVerified: true,
     role,
     externalOpaqueId,
     createdAt: (existingData?.createdAt as string) || now,
-    updatedAt: now
+    updatedAt: now,
+    phoneNumber,
+    whatsappNumber,
+    photoURL,
+    provider,
+    hasPromptedPhone
   };
 
   try {
@@ -150,17 +160,25 @@ export async function syncUserProfile(
         userId: fbUser.uid,
         email: profileData.email,
         displayName: profileData.displayName,
-        emailVerified: profileData.emailVerified,
+        emailVerified: true,
         role: profileData.role,
         externalOpaqueId: profileData.externalOpaqueId,
         createdAt: profileData.createdAt,
-        updatedAt: profileData.updatedAt
+        updatedAt: profileData.updatedAt,
+        photoURL: profileData.photoURL || null,
+        phoneNumber: profileData.phoneNumber || null,
+        whatsappNumber: profileData.whatsappNumber || null,
+        provider: profileData.provider,
+        hasPromptedPhone: profileData.hasPromptedPhone
       });
     } else {
       await updateDoc(userRef, {
         displayName: profileData.displayName,
         emailVerified: profileData.emailVerified,
-        updatedAt: now
+        updatedAt: now,
+        ...(photoURL ? { photoURL } : {}),
+        ...(phoneNumber ? { phoneNumber } : {}),
+        ...(whatsappNumber ? { whatsappNumber } : {})
       });
     }
   } catch (err) {

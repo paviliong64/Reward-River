@@ -11,7 +11,7 @@
 
 ---
 
-## 👥 Co-Founders, Lead Engineers & Project Leadership
+## 👥 Co-Founders, Lead Engineers & Official Development Partner
 
 This platform is co-founded, engineered, and maintained by:
 
@@ -19,6 +19,8 @@ This platform is co-founded, engineered, and maintained by:
   * *Co-Founder, Lead Software Engineer, Systems Architect & Repository Owner*
 * 💡 **Tahir Sanaullah**
   * *Co-Founder, Lead Software Engineer, Product Architect & Repository Owner*
+* 🌐 **Official Development, Contact & Support Partner**: [www.injazify.com](https://www.injazify.com)
+  * *Official Platform Development, Support & Business Operations*
 
 ---
 
@@ -74,7 +76,7 @@ CPX_POSTBACK_SECRET=yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY
 
 # USDT Payout & Network Configuration
 USDT_DEFAULT_NETWORK=TRC20
-USDT_MIN_WITHDRAWAL_USD=5.00
+USDT_MIN_WITHDRAWAL_USD=25.00
 USDT_MAX_WITHDRAWAL_USD=500.00
 USDT_TRC20_FEE_USD=1.00
 USDT_ERC20_FEE_USD=2.50
@@ -156,6 +158,7 @@ npm test
 
 ---
 
-## 📜 License & Ownership
+## 📜 License, Contact & Support
 
-Developed, owned, and maintained jointly by **Rayan Mirza** ([@zeroxnetworks](https://github.com/zeroxnetworks)) & **Tahir Sanaullah**. All rights reserved.
+Developed, owned, and maintained jointly by **Rayan Mirza** ([@zeroxnetworks](https://github.com/zeroxnetworks)) & **Tahir Sanaullah**.
+Official contact, support, and platform operations powered exclusively by [www.injazify.com](https://www.injazify.com). All rights reserved.

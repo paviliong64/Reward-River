@@ -107,11 +107,7 @@ export function canSubmitWithdrawal(params: {
   minCents: number;
   maxCents: number;
 }): { allowed: boolean; reason?: string } {
-  const { amountCents, availableCents, emailVerified, minCents, maxCents } = params;
-
-  if (!emailVerified) {
-    return { allowed: false, reason: 'Email verification is required before requesting USDT withdrawals.' };
-  }
+  const { amountCents, availableCents, minCents, maxCents } = params;
 
   if (amountCents < minCents) {
     return { allowed: false, reason: `Minimum withdrawal is $${(minCents / 100).toFixed(2)} USD.` };

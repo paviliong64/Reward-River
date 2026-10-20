@@ -37,7 +37,7 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
 }) => {
   const [usdtAddress, setUsdtAddress] = useState('');
   const [network, setNetwork] = useState<UsdtNetwork>('TRC20');
-  const [amountUsd, setAmountUsd] = useState('5.00');
+  const [amountUsd, setAmountUsd] = useState('25.00');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -62,11 +62,6 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
     setFormError(null);
     setSuccessMessage(null);
 
-    if (!user.emailVerified) {
-      setFormError('Email verification is required before requesting USDT withdrawals.');
-      return;
-    }
-
     if (!usdtAddress) {
       setFormError('Please enter a valid USDT destination address.');
       return;
@@ -77,8 +72,8 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
       return;
     }
 
-    if (amountCents < 500) {
-      setFormError('Minimum withdrawal amount is $5.00 USDT.');
+    if (amountCents < 2500) {
+      setFormError('Minimum withdrawal amount is $25.00 USDT.');
       return;
     }
 
@@ -100,7 +95,7 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
       } else {
         setSuccessMessage('USDT withdrawal request submitted successfully! Your funds are reserved and queued for review.');
         setUsdtAddress('');
-        setAmountUsd('5.00');
+        setAmountUsd('25.00');
       }
     } catch {
       setFormError('Network error. Please try again.');
@@ -123,24 +118,6 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
           Request on-chain USDT payouts directly to your self-custody wallet or exchange account.
         </p>
       </div>
-
-      {/* Verification Gate Notice if not verified */}
-      {!user.emailVerified && (
-        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-800">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>
-              Your email is unverified. To protect your reward funds, withdrawals are locked until your email is verified.
-            </span>
-          </div>
-          <button
-            onClick={onVerifyEmail}
-            className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors shrink-0 shadow-sm"
-          >
-            Verify Email
-          </button>
-        </div>
-      )}
 
       {/* Main Withdrawal Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

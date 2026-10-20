@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, FileText, Mail } from 'lucide-react';
+import { X, FileText, Mail, Globe, ExternalLink } from 'lucide-react';
 
 interface LegalModalProps {
   page: string | null;
@@ -95,7 +95,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ page, onClose }) => {
 
               <h4 className="text-sm font-bold text-slate-900">3. Minimums & Transfer Fees</h4>
               <p>
-                The minimum withdrawal request is $5.00 USDT. Applicable on-chain transfer fees ($1.00 for TRC-20 or $2.50 for ERC-20) are subtracted from the gross amount to determine the net payout received by your wallet.
+                The minimum withdrawal request is $25.00 USDT. Applicable on-chain transfer fees ($1.00 for TRC-20 or $2.50 for ERC-20) are subtracted from the gross amount to determine the net payout received by your wallet.
               </p>
 
               <h4 className="text-sm font-bold text-slate-900">4. Review & Settlement</h4>
@@ -119,17 +119,26 @@ export const LegalModal: React.FC<LegalModalProps> = ({ page, onClose }) => {
 
           {page === 'contact' && (
             <>
-              <h4 className="text-sm font-bold text-slate-900">Support & Inquiries</h4>
+              <h4 className="text-sm font-bold text-slate-900">Support & Contact Inquiries</h4>
               <p>
-                For technical assistance, withdrawal status inquiries, or reward postback audit questions, please reach out to our team:
+                Reward River is developed and supported exclusively by <strong>www.injazify.com</strong>. For any technical support, account inquiries, or withdrawal assistance, visit our official portal:
               </p>
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 mt-2">
-                <div className="flex items-center gap-2 font-semibold text-slate-800">
-                  <Mail className="w-4 h-4 text-emerald-600" />
-                  <span>support@rewardriver.com</span>
+              <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 space-y-3 mt-2">
+                <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                  <Globe className="w-4 h-4 text-emerald-600" />
+                  <span>Official Support & Contact Portal:</span>
                 </div>
-                <p className="text-slate-500 text-[11px]">
-                  Average response time: within 24 business hours. Please include your registered account email and any relevant transaction IDs.
+                <a
+                  href="https://www.injazify.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-xs"
+                >
+                  <span>www.injazify.com</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  All platform support, account inquiries, survey dispute reviews, and technical assistance are managed via <strong>www.injazify.com</strong>.
                 </p>
               </div>
             </>

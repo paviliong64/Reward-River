@@ -102,9 +102,13 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLegal }) => {
           <p>
             <strong className="text-slate-300">Tether (USDT) Stablecoin Disclosures:</strong> Payouts are made in Tether USD (USDT), a cryptocurrency pegged 1:1 to the US dollar. Network transfer fees apply based on your selected blockchain network (TRC-20 or ERC-20). Reward River does not offer investment advice or speculate on crypto markets.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-slate-800/60 text-slate-400 gap-2">
-            <span>© {new Date().getFullYear()} Reward River. All rights reserved.</span>
-            <span>Tagline: Earn Rewards. Flow Forward.</span>
+          <div className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-slate-800/60 text-slate-400 gap-2 text-xs">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span>© {new Date().getFullYear()} Reward River. All rights reserved.</span>
+              <span className="text-slate-600">•</span>
+              <span>Made & Supported by <a href="https://www.injazify.com" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:text-emerald-300 font-medium hover:underline transition-colors">www.injazify.com</a></span>
+            </div>
+            <span className="text-slate-500">Earn Rewards. Flow Forward.</span>
           </div>
         </div>
       </div>

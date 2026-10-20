@@ -56,26 +56,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* Email Verification Banner */}
-      {!user.emailVerified && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-sm font-bold text-amber-900">Email Verification Pending</h4>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Verify your email address to enable on-chain USDT withdrawals and secure your reward balances.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onVerifyEmail}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-colors shrink-0 shadow-sm"
-          >
-            Verify Email Now
-          </button>
-        </div>
-      )}
 
       {/* Welcome & Balance Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -237,11 +217,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
           <div>
             <div className="text-2xl font-extrabold text-slate-900 font-mono">
-              {usdtQuote?.formattedPrice || '$1.0000 USD'}
+              $1.00 USD
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-              <span>Source: {usdtQuote?.source || 'CoinGecko'}</span>
-              <span>Updated: {usdtQuote ? new Date(usdtQuote.timestamp).toLocaleTimeString() : 'Recent'}</span>
+              <span>1 USD = 1 USDT</span>
+              <span>TRC-20 & ERC-20</span>
             </div>
           </div>
 
