@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#0369a1" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+
+    <!-- River Wave Gradient -->
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#2dd4bf" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+
+    <!-- Tether Symbol Gradient -->
+    <linearGradient id="tetherGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#f1f5f9" />
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base Squircle Container -->
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#bgGrad)" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.5" />
+
+  <!-- Flowing River Waves -->
+  <path d="M 6 44 C 18 38, 26 50, 38 43 C 48 37, 54 44, 58 41" fill="none" stroke="url(#waveGrad)" stroke-width="4" stroke-linecap="round" opacity="0.9" filter="url(#glow)" />
+  <path d="M 6 50 C 20 45, 28 53, 42 47 C 50 43, 54 49, 58 47" fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+
+  <!-- Tether Token Emblem (₮) -->
+  <circle cx="32" cy="24" r="12" fill="#059669" stroke="#34d399" stroke-width="1.5" filter="url(#glow)" />
+  
+  <!-- Tether Symbol ₮ -->
+  <path d="M 23 18 H 41 M 23 21 H 41 M 32 18 V 30 M 27 25 H 37" fill="none" stroke="url(#tetherGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

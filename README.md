@@ -97,7 +97,7 @@ Deploying Reward River on [Render.com](https://render.com) takes less than 3 min
 
 2. **Build & Runtime Settings**:
    - **Runtime**: `Node`
-   - **Build Command**: `npm install && npm run build`
+   - **Build Command**: `npm install --legacy-peer-deps && npm run build`
    - **Start Command**: `npm start`
 
 3. **Configure Environment Variables**:

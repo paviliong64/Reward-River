@@ -28,6 +28,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
 app.use(authMiddleware);
 
 // Request logging for API endpoints
