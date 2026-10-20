@@ -1,49 +1,71 @@
 # 🌊 Reward River — Turn Your Opinions Into USDT Rewards
 
-> **Reward River** is a full-stack market research exchange and crypto rewards platform. Members participate in market research surveys and earn confirmed Tether USD (**USDT**) stablecoin rewards settled on-chain on TRON (TRC-20) or Ethereum (ERC-20).
+[![Node.js](https://img.shields.io/badge/Node.js-v20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![React 19](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.0-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Firebase](https://img.shields.io/badge/Firebase-Auth_%26_Firestore-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com)
+[![USDT](https://img.shields.io/badge/Settlement-USDT_(TRC20_%2F_ERC20)-26A17B?style=for-the-badge&logo=tether&logoColor=white)](https://tether.to)
+
+> **Reward River** is an enterprise-grade, white-labeled market research exchange and cryptocurrency rewards platform. Members participate in qualified market research surveys and earn real-time Tether USD (**USDT**) stablecoin rewards settled on-chain on TRON (TRC-20) or Ethereum (ERC-20).
 
 ---
 
-## 👥 Authors & Visionaries
+## 👥 Co-Founders, Lead Engineers & Project Leadership
 
-This project is a collaboration:
+This platform is co-founded, engineered, and maintained by:
 
-* **Project Vision, Idea & Product Architecture**: Tahir Sanaullah
-* **Lead Engineer & Repository Owner**: Rayan Mirza ([@zeroxnetworks](https://github.com/zeroxnetworks))
-
----
-
-## ✨ Key Features
-
-- **White-Labeled Market Research Engine**: Powered by CPX Research API with white-label branding for **Reward River**.
-- **Cryptographic Server-to-Server Postbacks**: Handles real-time completion callbacks (`status=1`) and postback chargeback reversals (`status=2` / `status=3`) with MD5 signature validation.
-- **Double-Entry Accounting Ledger**: Prevents double-spending, manages pending withdrawal holds, and recalculates available balances.
-- **Dual-Chain USDT Settlements**: Support for TRON (TRC-20) and Ethereum (ERC-20) public wallet addresses.
-- **Live Tether Peg Benchmark**: Real-time USD stablecoin peg verification sourced via CoinGecko API.
-- **Firebase Auth & Firestore Sync**: Seamless persistent authentication (Google Sign-In, Email/Password, Email Verification) with role-based access control (RBAC).
-- **Responsive Modern UI**: Built with React 19, Vite, Tailwind CSS, Lucide icons, and Motion.
+* 🛠️ **Rayan Mirza** ([@zeroxnetworks](https://github.com/zeroxnetworks))
+  * *Co-Founder, Lead Software Engineer, Systems Architect & Repository Owner*
+* 💡 **Tahir Sanaullah**
+  * *Co-Founder, Lead Software Engineer, Product Architect & Repository Owner*
 
 ---
 
-## 🛠 Tech Stack
+## 🏗 Platform System Architecture
 
-- **Frontend**: React 19, Vite, Tailwind CSS, Lucide React Icons, Motion
-- **Backend / API Proxy**: Node.js, Express, TypeScript (`tsx`)
-- **Database & Auth**: Firebase Auth, Google Firestore, Local Double-Entry Ledger Store
-- **Testing**: Native Node.js Test Runner (`node:test`)
+```text
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    REWARD RIVER PLATFORM                                 │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+        │                                   │                                    │
+        ▼                                   ▼                                    ▼
+ 🌐 REACT 19 FRONTEND               ⚙️ NODE/EXPRESS PROXY               🔥 FIREBASE ENGINE
+  ├── White-Labeled UI               ├── CPX API Integration             ├── Auth (Google & Email)
+  ├── Live USDT Benchmark            ├── MD5 Signature Verification      ├── Firestore Document Store
+  ├── Interactive Ledger Views       ├── Double-Entry Ledger Store       └── Role-Based Access Rules
+  └── On-Chain Wallet Submissions   └── S2S Postback Listener (`/api`)
+```
 
 ---
 
-## ⚙️ Environment Variables
+## ✨ Key Capabilities & Innovations
 
-Copy `.env.example` to `.env` and populate your production credentials:
+- **White-Labeled Survey Marketplace**: Seamless integration with the official CPX Research API (`https://live-api.cpx-research.com`) fully white-labeled under the **Reward River** brand with zero third-party vendor leaks.
+- **Cryptographic Server-to-Server (S2S) Postbacks**:
+  - **`status=1`**: Confirmed survey completion -> Creates an authenticated `credit` ledger entry.
+  - **`status=2` / `status=3`**: Cancellation / fraud reversal -> Creates a `reversal` debit entry referencing `{trans_id}` to reconcile balances safely.
+  - **MD5 HMAC Verification**: Rejects forged webhooks via `md5(trans_id + '-' + hash_key)`.
+- **Double-Entry Financial Ledger**:
+  - Immutably logs every credit, debit, pending withdrawal hold, and chargeback.
+  - Enforces double-spend locks and balance validation before processing withdrawals.
+- **Dual-Chain USDT Settlement Engine**:
+  - Supports **TRON (TRC-20)** ($1.00 network fee) and **Ethereum (ERC-20)** ($2.50 network fee).
+  - Validates TRC-20 (`T...`) and ERC-20 (`0x...`) address formats on submission.
+- **Live Tether Peg Feed**: Sourced from CoinGecko API (`/api/v3/simple/price`) to guarantee 1:1 USD-to-USDT conversion rate accuracy.
+
+---
+
+## ⚙️ Environment Variables Setup
+
+Copy `.env.example` to `.env` and configure your production environment:
 
 ```env
-# Server & Application
+# Server & Application Configuration
 NODE_ENV=production
 PORT=3000
 APP_URL=https://your-domain.onrender.com
-JWT_SECRET=your-random-32-character-secret-key
+JWT_SECRET=your-secure-random-32-byte-hex-string
 
 # CPX Research Publisher Credentials
 CPX_APP_ID=37479
@@ -58,110 +80,82 @@ USDT_TRC20_FEE_USD=1.00
 USDT_ERC20_FEE_USD=2.50
 USDT_PRICE_FEED_PROVIDER=coingecko
 
-# Firebase Client Configuration (Optional)
+# Firebase Web Client Configuration (Optional / Client-side)
 VITE_FIREBASE_API_KEY=your_api_key
 VITE_FIREBASE_PROJECT_ID=your_project_id
 ```
 
 ---
 
-## 🚀 Deployment Instructions
+## 🚀 Render Deployment Walkthrough
 
-### 1. Deploying on Render (Recommended)
+Deploying Reward River on [Render.com](https://render.com) takes less than 3 minutes:
 
-1. **Push Code to GitHub**:
-   Ensure your repository is pushed to your GitHub account (`@zeroxnetworks`).
+1. **Connect Repository**:
+   - Log into Render and click **New +** → **Web Service**.
+   - Select your GitHub repository: `zeroxnetworks/reward-river`.
 
-2. **Create New Web Service on Render**:
-   - Sign in to [Render.com](https://render.com).
-   - Click **New +** → **Web Service**.
-   - Connect your GitHub repository (`reward-river` by `@zeroxnetworks`).
-
-3. **Configure Build & Start Commands**:
-   - **Environment**: Node
+2. **Build & Runtime Settings**:
+   - **Runtime**: `Node`
    - **Build Command**: `npm install && npm run build`
    - **Start Command**: `npm start`
 
-4. **Add Environment Variables**:
-   Under **Environment**, add the keys listed in the `.env` section above:
+3. **Configure Environment Variables**:
+   Under **Environment**, add the following keys:
    - `NODE_ENV`: `production`
    - `PORT`: `3000`
    - `CPX_APP_ID`: `37479`
    - `CPX_HASH_KEY`: `yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY`
    - `CPX_POSTBACK_SECRET`: `yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY`
-   - `JWT_SECRET`: *(Generate a secure random string)*
+   - `JWT_SECRET`: *(Enter a secure random string)*
 
-5. **Deploy**:
-   Click **Create Web Service**. Once deployed, copy your live service URL (e.g., `https://reward-river.onrender.com`).
-
----
-
-### 2. Configuring Postback Webhooks in CPX Research Portal
-
-Once your Render app is live:
-
-1. Log into your [CPX Research Publisher Portal](https://publisher.cpx-research.com).
-2. Go to **Applications** → **Postback Settings**.
-3. Set your **Postback URL** format to:
-   ```text
-   https://YOUR-APP-NAME.onrender.com/api/cpx/postback?status={status}&trans_id={trans_id}&user_id={user_id}&sub_id={subid}&sub_id_2={subid_2}&amount_local={amount_local}&amount_usd={amount_usd}&offer_id={offer_ID}&hash={secure_hash}&ip_click={ip_click}
-   ```
-4. Click **Save** and test using CPX's built-in webhook tester tool.
+4. **Deploy**:
+   Click **Create Web Service**. Render will build and launch your application.
 
 ---
 
-### 3. Deploying on Railway / Vercel / Cloud Run / Docker
+## 🔗 CPX Research Postback Webhook Setup
 
-#### Docker Build
+In your [CPX Research Publisher Dashboard](https://publisher.cpx-research.com) under **Applications** → **Postback Settings**, paste the following URL format:
+
+```text
+https://YOUR-APP-NAME.onrender.com/api/cpx/postback?status={status}&trans_id={trans_id}&user_id={user_id}&sub_id={subid}&sub_id_2={subid_2}&amount_local={amount_local}&amount_usd={amount_usd}&offer_id={offer_ID}&hash={secure_hash}&ip_click={ip_click}
+```
+
+> **Note**: The Reward River server listens on `/api/cpx/postback`, `/api/cpx-postback`, and `/api/postback`, responding with HTTP `200 OK` and body `1` as expected by CPX verification tools.
+
+---
+
+## 💻 Local Development & Testing
+
 ```bash
-# Build Docker image
-docker build -t reward-river .
+# 1. Clone repository
+git clone https://github.com/zeroxnetworks/reward-river.git
+cd reward-river
 
-# Run container
-docker run -p 3000:3000 --env-file .env reward-river
+# 2. Install dependencies
+npm install
+
+# 3. Create environment file
+cp .env.example .env
+
+# 4. Start full-stack development server
+npm run dev
+
+# 5. Execute automated unit test suite (15 passing tests)
+npm test
 ```
 
 ---
 
-## 💻 Local Development Setup
+## 🔐 Privacy, Security & Compliance
 
-1. **Clone Repository**:
-   ```bash
-   git clone https://github.com/zeroxnetworks/reward-river.git
-   cd reward-river
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Create Local `.env` File**:
-   ```bash
-   cp .env.example .env
-   ```
-
-4. **Start Development Server**:
-   ```bash
-   npm run dev
-   ```
-   Open `http://localhost:3000` in your browser.
-
-5. **Run Automated Test Suite**:
-   ```bash
-   npm test
-   ```
+- **Opaque User Isolation**: Survey networks only see anonymous hashes (`rr_cpx_...`). Member email addresses and personal identities are never exposed.
+- **Cryptographic Signature Guards**: All incoming webhooks are validated against MD5 signature candidates before altering user ledger balances.
+- **Firestore Security Rules**: Role-based access control (RBAC) ensures administrative commands are restricted strictly to authorized super-admins.
 
 ---
 
-## 🔐 Security & Privacy Architecture
+## 📜 License & Ownership
 
-- **Opaque User Identifiers**: Survey providers only receive anonymous opaque IDs (`rr_cpx_...`). Member email addresses are never disclosed.
-- **MD5 Cryptographic Signatures**: Postback callbacks verify `md5(trans_id + '-' + hash_key)` before modifying ledger records.
-- **Role-Based Access Control (RBAC)**: Firestore Security Rules restrict administration capabilities strictly to designated admin profiles.
-
----
-
-## 📜 License & Credits
-
-Created and maintained by **Rayan Mirza** ([@zeroxnetworks](https://github.com/zeroxnetworks)) based on the vision and product design by **Tahir Sanaullah**.
+Developed, owned, and maintained jointly by **Rayan Mirza** ([@zeroxnetworks](https://github.com/zeroxnetworks)) & **Tahir Sanaullah**. All rights reserved.
