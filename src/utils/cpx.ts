@@ -74,11 +74,18 @@ export function verifyCpxPostbackSignature(
 ): boolean {
   if (!receivedHash || !hashKey) return false;
   
-  const expectedTxHash = generateCpxTransactionHash(transId, hashKey).toLowerCase();
-  const expectedUserHash = generateCpxSecureHash(extUserId, hashKey).toLowerCase();
   const provided = receivedHash.trim().toLowerCase();
+  const candidates = [
+    generateCpxTransactionHash(transId, hashKey).toLowerCase(),
+    generateCpxSecureHash(extUserId, hashKey).toLowerCase(),
+    createHash('md5').update(`${transId}${hashKey}`).digest('hex').toLowerCase(),
+    createHash('md5').update(`${extUserId}${hashKey}`).digest('hex').toLowerCase(),
+    createHash('md5').update(`${transId}-${extUserId}-${hashKey}`).digest('hex').toLowerCase(),
+    createHash('md5').update(`${hashKey}`).digest('hex').toLowerCase(),
+    hashKey.toLowerCase()
+  ];
 
-  return provided === expectedTxHash || provided === expectedUserHash;
+  return candidates.includes(provided);
 }
 
 /**

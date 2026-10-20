@@ -20,8 +20,12 @@ interface UserDashboardProps {
   usdtQuote: UsdtQuote | null;
   recentLedger: LedgerEntry[];
   recentWithdrawals: Withdrawal[];
-  onSelectTab: (tab: string) => void;
+  onSelectTab?: (tab: string) => void;
+  onNavigateTab?: (tab: string) => void;
   onVerifyEmail: () => void;
+  surveys?: any[];
+  surveysLoading?: boolean;
+  onStartSurvey?: (survey: any) => void;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -29,9 +33,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   balances,
   usdtQuote,
   recentLedger,
+  recentWithdrawals,
   onSelectTab,
-  onVerifyEmail
+  onNavigateTab,
+  onVerifyEmail,
+  surveys,
+  surveysLoading,
+  onStartSurvey
 }) => {
+  const navigate = onSelectTab || onNavigateTab || (() => {});
   const availableCents = balances?.availableCents ?? 0;
   const pendingCents = balances?.pendingCents ?? 0;
   const totalEarnedCents = balances?.totalEarnedCents ?? 0;
@@ -97,14 +107,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
           <div className="flex items-center gap-3 pt-2">
             <button
-              onClick={() => onSelectTab('withdraw')}
+              onClick={() => navigate('withdraw')}
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
             >
               Withdraw USDT
               <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => onSelectTab('surveys')}
+              onClick={() => navigate('surveys')}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1.5"
             >
               Earn More
@@ -157,7 +167,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* Primary Action Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <button
-          onClick={() => onSelectTab('surveys')}
+          onClick={() => navigate('surveys')}
           className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all text-left group"
         >
           <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-3 group-hover:bg-sky-600 group-hover:text-white transition-colors">
@@ -165,12 +175,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           </div>
           <h4 className="text-sm font-bold text-slate-900 mb-1">Find Surveys</h4>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Explore live CPX Research surveys tailored to your demographic.
+            Explore live Reward River surveys tailored to your demographic.
           </p>
         </button>
 
         <button
-          onClick={() => onSelectTab('withdraw')}
+          onClick={() => navigate('withdraw')}
           className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-300 hover:shadow-md transition-all text-left group"
         >
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
@@ -183,7 +193,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         </button>
 
         <button
-          onClick={() => onSelectTab('transactions')}
+          onClick={() => navigate('transactions')}
           className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all text-left group"
         >
           <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center mb-3 group-hover:bg-cyan-600 group-hover:text-white transition-colors">
@@ -196,7 +206,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         </button>
 
         <button
-          onClick={() => onSelectTab('settings')}
+          onClick={() => navigate('settings')}
           className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all text-left group"
         >
           <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center mb-3 group-hover:bg-slate-700 group-hover:text-white transition-colors">
@@ -260,7 +270,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-slate-900">Recent Account Activity</h3>
             <button
-              onClick={() => onSelectTab('transactions')}
+              onClick={() => navigate('transactions')}
               className="text-xs font-semibold text-sky-600 hover:text-sky-800 flex items-center gap-1"
             >
               View Full Ledger

@@ -25,7 +25,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
   const faqs = [
     {
       q: 'How do I earn USDT on Reward River?',
-      a: 'You participate in legitimate market research surveys supplied by CPX Research. When a research sponsor confirms your completed session, your Reward River balance is automatically credited. Once you reach the minimum balance ($5.00), you can request an on-chain USDT payout directly to your wallet.'
+      a: 'You participate in legitimate market research surveys on Reward River. When a research sponsor confirms your completed session, your Reward River balance is automatically credited. Once you reach the minimum balance ($5.00), you can request an on-chain USDT payout directly to your wallet.'
     },
     {
       q: 'Which USDT networks are supported for withdrawals?',
@@ -75,7 +75,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
         <div className="max-w-3xl mx-auto space-y-6">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
             <Coins className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Pure USDT Rewards • CPX Research Powered</span>
+            <span>Pure USDT Rewards • Reward River Surveys</span>
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-tight">
@@ -153,7 +153,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-2">Complete eligible surveys</h3>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Browse available research surveys from CPX Research. Answer questions honestly. When a research sponsor confirms your participation, your balance is updated immediately.
+              Browse available research surveys on Reward River. Answer questions honestly. When a research sponsor confirms your participation, your balance is updated immediately.
             </p>
           </div>
 
@@ -181,7 +181,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
               Understanding Market Research & Reward Variations
             </h2>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed mb-8">
-              We believe in complete honesty about how online survey marketplaces work. Reward River partners with CPX Research to connect you with real market researchers worldwide.
+              We believe in complete honesty about how online survey marketplaces work. Reward River connects you with verified market research sponsors worldwide.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -238,7 +238,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
               <span>Responsible Participation Guidelines</span>
             </div>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Always provide honest, thoughtful feedback. Using VPNs, proxy networks, multiple accounts, or automated scripts violates CPX Research publisher policies and will lead to account termination and forfeiture of pending rewards.
+              Always provide honest, thoughtful feedback. Using VPNs, proxy networks, multiple accounts, or automated scripts violates Reward River participation policies and will lead to account termination and forfeiture of pending rewards.
             </p>
           </div>
           <button
@@ -298,7 +298,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ usdtQuote, onGetStarte
             Ready to Start Flowing Forward?
           </h2>
           <p className="text-emerald-100 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-            Create your free account, view currently active CPX surveys, and begin accumulating real USDT rewards today.
+            Create your free account, view currently active surveys, and begin accumulating real USDT rewards today.
           </p>
           <button
             onClick={onGetStarted}

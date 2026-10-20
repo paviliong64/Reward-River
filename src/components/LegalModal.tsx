@@ -45,9 +45,9 @@ export const LegalModal: React.FC<LegalModalProps> = ({ page, onClose }) => {
                 By creating an account or accessing Reward River, you agree to comply with and be bound by these Terms of Service. If you do not agree, you must discontinue using the platform immediately.
               </p>
 
-              <h4 className="text-sm font-bold text-slate-900">2. Third-Party Survey Providers</h4>
+              <h4 className="text-sm font-bold text-slate-900">2. Research Network Partners</h4>
               <p>
-                Market research surveys are provided through external partners, primarily CPX Research. Survey availability, criteria, demographic requirements, and reward confirmation are governed exclusively by the respective research sponsors. Reward River is an independent rewards platform and is not operated by or an affiliate of CPX Research.
+                Market research surveys are facilitated through verified market research exchanges and sponsors. Survey availability, criteria, demographic requirements, and reward confirmation are governed by the respective research sponsors. Reward River is an independent rewards platform providing real-time USDT settlements upon verified completion.
               </p>
 
               <h4 className="text-sm font-bold text-slate-900">3. Reward Crediting & Reversals</h4>
@@ -121,7 +121,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ page, onClose }) => {
             <>
               <h4 className="text-sm font-bold text-slate-900">Support & Inquiries</h4>
               <p>
-                For technical assistance, withdrawal status inquiries, or CPX postback audit questions, please reach out to our team:
+                For technical assistance, withdrawal status inquiries, or reward postback audit questions, please reach out to our team:
               </p>
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 mt-2">
                 <div className="flex items-center gap-2 font-semibold text-slate-800">

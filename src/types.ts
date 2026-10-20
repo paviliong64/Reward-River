@@ -5,6 +5,8 @@ export interface User {
   emailVerified: boolean;
   role: 'user' | 'admin';
   createdAt: string;
+  externalOpaqueId?: string;
+  updatedAt?: string;
 }
 
 export interface UserBalances {

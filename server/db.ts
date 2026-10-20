@@ -90,24 +90,8 @@ class DatabaseStore {
   }
 
   private getDefaultData(): DatabaseSchema {
-    const adminSalt = crypto.randomBytes(16).toString('hex');
-    const adminHash = crypto.pbkdf2Sync('RewardRiver2026!', adminSalt, 10000, 64, 'sha512').toString('hex');
-
-    const defaultAdmin: UserAccount = {
-      id: 'usr_admin_default',
-      email: 'admin@rewardriver.com',
-      passwordHash: adminHash,
-      salt: adminSalt,
-      displayName: 'System Admin',
-      emailVerified: true,
-      role: 'admin',
-      externalOpaqueId: 'rr_admin_opaque_001',
-      createdAt: '2026-10-20T00:00:00.000Z',
-      updatedAt: '2026-10-20T00:00:00.000Z'
-    };
-
     return {
-      users: [defaultAdmin],
+      users: [],
       rewardLedger: [],
       withdrawalRequests: [],
       withdrawalEvents: [],

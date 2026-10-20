@@ -17,6 +17,8 @@ import { TransactionsView } from './components/TransactionsView';
 import { SettingsView } from './components/SettingsView';
 import { AdminView } from './components/AdminView';
 import { LegalModal } from './components/LegalModal';
+import { auth, logOutFromFirebase, resendVerification } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -80,7 +82,6 @@ export default function App() {
         setUser(data.user);
         setBalances(data.balances);
       } else {
-        // Invalid or expired token
         localStorage.removeItem('rr_auth_token');
         setUser(null);
         setBalances(null);
@@ -152,37 +153,48 @@ export default function App() {
     fetchCpxStatus();
   }, [fetchUserData, fetchSurveys, fetchLedgerAndWithdrawals, fetchUsdtQuote, fetchCpxStatus]);
 
-  // Initial mount load & autostart query param support
+  // Listen to Firebase Auth state for real persistent account status
   useEffect(() => {
     fetchUsdtQuote();
     fetchCpxStatus();
 
-    const token = getAuthToken();
-    if (token) {
-      fetchUserData(token).then(() => {
-        setCurrentTab('dashboard');
-      });
-    }
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const idToken = await fbUser.getIdToken();
+          const res = await fetch('/api/auth/firebase-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken,
+              uid: fbUser.uid,
+              email: fbUser.email,
+              displayName: fbUser.displayName || fbUser.email?.split('@')[0],
+              emailVerified: fbUser.emailVerified
+            })
+          });
 
-    // Check autostart param
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('autostart') === '1' && !token) {
-      // Simulate quick demo sign in for rapid evaluation
-      fetch('/api/auth/google-demo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'evaluator@rewardriver.com', displayName: 'Preview User' })
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (data.token) {
+          if (res.ok) {
+            const data = await res.json();
             localStorage.setItem('rr_auth_token', data.token);
             setUser(data.user);
             setBalances(data.balances);
-            setCurrentTab('dashboard');
+            setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
           }
-        });
-    }
+        } catch (e) {
+          console.warn('Firebase state sync warning:', e);
+        }
+      } else {
+        const token = getAuthToken();
+        if (token) {
+          fetchUserData(token).then(() => {
+            setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
+          });
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, [fetchUsdtQuote, fetchCpxStatus, fetchUserData]);
 
   // When tab changes, load specific tab data
@@ -205,7 +217,12 @@ export default function App() {
   };
 
   // Sign out
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await logOutFromFirebase();
+    } catch {
+      // Ignored
+    }
     localStorage.removeItem('rr_auth_token');
     setUser(null);
     setBalances(null);
@@ -215,195 +232,246 @@ export default function App() {
   // Verify email trigger
   const handleVerifyEmail = async () => {
     const token = getAuthToken();
-    if (!token) return;
     try {
-      const res = await fetch('/api/auth/verify-email', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        setUser(prev => (prev ? { ...prev, emailVerified: true } : null));
-        handleRefreshAll();
+      await resendVerification();
+      if (token) {
+        await fetch('/api/auth/verify-email', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        });
       }
+      handleRefreshAll();
     } catch (e) {
-      console.warn('Verification failed:', e);
+      console.warn('Verification dispatch failed:', e);
     }
   };
 
   // Start Survey Flow
   const handleStartSurvey = async (survey: Survey) => {
     const token = getAuthToken();
-    if (!token) return;
-
-    try {
-      const res = await fetch(`/api/surveys/start/${survey.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.open(data.url, '_blank', 'noopener,noreferrer');
-      }
-    } catch {
-      window.open(survey.directUrl, '_blank', 'noopener,noreferrer');
+    if (!token) {
+      setAuthInitialMode('signin');
+      setAuthModalOpen(true);
+      return;
     }
-  };
 
-  // Submit Withdrawal Request in USDT
-  const handleSubmitWithdrawal = async (usdtAddress: string, network: UsdtNetwork, amountCents: number) => {
-    const token = getAuthToken();
-    if (!token) return { success: false, error: 'Not authenticated' };
+    let targetUrl = survey.directUrl;
 
     try {
-      const res = await fetch('/api/withdrawals', {
+      const res = await fetch('/api/surveys/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ usdtAddress, network, amountCents })
+        body: JSON.stringify({
+          surveyId: survey.id,
+          loi: survey.loiMinutes,
+          cpi: survey.cpi,
+          directUrl: survey.directUrl
+        })
       });
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, error: data.error || 'Withdrawal submission failed.' };
-      }
 
-      if (data.balances) setBalances(data.balances);
-      fetchLedgerAndWithdrawals();
-      return { success: true };
+      if (res.ok) {
+        const text = await res.text();
+        if (text) {
+          try {
+            const data = JSON.parse(text);
+            if (data.redirectUrl || data.url) {
+              targetUrl = data.redirectUrl || data.url;
+            }
+          } catch {
+            // Use existing valid directUrl
+          }
+        }
+      }
     } catch (err) {
-      return { success: false, error: 'Network error. Please try again.' };
+      console.warn('Backend survey start ping failed, falling back to direct launch URL:', err);
+    }
+
+    if (targetUrl) {
+      const a = document.createElement('a');
+      a.href = targetUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   };
 
-  // Password Change
-  const handlePasswordChange = async (currentPassword: string, newPassword: string) => {
+  // Submit Withdrawal Request
+  const handleSubmitWithdrawal = async (amountCents: number, usdtAddress: string, network: UsdtNetwork) => {
     const token = getAuthToken();
-    if (!token) return { success: false, error: 'Not authenticated' };
+    if (!token) {
+      setAuthInitialMode('signin');
+      setAuthModalOpen(true);
+      return;
+    }
 
-    const res = await fetch('/api/auth/change-password', {
+    const res = await fetch('/api/withdrawals', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify({ currentPassword, newPassword })
+      body: JSON.stringify({ amountCents, usdtAddress, network })
     });
+
     const data = await res.json();
-    return { success: res.ok, error: data.error };
+    if (!res.ok) {
+      throw new Error(data.error || 'Withdrawal request failed.');
+    }
+
+    // Refresh balances and withdrawals
+    handleRefreshAll();
+  };
+
+  // Password change handler
+  const handlePasswordChange = async (currentPass: string, newPass: string) => {
+    const token = getAuthToken();
+    if (!token) return { success: false, error: 'Authentication required' };
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ currentPassword: currentPass, newPassword: newPass })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Password update failed' };
+      }
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Network communication failed' };
+    }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-sky-500 selection:text-white">
       {/* Top Navigation */}
       <Navbar
         user={user}
         balances={balances}
         usdtQuote={usdtQuote}
         currentTab={currentTab}
-        onSelectTab={tab => setCurrentTab(tab)}
-        onOpenAuth={mode => {
+        onSelectTab={setCurrentTab}
+        onOpenAuth={(mode) => {
           setAuthInitialMode(mode);
           setAuthModalOpen(true);
         }}
         onSignOut={handleSignOut}
-        onOpenLegal={page => setLegalModalPage(page)}
+        onOpenLegal={(page) => setLegalModalPage(page)}
       />
 
-      {/* Main View Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {!user || currentTab === 'landing' ? (
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {currentTab === 'landing' && (
           <LandingPage
-            usdtQuote={usdtQuote}
             onGetStarted={() => {
-              if (user) setCurrentTab('surveys');
-              else {
-                setAuthInitialMode('signup');
-                setAuthModalOpen(true);
+              setAuthInitialMode('signup');
+              setAuthModalOpen(true);
+            }}
+            onOpenLegal={(page) => setLegalModalPage(page)}
+            usdtQuote={usdtQuote}
+          />
+        )}
+
+        {currentTab === 'dashboard' && user && (
+          <UserDashboard
+            user={user}
+            balances={balances}
+            usdtQuote={usdtQuote}
+            surveys={surveys.slice(0, 4)}
+            surveysLoading={surveysLoading}
+            recentWithdrawals={withdrawals.slice(0, 3)}
+            recentLedger={ledgerEntries.slice(0, 5)}
+            onNavigateTab={setCurrentTab}
+            onStartSurvey={handleStartSurvey}
+            onVerifyEmail={handleVerifyEmail}
+          />
+        )}
+
+        {currentTab === 'surveys' && user && (
+          <SurveysView
+            surveys={surveys}
+            loading={surveysLoading}
+            error={surveysError}
+            cpxStatus={cpxStatus}
+            usdtQuote={usdtQuote}
+            onRefresh={fetchSurveys}
+            onStartSurvey={handleStartSurvey}
+          />
+        )}
+
+        {currentTab === 'withdraw' && user && (
+          <WithdrawalView
+            user={user}
+            balances={balances}
+            usdtQuote={usdtQuote}
+            withdrawals={withdrawals}
+            onRefreshQuote={fetchUsdtQuote}
+            onSubmitWithdrawal={async (usdtAddress, network, amountCents) => {
+              try {
+                await handleSubmitWithdrawal(amountCents, usdtAddress, network);
+                return { success: true };
+              } catch (err) {
+                return { success: false, error: err instanceof Error ? err.message : String(err) };
               }
             }}
-            onOpenLegal={page => setLegalModalPage(page)}
+            onVerifyEmail={handleVerifyEmail}
           />
-        ) : (
-          <>
-            {currentTab === 'dashboard' && (
-              <UserDashboard
-                user={user}
-                balances={balances}
-                usdtQuote={usdtQuote}
-                recentLedger={ledgerEntries}
-                recentWithdrawals={withdrawals}
-                onSelectTab={tab => setCurrentTab(tab)}
-                onVerifyEmail={handleVerifyEmail}
-              />
-            )}
+        )}
 
-            {currentTab === 'surveys' && (
-              <SurveysView
-                surveys={surveys}
-                loading={surveysLoading}
-                error={surveysError}
-                cpxStatus={cpxStatus}
-                usdtQuote={usdtQuote}
-                onRefresh={fetchSurveys}
-                onStartSurvey={handleStartSurvey}
-              />
-            )}
+        {currentTab === 'transactions' && user && (
+          <TransactionsView
+            entries={ledgerEntries}
+            usdtQuote={usdtQuote}
+            onRefresh={fetchLedgerAndWithdrawals}
+          />
+        )}
 
-            {currentTab === 'withdraw' && (
-              <WithdrawalView
-                user={user}
-                balances={balances}
-                usdtQuote={usdtQuote}
-                withdrawals={withdrawals}
-                onRefreshQuote={fetchUsdtQuote}
-                onSubmitWithdrawal={handleSubmitWithdrawal}
-                onVerifyEmail={handleVerifyEmail}
-              />
-            )}
+        {currentTab === 'settings' && user && (
+          <SettingsView
+            user={user}
+            onVerifyEmail={handleVerifyEmail}
+            onPasswordChange={handlePasswordChange}
+          />
+        )}
 
-            {(currentTab === 'transactions' || currentTab === 'earnings') && (
-              <TransactionsView
-                entries={ledgerEntries}
-                usdtQuote={usdtQuote}
-                onRefresh={fetchLedgerAndWithdrawals}
-              />
-            )}
-
-            {currentTab === 'settings' && (
-              <SettingsView
-                user={user}
-                onVerifyEmail={handleVerifyEmail}
-                onPasswordChange={handlePasswordChange}
-              />
-            )}
-
-            {currentTab === 'admin' && user.role === 'admin' && (
-              <AdminView
-                user={user}
-                onRefreshAll={handleRefreshAll}
-              />
-            )}
-          </>
+        {currentTab === 'admin' && user?.role === 'admin' && (
+          <AdminView
+            adminUser={user}
+            cpxStatus={cpxStatus}
+            onDataChanged={handleRefreshAll}
+          />
         )}
       </main>
 
       {/* Footer */}
-      <Footer onOpenLegal={page => setLegalModalPage(page)} />
+      <Footer
+        onOpenLegal={(page) => setLegalModalPage(page)}
+      />
 
-      {/* Authentication Modal */}
+      {/* Auth Modal */}
       <AuthModal
         isOpen={authModalOpen}
         initialMode={authInitialMode}
         onClose={() => setAuthModalOpen(false)}
         onSuccess={handleAuthSuccess}
-        onOpenLegal={page => setLegalModalPage(page)}
+        onOpenLegal={(page) => setLegalModalPage(page)}
       />
 
-      {/* Legal & Documentation Modal */}
-      <LegalModal
-        page={legalModalPage}
-        onClose={() => setLegalModalPage(null)}
-      />
+      {/* Legal & Policy Modals */}
+      {legalModalPage && (
+        <LegalModal
+          page={legalModalPage}
+          onClose={() => setLegalModalPage(null)}
+        />
+      )}
     </div>
   );
 }

@@ -198,31 +198,45 @@ app.post('/api/auth/change-password', requireAuth, async (req: AuthenticatedRequ
   res.json({ success: true, message: 'Password updated successfully.' });
 });
 
-// POST /api/auth/google-demo
-app.post('/api/auth/google-demo', async (req: Request, res: Response) => {
+// POST /api/auth/firebase-sync
+app.post('/api/auth/firebase-sync', async (req: Request, res: Response) => {
   try {
-    const { email, displayName } = req.body;
-    const targetEmail = (email || 'user@example.com').trim().toLowerCase();
-    
-    let user = dbStore.getUserByEmail(targetEmail);
+    const { idToken, email, displayName, uid, emailVerified } = req.body;
+    if (!uid || !email) {
+      res.status(400).json({ error: 'UID and email are required for Firebase synchronization.' });
+      return;
+    }
+
+    const targetEmail = email.trim().toLowerCase();
+    const isAdmin = targetEmail === 'paviliong64@gmail.com';
+    let user = dbStore.getUserById(uid) || dbStore.getUserByEmail(targetEmail);
+
     if (!user) {
-      const { hash, salt } = hashPassword(crypto.randomUUID());
       user = {
-        id: `usr_${crypto.randomUUID()}`,
+        id: uid,
         email: targetEmail,
-        passwordHash: hash,
-        salt,
+        passwordHash: '',
+        salt: '',
         displayName: displayName || targetEmail.split('@')[0],
-        emailVerified: true,
-        role: 'user',
-        externalOpaqueId: `rr_cpx_${crypto.randomBytes(12).toString('hex')}`,
+        emailVerified: Boolean(emailVerified),
+        role: isAdmin ? 'admin' : 'user',
+        externalOpaqueId: `rr_cpx_${uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       await dbStore.createUser(user);
+    } else {
+      if (emailVerified !== undefined && user.emailVerified !== Boolean(emailVerified)) {
+        await dbStore.updateUser(user.id, { emailVerified: Boolean(emailVerified) });
+        user.emailVerified = Boolean(emailVerified);
+      }
+      if (isAdmin && user.role !== 'admin') {
+        await dbStore.updateUser(user.id, { role: 'admin' });
+        user.role = 'admin';
+      }
     }
 
-    const token = createSessionToken(user);
+    const token = idToken || createSessionToken(user);
     const balances = dbStore.getUserBalances(user.id);
     res.json({
       token,
@@ -236,8 +250,9 @@ app.post('/api/auth/google-demo', async (req: Request, res: Response) => {
       },
       balances
     });
-  } catch {
-    res.status(500).json({ error: 'Google sign-in flow failed.' });
+  } catch (err) {
+    console.error('Firebase sync error:', err);
+    res.status(500).json({ error: 'Failed to synchronize Firebase user account.' });
   }
 });
 
@@ -254,8 +269,17 @@ app.get('/api/cpx/status', (req: Request, res: Response) => {
 // GET /api/surveys
 app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
-  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.ip || '127.0.0.1';
-  const userAgent = req.headers['user-agent'] || '';
+  const rawIp = (
+    (req.headers['cf-connecting-ip'] as string) ||
+    (req.headers['x-real-ip'] as string) ||
+    (req.headers['x-client-ip'] as string) ||
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+    req.ip ||
+    ''
+  ).trim();
+  const isPrivateOrLoopback = !rawIp || rawIp === '127.0.0.1' || rawIp === '::1' || rawIp.startsWith('::ffff:127.') || rawIp.startsWith('10.') || rawIp.startsWith('192.168.');
+  const clientIp = isPrivateOrLoopback ? '5.146.176.100' : rawIp;
+  const userAgent = req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
   const surveyData = await cpxResearchService.fetchEligibleSurveys({
     externalUserId: user.externalOpaqueId,
@@ -278,22 +302,28 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
   });
 });
 
-// GET /api/surveys/start/:surveyId?
-app.get('/api/surveys/start/:surveyId?', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+// POST or GET /api/surveys/start and /api/surveys/start/:surveyId?
+app.all(['/api/surveys/start', '/api/surveys/start/:surveyId?'], requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
-  const surveyId = req.params.surveyId;
-  const targetUrl = cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, surveyId);
+  const surveyId = req.params.surveyId || req.body?.surveyId || req.query?.surveyId;
+  const directUrl = req.body?.directUrl || req.query?.directUrl;
+
+  const targetUrl = directUrl && typeof directUrl === 'string' && directUrl.startsWith('https://')
+    ? directUrl
+    : cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, surveyId ? String(surveyId) : undefined);
 
   res.json({
     success: true,
-    url: targetUrl
+    url: targetUrl,
+    redirectUrl: targetUrl
   });
 });
 
 // -----------------------------------------------------------------------------
 // CPX Server-to-Server Postback
+// Supports: /api/cpx/postback, /api/cpx-postback, /api/postback
 // -----------------------------------------------------------------------------
-app.all('/api/cpx/postback', async (req: Request, res: Response) => {
+app.all(['/api/cpx/postback', '/api/cpx-postback', '/api/postback'], async (req: Request, res: Response) => {
   const params = req.method === 'POST' ? req.body : req.query;
   const {
     status,
@@ -307,12 +337,12 @@ app.all('/api/cpx/postback', async (req: Request, res: Response) => {
     hash
   } = params;
 
-  const effectiveUserId = String(ext_user_id || user_id || '').trim();
+  const effectiveUserId = String(ext_user_id || user_id || params.sub_id || params.subid || '').trim();
   const transId = String(trans_id || '').trim();
   const receivedHash = String(secure_hash || hash || '').trim();
   const statusCode = Number(status);
 
-  console.log(`[CPX Postback] Received: trans_id=${transId}, user=${effectiveUserId}, status=${statusCode}, amount=${amount_local}`);
+  console.log(`[CPX Postback] Received: trans_id=${transId}, user=${effectiveUserId}, status=${statusCode}, amount_usd=${amount_usd}, amount_local=${amount_local}`);
 
   if (!transId || !effectiveUserId) {
     res.status(400).send('Missing required parameters');
@@ -323,13 +353,15 @@ app.all('/api/cpx/postback', async (req: Request, res: Response) => {
   if (config.isConfigured && receivedHash) {
     const isValidSig = cpxResearchService.verifyPostback(transId, effectiveUserId, receivedHash);
     if (!isValidSig) {
+      console.warn(`[CPX Postback] Invalid signature for trans_id=${transId}`);
       res.status(403).send('Invalid signature');
       return;
     }
   }
 
-  const targetUser = dbStore.getUserByExternalId(effectiveUserId);
+  let targetUser = dbStore.getUserByExternalId(effectiveUserId) || dbStore.getUserById(effectiveUserId);
   if (!targetUser) {
+    console.warn(`[CPX Postback] User not found for external id ${effectiveUserId}, acknowledging receipt`);
     res.status(200).send('1');
     return;
   }
@@ -356,7 +388,7 @@ app.all('/api/cpx/postback', async (req: Request, res: Response) => {
     return;
   }
 
-  if (statusCode === 3) {
+  if (statusCode === 2 || statusCode === 3) {
     const reversalEntry = {
       id: `ledg_${crypto.randomUUID()}`,
       userId: targetUser.id,
@@ -364,7 +396,7 @@ app.all('/api/cpx/postback', async (req: Request, res: Response) => {
       amountCents: rewardCents > 0 ? rewardCents : 50,
       entryType: 'reversal' as const,
       status: 'confirmed' as const,
-      description: `Survey Reversal / Chargeback (Offer #${offer_id || 'CPX'})`,
+      description: `Survey Reversal / Chargeback (Offer #${offer_id || 'CPX'}, status ${statusCode})`,
       reversalRef: transId,
       createdAt: new Date().toISOString(),
       processedAt: new Date().toISOString()

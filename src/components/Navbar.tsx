@@ -119,22 +119,35 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3">
-                {/* Balance Badge */}
+                {/* Balance & USDT Quick-Withdraw Button */}
                 <button
                   onClick={() => handleNavClick('withdraw')}
-                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors text-right"
-                  title="Click to withdraw USDT"
+                  className="group flex items-center gap-2.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-full bg-gradient-to-r from-emerald-50 via-teal-50/70 to-white hover:from-emerald-100/70 hover:to-teal-50 border border-emerald-200 hover:border-emerald-400 shadow-xs hover:shadow-md hover:shadow-emerald-500/15 transition-all duration-200 active:scale-95 text-left"
+                  title="Your Available USDT Balance — Click to Withdraw"
+                  aria-label={`Available balance ${usdtAmount} USDT. Click to withdraw.`}
                 >
-                  <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px]">
-                    ₮
+                  <div className="relative flex items-center justify-center shrink-0">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-center font-black text-xs shadow-xs ring-2 ring-emerald-100 group-hover:ring-emerald-300 transition-all">
+                      ₮
+                    </div>
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white animate-pulse" />
                   </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">
-                      ${(availableCents / 100).toFixed(2)}
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-baseline gap-1 leading-tight">
+                      <span className="text-xs font-extrabold text-slate-900 tracking-tight font-mono">
+                        {usdtAmount}
+                      </span>
+                      <span className="text-[10px] font-black text-emerald-600 font-sans tracking-wide">
+                        USDT
+                      </span>
                     </div>
-                    <div className="text-[10px] font-medium text-emerald-700 font-mono">
-                      {usdtAmount} USDT
+                    <div className="text-[10px] font-medium text-slate-500 group-hover:text-emerald-700 transition-colors flex items-center gap-1 leading-none mt-0.5">
+                      <span className="text-slate-400 font-mono">${(availableCents / 100).toFixed(2)}</span>
+                      <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-100/70 px-1 py-0.2 rounded">Withdraw</span>
                     </div>
+                  </div>
+                  <div className="hidden xs:flex w-5 h-5 rounded-full bg-white/90 group-hover:bg-emerald-600 border border-emerald-100 group-hover:border-emerald-600 items-center justify-center text-emerald-600 group-hover:text-white transition-all shrink-0 ml-0.5 shadow-2xs">
+                    <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                   </div>
                 </button>
 

@@ -129,7 +129,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               rr_cpx_{user.id.slice(-8)}
             </span>
             <p className="text-[10px] text-slate-400 pt-1">
-              Used strictly for anonymous CPX survey session tracking.
+              Used strictly for anonymous Reward River survey session tracking.
             </p>
           </div>
         </div>

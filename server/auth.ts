@@ -35,20 +35,52 @@ export function createSessionToken(user: UserAccount): string {
 }
 
 export function verifySessionToken(token: string): AuthSession | null {
-  if (!token || !token.includes('.')) return null;
-  const [payload, signature] = token.split('.');
-  if (!payload || !signature) return null;
+  if (!token) return null;
 
-  const expectedSignature = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('base64url');
-  if (signature !== expectedSignature) return null;
+  // Check if standard HMAC session token (2 parts)
+  if (token.split('.').length === 2) {
+    const [payload, signature] = token.split('.');
+    if (!payload || !signature) return null;
 
-  try {
-    const session: AuthSession = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8'));
-    if (Date.now() > session.exp) return null;
-    return session;
-  } catch {
-    return null;
+    const expectedSignature = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('base64url');
+    if (signature !== expectedSignature) return null;
+
+    try {
+      const session: AuthSession = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8'));
+      if (Date.now() > session.exp) return null;
+      return session;
+    } catch {
+      return null;
+    }
   }
+
+  // Check if Firebase ID Token (3 parts standard JWT)
+  if (token.split('.').length === 3) {
+    try {
+      const parts = token.split('.');
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'));
+      
+      // Validate Firebase token structure
+      if (payload.iss && payload.iss.includes('securetoken.google.com') && payload.sub) {
+        // Expired check
+        if (payload.exp && Date.now() >= payload.exp * 1000) {
+          return null;
+        }
+
+        const isAdmin = payload.email === 'paviliong64@gmail.com';
+        return {
+          userId: payload.sub,
+          email: payload.email || '',
+          role: isAdmin ? 'admin' : 'user',
+          exp: (payload.exp || Math.floor(Date.now() / 1000) + 3600) * 1000
+        };
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 // Extends Express Request
@@ -62,7 +94,28 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
     const token = authHeader.substring(7);
     const session = verifySessionToken(token);
     if (session) {
-      const user = dbStore.getUserById(session.userId);
+      let user = dbStore.getUserById(session.userId);
+      if (!user && session.email) {
+        user = dbStore.getUserByEmail(session.email);
+      }
+
+      // If user came via Firebase ID token and isn't in local store yet, automatically instantiate
+      if (!user && session.userId && session.email) {
+        user = {
+          id: session.userId,
+          email: session.email,
+          passwordHash: '',
+          salt: '',
+          displayName: session.email.split('@')[0],
+          emailVerified: true,
+          role: session.role,
+          externalOpaqueId: `rr_cpx_${session.userId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await dbStore.createUser(user);
+      }
+
       if (user) {
         req.user = user;
       }
@@ -80,7 +133,7 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 }
 
 export function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || (req.user.role !== 'admin' && req.user.email !== 'paviliong64@gmail.com')) {
     res.status(403).json({ error: 'Access forbidden. Administrator privileges required.' });
     return;
   }

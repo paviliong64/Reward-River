@@ -1,6 +1,7 @@
 /**
  * Reward River - Dedicated CPX Research Service
  * Official API documentation: https://www.cpx-research.com/main/en/doc.php
+ * Endpoint: https://live-api.cpx-research.com/api/get-surveys.php
  */
 
 import {
@@ -16,7 +17,7 @@ export interface CpxConfigStatus {
   appIdConfigured: boolean;
   hashKeyConfigured: boolean;
   postbackSecretConfigured: boolean;
-  mode: 'live' | 'demo';
+  mode: 'live' | 'unconfigured';
 }
 
 export interface FetchSurveysResult {
@@ -24,20 +25,29 @@ export interface FetchSurveysResult {
   surveys: NormalizedSurvey[];
   totalAvailable: number;
   message?: string;
-  source: 'cpx_api' | 'demo_curated' | 'none';
+  source: 'cpx_api' | 'none';
+}
+
+export interface UserProfilingInfo {
+  birthday_day?: number | string;
+  birthday_month?: number | string;
+  birthday_year?: number | string;
+  gender?: 'm' | 'f';
+  user_country_code?: string;
+  zip_code?: string;
 }
 
 export class CpxResearchService {
   private get appId(): string {
-    return process.env.CPX_APP_ID || '';
+    return process.env.CPX_APP_ID || '37479';
   }
 
   private get hashKey(): string {
-    return process.env.CPX_HASH_KEY || '';
+    return process.env.CPX_HASH_KEY || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
   }
 
   private get postbackSecret(): string {
-    return process.env.CPX_POSTBACK_SECRET || '';
+    return process.env.CPX_POSTBACK_SECRET || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
   }
 
   /**
@@ -54,51 +64,65 @@ export class CpxResearchService {
       appIdConfigured,
       hashKeyConfigured,
       postbackSecretConfigured,
-      mode: isConfigured ? 'live' : 'demo'
+      mode: isConfigured ? 'live' : 'unconfigured'
     };
   }
 
   /**
-   * Retrieves eligible surveys using the official documented CPX endpoint:
-   * https://oul.cpx-research.com/api/get-surveys.php
+   * Retrieves live surveys using the official live CPX endpoint:
+   * https://live-api.cpx-research.com/api/get-surveys.php
    */
   async fetchEligibleSurveys(params: {
     externalUserId: string;
     ipAddress?: string;
     userAgent?: string;
+    subid1?: string;
+    subid2?: string;
+    profiling?: UserProfilingInfo;
   }): Promise<FetchSurveysResult> {
-    const { externalUserId, ipAddress = '127.0.0.1', userAgent = '' } = params;
+    const { externalUserId, ipAddress = '127.0.0.1', userAgent = '', subid1 = '', subid2 = '', profiling } = params;
     const config = this.getConfigStatus();
 
-    // If CPX publisher credentials are not yet set up, return informative status
+    // If CPX publisher credentials are not yet set up, return honest status
     if (!config.isConfigured) {
-      // In demo mode for local development/audit without real keys,
-      // return clearly labeled demo survey opportunities so flows are fully testable.
-      const demoSurveys = this.getCuratedDemoSurveys(externalUserId);
       return {
         success: true,
-        surveys: demoSurveys,
-        totalAvailable: demoSurveys.length,
-        message: 'Running in CPX Publisher Preview mode. Set CPX_APP_ID and CPX_HASH_KEY in server environment to connect live production inventory.',
-        source: 'demo_curated'
+        surveys: [],
+        totalAvailable: 0,
+        message: 'CPX Research publisher credentials (CPX_APP_ID and CPX_HASH_KEY) need to be configured in your publisher dashboard or environment.',
+        source: 'none'
       };
     }
 
     try {
       const secureHash = generateCpxSecureHash(externalUserId, this.hashKey);
 
-      const url = new URL('https://oul.cpx-research.com/api/get-surveys.php');
+      const url = new URL('https://live-api.cpx-research.com/api/get-surveys.php');
       url.searchParams.set('app_id', this.appId);
       url.searchParams.set('ext_user_id', externalUserId);
+      url.searchParams.set('subid_1', subid1);
+      url.searchParams.set('subid_2', subid2);
       url.searchParams.set('output_method', 'api');
-      url.searchParams.set('ip_click', ipAddress);
+      url.searchParams.set('ip_user', ipAddress);
+      url.searchParams.set('limit', '12');
       url.searchParams.set('secure_hash', secureHash);
       if (userAgent) {
         url.searchParams.set('user_agent', userAgent);
       }
 
+      // Add profiling parameters if available
+      if (profiling) {
+        url.searchParams.set('main_info', 'true');
+        if (profiling.birthday_day) url.searchParams.set('birthday_day', String(profiling.birthday_day));
+        if (profiling.birthday_month) url.searchParams.set('birthday_month', String(profiling.birthday_month));
+        if (profiling.birthday_year) url.searchParams.set('birthday_year', String(profiling.birthday_year));
+        if (profiling.gender) url.searchParams.set('gender', profiling.gender);
+        if (profiling.user_country_code) url.searchParams.set('user_country_code', profiling.user_country_code);
+        if (profiling.zip_code) url.searchParams.set('zip_code', profiling.zip_code);
+      }
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch(url.toString(), {
         headers: {
@@ -110,7 +134,7 @@ export class CpxResearchService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.error(`CPX API HTTP Error: status=${response.status}`);
+        console.warn(`CPX API HTTP response: status=${response.status}`);
         return {
           success: false,
           surveys: [],
@@ -121,17 +145,27 @@ export class CpxResearchService {
       }
 
       const json = await response.json();
-      const normalized = normalizeCpxSurveyList(json, this.appId, externalUserId, this.hashKey);
-
-      return {
-        success: true,
-        surveys: normalized,
-        totalAvailable: normalized.length,
-        source: 'cpx_api'
-      };
+      if (json.status === 'success') {
+        const normalized = normalizeCpxSurveyList(json, this.appId, externalUserId, this.hashKey);
+        return {
+          success: true,
+          surveys: normalized,
+          totalAvailable: json.count_available_surveys || normalized.length,
+          message: normalized.length === 0 ? 'At this moment no surveys available for your profile' : undefined,
+          source: 'cpx_api'
+        };
+      } else {
+        return {
+          success: true,
+          surveys: [],
+          totalAvailable: 0,
+          message: 'At this moment no surveys available for your profile',
+          source: 'cpx_api'
+        };
+      }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error('CPX Research Service connection failed:', errorMsg);
+      console.warn('CPX Research Service live call exception:', errorMsg);
       return {
         success: false,
         surveys: [],
@@ -143,13 +177,12 @@ export class CpxResearchService {
   }
 
   /**
-   * Generates official CPX survey start URL for a specific survey or generic survey wall.
+   * Generates official CPX survey start URL for a specific survey or survey wall.
    */
   generateSurveyStartUrl(externalUserId: string, surveyId?: string): string {
     const config = this.getConfigStatus();
     if (!config.isConfigured) {
-      // Return safe preview landing link
-      return `https://oul.cpx-research.com/index.php?app_id=demo&ext_user_id=${encodeURIComponent(externalUserId)}`;
+      return `https://oul.cpx-research.com/index.php?app_id=${this.appId || '10'}&ext_user_id=${encodeURIComponent(externalUserId)}`;
     }
 
     return buildCpxSurveyUrl({
@@ -166,76 +199,10 @@ export class CpxResearchService {
    */
   verifyPostback(transId: string, extUserId: string, secureHash?: string): boolean {
     const effectiveSecret = this.hashKey || this.postbackSecret;
-    if (!effectiveSecret) {
-      // In development when credentials are not configured
+    if (!effectiveSecret || !secureHash) {
       return false;
     }
-    if (!secureHash) return false;
     return verifyCpxPostbackSignature(transId, extUserId, secureHash, effectiveSecret);
-  }
-
-  /**
-   * High-fidelity structured surveys for development and live demonstration
-   * before publisher keys are inserted into .env.
-   */
-  private getCuratedDemoSurveys(externalUserId: string): NormalizedSurvey[] {
-    const mockRaw = {
-      status: 'success',
-      surveys: [
-        {
-          id: 'cpx_101',
-          loi: 7,
-          payout: 1.25,
-          cpi: 1.25,
-          conversion_rate: 85,
-          statistics_rating_avg: 4.8,
-          statistics_rating_count: 512,
-          top: 1
-        },
-        {
-          id: 'cpx_102',
-          loi: 12,
-          payout: 2.10,
-          cpi: 2.10,
-          conversion_rate: 78,
-          statistics_rating_avg: 4.6,
-          statistics_rating_count: 240,
-          top: 1
-        },
-        {
-          id: 'cpx_103',
-          loi: 15,
-          payout: 3.40,
-          cpi: 3.40,
-          conversion_rate: 65,
-          statistics_rating_avg: 4.4,
-          statistics_rating_count: 180,
-          top: 0
-        },
-        {
-          id: 'cpx_104',
-          loi: 4,
-          payout: 0.65,
-          cpi: 0.65,
-          conversion_rate: 92,
-          statistics_rating_avg: 4.9,
-          statistics_rating_count: 670,
-          top: 0
-        },
-        {
-          id: 'cpx_105',
-          loi: 20,
-          payout: 4.50,
-          cpi: 4.50,
-          conversion_rate: 60,
-          statistics_rating_avg: 4.3,
-          statistics_rating_count: 98,
-          top: 0
-        }
-      ]
-    };
-
-    return normalizeCpxSurveyList(mockRaw, 'preview_demo', externalUserId);
   }
 }
 

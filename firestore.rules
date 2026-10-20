@@ -15,15 +15,29 @@ service cloud.firestore {
     }
 
     function isVerifiedUser() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.email == 'paviliong64@gmail.com');
     }
 
     function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      return isSignedIn() && (
+        request.auth.token.email == 'paviliong64@gmail.com'
+        || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
     }
 
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Connectivity verification test collection
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // Admins registry
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // User profiles: users can read their own profile, update non-critical fields
@@ -31,15 +45,18 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       
-      // Creation during registration
-      allow create: if isOwner(userId) && isValidId(userId)
+      // Creation during registration:
+      // Regular users register with role == 'user'.
+      // Admins (such as paviliong64@gmail.com) can register/create with role == 'admin' or 'user'.
+      allow create: if (isOwner(userId) || isAdmin()) && isValidId(userId)
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.role == 'user' // Users cannot self-grant admin
+        && (request.resource.data.role == 'user' || (isAdmin() && request.resource.data.role in ['user', 'admin']))
         && request.resource.data.email is string
         && request.resource.data.email.size() <= 255;
         
-      // Updates: user cannot change role, emailVerified, or externalOpaqueId
-      allow update: if (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+      // Updates: user can update displayName, emailVerified, and updatedAt; admins can update all fields
+      allow update: if (isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt', 'emailVerified'])
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() <= 100)
         || isAdmin();

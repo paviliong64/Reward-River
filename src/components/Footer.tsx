@@ -97,7 +97,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLegal }) => {
         {/* Third-Party Provider & Financial Disclaimers */}
         <div className="pt-8 border-t border-slate-800 space-y-3 text-xs text-slate-400 leading-relaxed">
           <p>
-            <strong className="text-slate-300">Third-Party Research Provider Notice:</strong> Market research surveys displayed on Reward River are provided by CPX Research, an independent research exchange. Survey inventory, qualifications, and rewards are determined dynamically by research sponsors based on demographic criteria. CPX Research does not endorse or operate Reward River.
+            <strong className="text-slate-300">Market Research Participation Notice:</strong> Market research surveys displayed on Reward River are powered by verified global research networks. Survey inventory, qualifications, and rewards are determined dynamically by research sponsors based on demographic criteria.
           </p>
           <p>
             <strong className="text-slate-300">Tether (USDT) Stablecoin Disclosures:</strong> Payouts are made in Tether USD (USDT), a cryptocurrency pegged 1:1 to the US dollar. Network transfer fees apply based on your selected blockchain network (TRC-20 or ERC-20). Reward River does not offer investment advice or speculate on crypto markets.

@@ -79,7 +79,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             <Receipt className="w-8 h-8 mx-auto text-slate-300" />
             <p className="font-semibold text-slate-700">No Ledger Transactions Found</p>
             <p className="text-slate-400 max-w-sm mx-auto">
-              Once you complete surveys via CPX Research, provider credits will be permanently recorded here in USDT.
+              Once you complete surveys on Reward River, verified survey credits will be permanently recorded here in USDT.
             </p>
           </div>
         ) : (

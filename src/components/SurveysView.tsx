@@ -53,7 +53,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             Available Surveys
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-              CPX Research API • USDT Payouts
+              Reward River Survey Stream • USDT Payouts
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -106,9 +106,9 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
         <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-100 text-xs text-sky-900 flex items-start gap-3">
           <Info className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <p className="font-semibold">CPX Research Integration Mode: Publisher Preview</p>
+            <p className="font-semibold">Survey Feed Status: Reward River Live Stream</p>
             <p className="text-slate-600 leading-relaxed">
-              To connect live production survey feeds, configure <code className="bg-sky-100 px-1 py-0.5 rounded text-sky-800 font-mono">CPX_APP_ID</code> and <code className="bg-sky-100 px-1 py-0.5 rounded text-sky-800 font-mono">CPX_HASH_KEY</code> in server environment variables. Preview opportunities below demonstrate full UI workflows.
+              Surveys are synchronized continuously. Complete qualified surveys to receive real-time USDT stablecoin credits directly to your Reward River balance.
             </p>
           </div>
         </div>
@@ -149,7 +149,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
           <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
             <ClipboardList className="w-6 h-6" />
           </div>
-          <h3 className="text-base font-bold text-slate-800">No Surveys Currently Available</h3>
+          <h3 className="text-base font-bold text-slate-800">At this moment no surveys available for your profile</h3>
           <p className="text-xs text-slate-500 leading-relaxed">
             Market research studies depend on your demographic profile, country, and sponsor quota limits. Check back in a few hours as new research inventories are refreshed regularly.
           </p>
@@ -237,7 +237,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
       <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed flex items-start gap-2.5">
         <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
         <p>
-          <strong>Provider Note:</strong> Survey sessions are provided by CPX Research. Once you reach the survey finish page, your responses are verified by the research sponsor. Approved completions trigger an authenticated server postback to credit your Reward River balance in USDT.
+          <strong>Participation Note:</strong> When you complete a survey session, your responses are verified by the research sponsor. Approved completions automatically trigger verified crediting to your Reward River balance in USDT.
         </p>
       </div>
     </div>

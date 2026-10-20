@@ -8,11 +8,16 @@ import {
 } from 'lucide-react';
 
 interface AdminViewProps {
-  user: User;
-  onRefreshAll: () => void;
+  user?: User;
+  adminUser?: User;
+  cpxStatus?: any;
+  onRefreshAll?: () => void;
+  onDataChanged?: () => void;
 }
 
-export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
+export const AdminView: React.FC<AdminViewProps> = ({ user, adminUser, onRefreshAll, onDataChanged }) => {
+  const activeUser = user || adminUser;
+  const triggerRefresh = onRefreshAll || onDataChanged || (() => {});
   const [activeSubTab, setActiveSubTab] = useState<'withdrawals' | 'cpx_tester' | 'settings' | 'audit_logs'>('withdrawals');
   const [overview, setOverview] = useState<any>(null);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
@@ -26,7 +31,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
 
   // CPX Postback simulator state
   const [testAmountCents, setTestAmountCents] = useState(150);
-  const [testOfferId, setTestOfferId] = useState('cpx_demo_88');
+  const [testOfferId, setTestOfferId] = useState('offer_101');
   const [testStatus, setTestStatus] = useState<number>(1);
   const [testResult, setTestResult] = useState<any>(null);
 
@@ -79,7 +84,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
         setActionMessage({ text: `Withdrawal updated to ${action}.`, type: 'success' });
         setPayoutModal(null);
         fetchAdminData();
-        onRefreshAll();
+        triggerRefresh();
       }
     } catch {
       setActionMessage({ text: 'Network communication failed.', type: 'error' });
@@ -96,7 +101,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
           Authorization: `Bearer ${localStorage.getItem('rr_auth_token')}`
         },
         body: JSON.stringify({
-          targetUserId: user.id,
+          targetUserId: activeUser?.id || '',
           rewardCents: testAmountCents,
           offerId: testOfferId,
           status: testStatus
@@ -105,9 +110,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
       const data = await res.json();
       setTestResult(data);
       fetchAdminData();
-      onRefreshAll();
+      triggerRefresh();
     } catch {
-      setTestResult({ error: 'Failed to simulate CPX postback' });
+      setTestResult({ error: 'Failed to simulate postback' });
     }
   };
 
@@ -145,7 +150,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Audit rewards ledger, process pending USDT withdrawals, test CPX webhooks, and manage risk controls.
+            Audit rewards ledger, process pending USDT withdrawals, test postback webhooks, and manage risk controls.
           </p>
         </div>
 
@@ -222,7 +227,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          CPX Postback & Webhook Tester
+          Survey Postback & Webhook Tester
         </button>
         <button
           onClick={() => setActiveSubTab('settings')}
@@ -348,10 +353,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
           <div>
             <h3 className="text-base font-bold text-slate-900">
-              CPX Postback Webhook Simulation & Testing Tool
+              Survey Postback Webhook Simulation & Testing Tool
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Simulate server-to-server postbacks sent by CPX Research when a survey is finished. Test signature generation, idempotency checks, and ledger crediting in USDT.
+              Simulate server-to-server postbacks received when a survey is finished. Test signature generation, idempotency checks, and ledger crediting in USDT.
             </p>
           </div>
 
@@ -373,7 +378,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                CPX Offer ID
+                Survey Offer ID
               </label>
               <input
                 type="text"
@@ -393,7 +398,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold"
               >
                 <option value={1}>Status 1: Completed Survey (Credit)</option>
-                <option value={3}>Status 3: Reversal / Chargeback (Debit)</option>
+                <option value={2}>Status 2: Cancelled / Reversed (Chargeback)</option>
+                <option value={3}>Status 3: Alternative Chargeback / Reversal</option>
               </select>
             </div>
           </div>
@@ -403,7 +409,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ user, onRefreshAll }) => {
             className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm transition-all inline-flex items-center gap-2"
           >
             <Send className="w-3.5 h-3.5" />
-            Dispatch Simulated CPX Callback
+            Dispatch Simulated Survey Callback
           </button>
 
           {testResult && (
