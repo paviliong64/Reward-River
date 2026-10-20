@@ -1,0 +1,77 @@
+{
+  "users": [
+    {
+      "id": "usr_admin_default",
+      "email": "admin@rewardriver.com",
+      "passwordHash": "6b5029851a2c659544672faa68a8a44d2cb8d8172715972999341640dec462bc0d861ebd1795e3f79f94f0362b5dc57802b1b1dd939a9adcde4736a554486d70",
+      "salt": "ccd3894fea514170273287ef9190d4a2",
+      "displayName": "System Admin",
+      "emailVerified": true,
+      "role": "admin",
+      "externalOpaqueId": "rr_admin_opaque_001",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "usr_6e2f4c55-4d96-4d01-b689-cd31069aafb2",
+      "email": "evaluator@rewardriver.com",
+      "passwordHash": "b29eed624dd11b42bdbb8085c4c246a627087cbb3ab687061cc0ed6987ba5c2952809a978bdb5f1c24263fd06f010046e37abee534cd20635673ed34bd101d20",
+      "salt": "733e16c537f7bcebb84bea6665bd4d64",
+      "displayName": "Preview User",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_0ebf4ab9e21b958b69d005de",
+      "createdAt": "2026-10-20T20:34:27.470Z",
+      "updatedAt": "2026-10-20T20:34:27.470Z"
+    },
+    {
+      "id": "usr_514414ea-7755-4dca-bb40-2a965beac171",
+      "email": "demo_user@rewardriver.com",
+      "passwordHash": "3609c290fd03405bf73bcdb500751870cf93f0d5cfe205605b992950ea3c126991d017095086fc832616738283cb18dcd39315090a775c8ed893d1dbd9fc5e28",
+      "salt": "9f9a76cfd3d9d62a2ad26b10aa60e080",
+      "displayName": "USDT Earner",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_d169092099b4aa3364152d8d",
+      "createdAt": "2026-10-20T21:04:30.815Z",
+      "updatedAt": "2026-10-20T21:04:30.815Z"
+    }
+  ],
+  "rewardLedger": [
+    {
+      "id": "ledg_42588f81-6c73-4382-8b58-7c207e567632",
+      "userId": "usr_admin_default",
+      "providerTxId": "test_cpx_1792528643940",
+      "amountCents": 150,
+      "entryType": "credit",
+      "status": "confirmed",
+      "description": "Test CPX Postback Event (Offer #cpx_demo_88)",
+      "cpxOfferId": "cpx_demo_88",
+      "createdAt": "2026-10-20T20:37:23.940Z",
+      "processedAt": "2026-10-20T20:37:23.940Z"
+    }
+  ],
+  "withdrawalRequests": [],
+  "withdrawalEvents": [],
+  "systemSettings": {
+    "minWithdrawalCents": 500,
+    "maxWithdrawalCents": 50000,
+    "feeCentsTrc20": 100,
+    "feeCentsErc20": 250,
+    "maintenanceMode": false,
+    "defaultNetwork": "TRC20",
+    "updatedAt": "2026-10-20T00:00:00.000Z"
+  },
+  "adminAuditLogs": [
+    {
+      "adminUserId": "usr_admin_default",
+      "adminEmail": "admin@rewardriver.com",
+      "action": "ADMIN_SIMULATE_CPX_POSTBACK",
+      "targetEntity": "reward_ledger",
+      "targetId": "ledg_42588f81-6c73-4382-8b58-7c207e567632",
+      "details": "Simulated CPX Postback: credited 150 cents to admin@rewardriver.com (transId=test_cpx_1792528643940)",
+      "id": "log_c14c72ed-8c62-43d9-b802-bc62db7f0bb2",
+      "createdAt": "2026-10-20T20:37:23.941Z"
+    }
+  ]
+}

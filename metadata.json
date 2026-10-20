@@ -1,0 +1,6 @@
+{
+  "name": "Reward River",
+  "description": "Full-Stack USDT Rewards & Survey Platform powered by CPX Research API with instant settlements, secure ledger, and verified withdrawals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
