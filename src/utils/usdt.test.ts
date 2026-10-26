@@ -4,7 +4,10 @@ import {
   validateUsdtAddress,
   usdCentsToUsdt,
   formatUsdtString,
-  calculateUsdtPayout
+  calculateUsdtPayout,
+  usdCentsToPoints,
+  pointsToUsdt,
+  calculateHybridSurveySplit
 } from './usdt';
 
 test('validateUsdtAddress: accurately recognizes TRON TRC-20 address format', () => {
@@ -54,3 +57,29 @@ test('calculateUsdtPayout: subtracts fee and calculates net USDT correctly', () 
   const tooLow = calculateUsdtPayout(80, 'TRC20', 100);
   assert.equal(tooLow.isViable, false);
 });
+
+test('Hybrid Points + USDT: on 10,000 Points user gets & sees 40% ($0.40 USDT) while $1.00 gross & 60% ($0.60) admin profit are hidden', () => {
+  // At 40% user share: 40 user cents ($0.40 USDT) = 10,000 Points
+  assert.equal(usdCentsToPoints(40, 10000, 40), 10000);
+  assert.equal(pointsToUsdt(10000, 10000, 40), 0.4);
+  assert.equal(pointsToUsdt(25000, 10000, 40), 1.0);
+
+  // $1.00 (100 cents) gross CPX survey = 10,000 Points -> at 40% user share user gets $0.40 USDT + $0.60 hidden admin profit
+  const split40 = calculateHybridSurveySplit(100, 40, 10000);
+  assert.equal(split40.grossCents, 100);
+  assert.equal(split40.userRewardPoints, 10000);
+  assert.equal(split40.userRewardCents, 40);
+  assert.equal(split40.userRewardUsdtFormatted, '$0.40 USDT');
+  assert.equal(split40.userUsdtPer10kPoints, '0.40');
+  assert.equal(split40.adminProfitCents, 60);
+  assert.equal(split40.adminProfitPercent, 60);
+
+  // Changing user share to 50% gives $0.50 USDT on 10,000 Points
+  const split50 = calculateHybridSurveySplit(100, 50, 10000);
+  assert.equal(split50.userRewardPoints, 10000);
+  assert.equal(split50.userRewardCents, 50);
+  assert.equal(split50.userUsdtPer10kPoints, '0.50');
+  assert.equal(split50.adminProfitCents, 50);
+});
+
+

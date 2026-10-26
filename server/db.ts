@@ -5,6 +5,7 @@ import { LedgerEntry, WithdrawalRecord, calculateUserBalances, isDuplicateTransa
 
 export interface UserAccount {
   id: string;
+  username?: string;
   email: string;
   passwordHash: string;
   salt: string;
@@ -69,8 +70,32 @@ export interface SystemSettings {
   maxWithdrawalCents: number;
   feeCentsTrc20: number;
   feeCentsErc20: number;
+  userSharePercent: number;
+  pointsPerUsdt: number;
+  surveyDisplayMode?: 'hybrid' | 'points_only';
+  cpxAppId?: string;
+  cpxHashKey?: string;
+  cpxIntegrationMode?: 'hybrid_api' | 'direct_wall' | 'paused';
+  cpxMaxSurveys?: number;
+  cpxThemeColor?: string;
+  cpxEnableFallback?: boolean;
+  cpxVerifySignature?: boolean;
+  aoyApiKey?: string;
+  aoySecretKey?: string;
+  aoyBearerToken?: string;
+  aoyExchangeRate?: number;
+  aoyEnableFallback?: boolean;
+  aoyVerifySignature?: boolean;
   maintenanceMode: boolean;
   defaultNetwork: 'TRC20' | 'ERC20';
+  googleAnalyticsId?: string;
+  googleAnalyticsEnabled?: boolean;
+  metaTitle?: string;
+  metaDescription?: string;
+  metaKeywords?: string;
+  ogImageUrl?: string;
+  googleSearchConsoleKey?: string;
+  sitemapEnabled?: boolean;
   updatedAt: string;
 }
 
@@ -102,12 +127,36 @@ class DatabaseStore {
       withdrawalRequests: [],
       withdrawalEvents: [],
       systemSettings: {
-        minWithdrawalCents: 2500, // $25.00 min
-        maxWithdrawalCents: 50000, // $500.00 max
+        minWithdrawalCents: 2500, // $25.00 min (250,000 Points)
+        maxWithdrawalCents: 50000, // $500.00 max (5,000,000 Points)
         feeCentsTrc20: 100, // $1.00 USDT fee for TRC-20
         feeCentsErc20: 250, // $2.50 USDT fee for ERC-20
+        userSharePercent: 40, // Default 40% user share (60% hidden admin profit)
+        pointsPerUsdt: 10000, // 10,000 Points = 1.00 USDT
+        surveyDisplayMode: 'hybrid',
+        cpxAppId: process.env.CPX_APP_ID || '37479',
+        cpxHashKey: process.env.CPX_HASH_KEY || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY',
+        cpxIntegrationMode: 'hybrid_api',
+        cpxMaxSurveys: 12,
+        cpxThemeColor: '10b981',
+        cpxEnableFallback: true,
+        cpxVerifySignature: true,
+        aoyApiKey: process.env.AOY_API_KEY || '',
+        aoySecretKey: process.env.AOY_SECRET_KEY || '',
+        aoyBearerToken: process.env.AOY_BEARER_TOKEN || '',
+        aoyExchangeRate: 10000,
+        aoyEnableFallback: true,
+        aoyVerifySignature: true,
         maintenanceMode: false,
         defaultNetwork: 'TRC20',
+        googleAnalyticsId: process.env.GOOGLE_ANALYTICS_ID || 'G-REWARDRIVER1',
+        googleAnalyticsEnabled: true,
+        metaTitle: 'Reward River - Real Opinions. Real Value.',
+        metaDescription: 'Discover available research surveys, share verified opinions, and earn rewards paid directly to your TRC-20 or ERC-20 USDT crypto wallet.',
+        metaKeywords: 'surveys, earn usdt, crypto rewards, cpx research, paid surveys, tether rewards',
+        ogImageUrl: '/favicon.svg',
+        googleSearchConsoleKey: '',
+        sitemapEnabled: true,
         updatedAt: '2026-10-20T00:00:00.000Z'
       },
       adminAuditLogs: []
@@ -131,7 +180,11 @@ class DatabaseStore {
           withdrawalEvents: parsed.withdrawalEvents || [],
           systemSettings: {
             ...this.getDefaultData().systemSettings,
-            ...(parsed.systemSettings || {})
+            ...(parsed.systemSettings || {}),
+            minWithdrawalCents:
+              parsed.systemSettings?.minWithdrawalCents === 500
+                ? 2500
+                : (parsed.systemSettings?.minWithdrawalCents ?? 2500)
           },
           adminAuditLogs: parsed.adminAuditLogs || []
         };
@@ -168,8 +221,28 @@ class DatabaseStore {
     return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
   }
 
+  getUserByUsernameOrEmail(identifier: string): UserAccount | undefined {
+    const clean = identifier.trim().toLowerCase();
+    return this.data.users.find(
+      u =>
+        u.email.toLowerCase() === clean ||
+        (u.username && u.username.toLowerCase() === clean) ||
+        u.displayName.toLowerCase() === clean
+    );
+  }
+
   getUserByExternalId(extId: string): UserAccount | undefined {
     return this.data.users.find(u => u.externalOpaqueId === extId);
+  }
+
+  getUserByAoySubId(subId: string): UserAccount | undefined {
+    const cleanTarget = String(subId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (!cleanTarget) return undefined;
+    return this.data.users.find(u => {
+      const cleanId = u.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const cleanExt = (u.externalOpaqueId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      return cleanId === cleanTarget || cleanExt === cleanTarget || u.id === subId;
+    });
   }
 
   async createUser(user: UserAccount): Promise<UserAccount> {
@@ -184,6 +257,17 @@ class DatabaseStore {
     this.data.users[idx] = { ...this.data.users[idx], ...updates, updatedAt: new Date().toISOString() };
     await this.persist();
     return this.data.users[idx];
+  }
+
+  async deleteUser(userId: string): Promise<boolean> {
+    const initialLen = this.data.users.length;
+    this.data.users = this.data.users.filter(u => u.id !== userId);
+    if (this.data.users.length === initialLen) return false;
+    // Clean up related ledger entries and withdrawal requests
+    this.data.rewardLedger = this.data.rewardLedger.filter(l => l.userId !== userId);
+    this.data.withdrawalRequests = this.data.withdrawalRequests.filter(w => w.userId !== userId);
+    await this.persist();
+    return true;
   }
 
   getAllUsers(): Omit<UserAccount, 'passwordHash' | 'salt'>[] {
@@ -223,7 +307,9 @@ class DatabaseStore {
   getUserBalances(userId: string) {
     const entries = this.data.rewardLedger.filter(l => l.userId === userId);
     const withdrawals = this.data.withdrawalRequests.filter(w => w.userId === userId);
-    return calculateUserBalances(userId, entries, withdrawals);
+    const pointsPerUsdt = this.data.systemSettings?.pointsPerUsdt || 10000;
+    const userSharePercent = this.data.systemSettings?.userSharePercent || 40;
+    return calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt, userSharePercent);
   }
 
   async addLedgerEntry(entry: LedgerEntry): Promise<{ success: boolean; error?: string; entry?: LedgerEntry }> {

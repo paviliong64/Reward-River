@@ -63,11 +63,11 @@ export const Logo: React.FC<LogoProps> = ({ className = '', showTagline = false,
 
       <div className="flex flex-col">
         <span className={`font-bold tracking-tight ${inverted ? 'text-white' : 'text-slate-900'} ${textSizes[size]}`}>
-          Reward<span className="text-sky-500">River</span>
+          Reward<span className="text-sky-500 animate-text-glow-minimal inline-block">River</span>
         </span>
         {showTagline && (
           <span className={`text-[10px] uppercase tracking-wider font-semibold ${inverted ? 'text-slate-400' : 'text-slate-500'}`}>
-            Earn Rewards. Flow Forward.
+            Real Opinions. Real Value.
           </span>
         )}
       </div>

@@ -6,14 +6,19 @@ import { Receipt, ArrowDownLeft, ArrowUpRight, ShieldCheck, RefreshCw } from 'lu
 interface TransactionsViewProps {
   entries: LedgerEntry[];
   usdtQuote: UsdtQuote | null;
+  pointsPerUsdt?: number;
+  userSharePercent?: number;
   onRefresh: () => void;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
   entries,
+  pointsPerUsdt = 10000,
+  userSharePercent = 40,
   onRefresh
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'reversal'>('all');
+  const safeShare = Math.max(1, userSharePercent);
 
   const filtered = entries.filter(e => {
     if (filterType === 'credit') return e.entryType === 'credit';
@@ -92,7 +97,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                   <th className="py-3 px-4">Provider Tx ID</th>
                   <th className="py-3 px-4">Type</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Amount (USD)</th>
+                  <th className="py-3 px-4 text-right">Points</th>
                   <th className="py-3 px-4 text-right">USDT Equivalent</th>
                 </tr>
               </thead>
@@ -100,6 +105,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 {filtered.map(entry => {
                   const isCredit = entry.entryType === 'credit';
                   const usdt = usdCentsToUsdt(entry.amountCents).toFixed(2);
+                  const pts = entry.points ?? Math.round((entry.amountCents / safeShare) * pointsPerUsdt);
 
                   return (
                     <tr key={entry.id} className="hover:bg-slate-50/60 transition-colors">
@@ -143,14 +149,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         </span>
                       </td>
                       <td
-                        className={`py-3.5 px-4 text-right font-bold text-sm ${
+                        className={`py-3.5 px-4 text-right font-bold text-sm font-mono ${
                           isCredit ? 'text-emerald-600' : 'text-red-600'
                         }`}
                       >
-                        {isCredit ? '+' : '-'}${ (entry.amountCents / 100).toFixed(2) }
+                        {isCredit ? '+' : '-'}{pts.toLocaleString('en-US')} Pts
                       </td>
                       <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">
-                        {isCredit ? '+' : '-'}{usdt} USDT
+                        {isCredit ? '+' : '-'}${usdt} USDT
                       </td>
                     </tr>
                   );

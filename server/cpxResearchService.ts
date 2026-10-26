@@ -11,12 +11,15 @@ import {
   buildCpxSurveyUrl,
   NormalizedSurvey
 } from '../src/utils/cpx';
+import { dbStore } from './db';
 
 export interface CpxConfigStatus {
   isConfigured: boolean;
   appIdConfigured: boolean;
   hashKeyConfigured: boolean;
   postbackSecretConfigured: boolean;
+  appId: string;
+  integrationMode: 'hybrid_api' | 'direct_wall' | 'paused';
   mode: 'live' | 'unconfigured';
 }
 
@@ -38,32 +41,40 @@ export interface UserProfilingInfo {
 }
 
 export class CpxResearchService {
-  private get appId(): string {
-    return process.env.CPX_APP_ID || '37479';
+  get appId(): string {
+    const settingsAppId = dbStore.getSettings()?.cpxAppId?.trim();
+    return settingsAppId || process.env.CPX_APP_ID || '37479';
   }
 
-  private get hashKey(): string {
-    return process.env.CPX_HASH_KEY || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
+  get hashKey(): string {
+    const settingsHash = dbStore.getSettings()?.cpxHashKey?.trim();
+    return settingsHash || process.env.CPX_HASH_KEY || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
   }
 
-  private get postbackSecret(): string {
-    return process.env.CPX_POSTBACK_SECRET || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
+  get postbackSecret(): string {
+    const settingsHash = dbStore.getSettings()?.cpxHashKey?.trim();
+    return settingsHash || process.env.CPX_POSTBACK_SECRET || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
   }
 
   /**
    * Returns current integration configuration status.
    */
   getConfigStatus(): CpxConfigStatus {
-    const appIdConfigured = Boolean(this.appId && this.appId !== 'YOUR_CPX_APP_ID');
+    const settings = dbStore.getSettings();
+    const currentAppId = this.appId;
+    const integrationMode = settings?.cpxIntegrationMode || 'hybrid_api';
+    const appIdConfigured = Boolean(currentAppId && currentAppId !== 'YOUR_CPX_APP_ID');
     const hashKeyConfigured = Boolean(this.hashKey && this.hashKey !== 'YOUR_CPX_SECURE_HASH_KEY');
     const postbackSecretConfigured = Boolean(this.postbackSecret && this.postbackSecret !== 'YOUR_CPX_POSTBACK_SECRET');
 
-    const isConfigured = appIdConfigured && hashKeyConfigured;
+    const isConfigured = appIdConfigured && hashKeyConfigured && integrationMode !== 'paused';
     return {
       isConfigured,
       appIdConfigured,
       hashKeyConfigured,
       postbackSecretConfigured,
+      appId: currentAppId,
+      integrationMode,
       mode: isConfigured ? 'live' : 'unconfigured'
     };
   }
@@ -82,6 +93,18 @@ export class CpxResearchService {
   }): Promise<FetchSurveysResult> {
     const { externalUserId, ipAddress = '127.0.0.1', userAgent = '', subid1 = '', subid2 = '', profiling } = params;
     const config = this.getConfigStatus();
+    const settings = dbStore.getSettings();
+    const maxSurveys = Math.max(1, Math.min(50, Number(settings?.cpxMaxSurveys) || 12));
+
+    if (config.integrationMode === 'paused') {
+      return {
+        success: true,
+        surveys: [],
+        totalAvailable: 0,
+        message: 'Survey wall is currently paused by the administrator.',
+        source: 'none'
+      };
+    }
 
     // If CPX publisher credentials are not yet set up, return honest status
     if (!config.isConfigured) {
@@ -89,7 +112,7 @@ export class CpxResearchService {
         success: true,
         surveys: [],
         totalAvailable: 0,
-        message: 'CPX Research publisher credentials (CPX_APP_ID and CPX_HASH_KEY) need to be configured in your publisher dashboard or environment.',
+        message: 'CPX Research placement is not configured yet.',
         source: 'none'
       };
     }
@@ -104,7 +127,7 @@ export class CpxResearchService {
       url.searchParams.set('subid_2', subid2);
       url.searchParams.set('output_method', 'api');
       url.searchParams.set('ip_user', ipAddress);
-      url.searchParams.set('limit', '12');
+      url.searchParams.set('limit', String(maxSurveys));
       url.searchParams.set('secure_hash', secureHash);
       if (userAgent) {
         url.searchParams.set('user_agent', userAgent);
@@ -149,7 +172,7 @@ export class CpxResearchService {
         const normalized = normalizeCpxSurveyList(json, this.appId, externalUserId, this.hashKey);
         return {
           success: true,
-          surveys: normalized,
+          surveys: normalized.slice(0, maxSurveys),
           totalAvailable: json.count_available_surveys || normalized.length,
           message: normalized.length === 0 ? 'At this moment no surveys available for your profile' : undefined,
           source: 'cpx_api'
@@ -181,8 +204,11 @@ export class CpxResearchService {
    */
   generateSurveyStartUrl(externalUserId: string, surveyId?: string): string {
     const config = this.getConfigStatus();
+    const settings = dbStore.getSettings();
+    const themeColor = (settings?.cpxThemeColor || '10b981').replace('#', '');
+
     if (!config.isConfigured) {
-      return `https://oul.cpx-research.com/index.php?app_id=${this.appId || '10'}&ext_user_id=${encodeURIComponent(externalUserId)}`;
+      return `https://offers.cpx-research.com/index.php?app_id=${this.appId || '37479'}&ext_user_id=${encodeURIComponent(externalUserId)}`;
     }
 
     return buildCpxSurveyUrl({
@@ -190,7 +216,7 @@ export class CpxResearchService {
       extUserId: externalUserId,
       hashKey: this.hashKey,
       surveyId,
-      mainColor: '0284c7'
+      mainColor: themeColor
     });
   }
 
@@ -198,6 +224,10 @@ export class CpxResearchService {
    * Verifies incoming server-to-server postback signature.
    */
   verifyPostback(transId: string, extUserId: string, secureHash?: string): boolean {
+    const settings = dbStore.getSettings();
+    if (settings?.cpxVerifySignature === false) {
+      return true;
+    }
     const effectiveSecret = this.hashKey || this.postbackSecret;
     if (!effectiveSecret || !secureHash) {
       return false;

@@ -27,7 +27,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
@@ -37,13 +36,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setPasswordError(null);
     setPasswordSuccess(null);
 
-    if (newPassword.length < 8) {
-      setPasswordError('New password must be at least 8 characters long.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError('New passwords do not match.');
+    if (newPassword.length < 4) {
+      setPasswordError('New password must be at least 4 characters long.');
       return;
     }
 
@@ -56,7 +50,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setPasswordSuccess('Password updated successfully.');
         setCurrentPassword('');
         setNewPassword('');
-        setConfirmPassword('');
       }
     } catch {
       setPasswordError('Failed to change password. Please check your credentials.');
@@ -72,7 +65,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Account Settings & Security
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          Manage your profile identity, security credentials, and verification status.
+          Manage your profile identity and account credentials.
         </p>
       </div>
 
@@ -88,30 +81,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span className="text-slate-400 font-semibold block text-[11px]">Email Address</span>
             <span className="font-bold text-slate-900 text-sm">{user.email}</span>
             <div className="pt-2 flex items-center gap-2">
-              {user.emailVerified ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  Verified
-                </span>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                    <AlertCircle className="w-3 h-3 text-amber-600" />
-                    Unverified
-                  </span>
-                  <button
-                    onClick={onVerifyEmail}
-                    className="text-[11px] font-bold text-sky-600 hover:text-sky-800 underline"
-                  >
-                    Verify Email
-                  </button>
-                </div>
-              )}
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                Active Account (No Verification Required)
+              </span>
             </div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-            <span className="text-slate-400 font-semibold block text-[11px]">Display Name</span>
+            <span className="text-slate-400 font-semibold block text-[11px]">Username / Display Name</span>
             <span className="font-bold text-slate-900 text-sm">{user.displayName}</span>
             <p className="text-[11px] text-slate-400 pt-2">
               Role: <strong className="text-slate-700 uppercase">{user.role}</strong>
@@ -172,26 +150,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              New Password (min 8 characters)
+              New Password (Single Password)
             </label>
             <input
-              type="password"
+              type="text"
               required
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Confirm New Password
-            </label>
-            <input
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
+              placeholder="Enter new password"
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
           </div>

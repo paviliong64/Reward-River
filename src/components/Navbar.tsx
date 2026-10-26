@@ -37,6 +37,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const availableCents = balances?.availableCents ?? 0;
+  const availablePoints = balances?.availablePoints ?? availableCents * 100;
+  const pointsFormatted = availablePoints.toLocaleString('en-US');
   const usdtAmount = usdCentsToUsdt(availableCents).toFixed(2);
 
   const navItems = [
@@ -54,6 +56,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleNavClick = (tabId: string) => {
     onSelectTab(tabId);
+    setMobileMenuOpen(false);
+  };
+
+  const scrollToSection = (sectionId: string) => {
+    if (currentTab !== 'landing') {
+      onSelectTab('landing');
+      setTimeout(() => {
+        const el = document.getElementById(sectionId);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 120);
+    } else {
+      const el = document.getElementById(sectionId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
     setMobileMenuOpen(false);
   };
 
@@ -95,20 +115,23 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <nav className="hidden md:flex items-center gap-6" aria-label="Public Navigation">
               <button
-                onClick={() => handleNavClick('landing')}
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                type="button"
+                onClick={() => scrollToSection('how-it-works')}
+                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
               >
                 How It Works
               </button>
               <button
-                onClick={() => handleNavClick('landing')}
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                type="button"
+                onClick={() => scrollToSection('rewards')}
+                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
               >
                 Rewards
               </button>
               <button
-                onClick={() => handleNavClick('landing')}
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                type="button"
+                onClick={() => scrollToSection('faq')}
+                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
               >
                 FAQ
               </button>
@@ -119,43 +142,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3">
-                {/* Balance & USDT Quick-Withdraw Button */}
+                {/* Simple $ Balance Button */}
                 <button
                   onClick={() => handleNavClick('withdraw')}
-                  className="group flex items-center gap-2.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-full bg-gradient-to-r from-emerald-50 via-teal-50/70 to-white hover:from-emerald-100/70 hover:to-teal-50 border border-emerald-200 hover:border-emerald-400 shadow-xs hover:shadow-md hover:shadow-emerald-500/15 transition-all duration-200 active:scale-95 text-left"
-                  title="Your Available USDT Balance — Click to Withdraw"
-                  aria-label={`Available balance ${usdtAmount} USDT. Click to withdraw.`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:border-emerald-300 hover:scale-[1.02] active:scale-[0.98] border border-slate-200 text-slate-700 hover:text-slate-900 text-xs transition-all duration-150 cursor-pointer"
+                  title="Available balance — Click to withdraw"
+                  aria-label={`Available balance $${usdtAmount}. Click to withdraw.`}
                 >
-                  <div className="relative flex items-center justify-center shrink-0">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-center font-black text-xs shadow-xs ring-2 ring-emerald-100 group-hover:ring-emerald-300 transition-all">
-                      ₮
-                    </div>
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white animate-pulse" />
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <div className="flex items-baseline gap-1 leading-tight">
-                      <span className="text-xs font-extrabold text-slate-900 tracking-tight font-mono">
-                        {usdtAmount}
-                      </span>
-                      <span className="text-[10px] font-black text-emerald-600 font-sans tracking-wide">
-                        USDT
-                      </span>
-                    </div>
-                    <div className="text-[10px] font-medium text-slate-500 group-hover:text-emerald-700 transition-colors flex items-center gap-1 leading-none mt-0.5">
-                      <span className="text-slate-400 font-mono">${(availableCents / 100).toFixed(2)}</span>
-                      <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-100/70 px-1 py-0.2 rounded">Withdraw</span>
-                    </div>
-                  </div>
-                  <div className="hidden xs:flex w-5 h-5 rounded-full bg-white/90 group-hover:bg-emerald-600 border border-emerald-100 group-hover:border-emerald-600 items-center justify-center text-emerald-600 group-hover:text-white transition-all shrink-0 ml-0.5 shadow-2xs">
-                    <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                  </div>
+                  <span className="font-bold text-emerald-700 font-mono">${usdtAmount}</span>
+                  <span className="text-slate-500 font-medium">Balance</span>
                 </button>
 
                 {/* User Profile Pill */}
                 <div className="flex items-center gap-2 pl-1">
                   <button
                     onClick={() => handleNavClick('settings')}
-                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-700"
+                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 hover:scale-[1.02] active:scale-[0.98] transition-all duration-150 text-slate-700"
                     title={user.email}
                     aria-label="User Settings"
                   >
@@ -213,16 +215,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-2 animate-fadeIn">
           {/* Mobile Balance Display */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
-                ₮
-              </div>
-              <span className="text-xs font-medium text-slate-600">Available Balance</span>
-            </div>
-            <div className="text-right">
-              <span className="text-sm font-bold text-slate-900">${(availableCents / 100).toFixed(2)}</span>
-              <span className="text-xs text-emerald-700 ml-1.5 font-mono">({usdtAmount} USDT)</span>
-            </div>
+            <span className="text-xs font-medium text-slate-600">Balance</span>
+            <span className="text-sm font-bold text-emerald-700 font-mono">${usdtAmount}</span>
           </div>
 
           {navItems.map(item => {

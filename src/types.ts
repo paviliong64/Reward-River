@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  username?: string;
   email: string;
   displayName: string;
   emailVerified: boolean;
@@ -28,6 +29,12 @@ export interface UserBalances {
   totalEarnedCents: number;
   totalWithdrawnCents: number;
   reservedWithdrawalCents: number;
+  availablePoints: number;
+  pendingPoints: number;
+  totalEarnedPoints: number;
+  totalWithdrawnPoints: number;
+  totalAdminProfitCents?: number;
+  totalGrossRevenueCents?: number;
 }
 
 export interface UsdtQuote {
@@ -44,6 +51,8 @@ export interface Survey {
   id: string;
   loiMinutes: number;
   rewardCents: number;
+  rewardPoints: number;
+  rewardPointsFormatted: string;
   rewardUsdFormatted: string;
   rewardUsdtFormatted: string;
   cpi: number;
@@ -77,6 +86,10 @@ export interface LedgerEntry {
   userId: string;
   providerTxId: string;
   amountCents: number;
+  points?: number;
+  grossCents?: number;
+  adminProfitCents?: number;
+  appliedSharePercent?: number;
   entryType: 'credit' | 'debit' | 'reversal';
   status: 'pending' | 'confirmed' | 'reversed';
   createdAt: string;
@@ -89,9 +102,50 @@ export interface SystemSettings {
   maxWithdrawalCents: number;
   feeCentsTrc20: number;
   feeCentsErc20: number;
+  userSharePercent: number;
+  pointsPerUsdt: number;
+  surveyDisplayMode?: 'hybrid' | 'points_only';
+  cpxAppId?: string;
+  cpxHashKey?: string;
+  cpxIntegrationMode?: 'hybrid_api' | 'direct_wall' | 'paused';
+  cpxMaxSurveys?: number;
+  cpxThemeColor?: string;
+  cpxEnableFallback?: boolean;
+  cpxVerifySignature?: boolean;
+  aoyApiKey?: string;
+  aoySecretKey?: string;
+  aoyBearerToken?: string;
+  aoyExchangeRate?: number;
+  aoyEnableFallback?: boolean;
+  aoyVerifySignature?: boolean;
   maintenanceMode: boolean;
   defaultNetwork: 'TRC20' | 'ERC20';
+  googleAnalyticsId?: string;
+  googleAnalyticsEnabled?: boolean;
+  metaTitle?: string;
+  metaDescription?: string;
+  metaKeywords?: string;
+  ogImageUrl?: string;
+  googleSearchConsoleKey?: string;
+  sitemapEnabled?: boolean;
   updatedAt: string;
+}
+
+export interface WhiteLabelTask {
+  id: string;
+  taskType: 'ptc' | 'shortlink';
+  title: string;
+  description: string;
+  durationSeconds: number;
+  rewardPoints: number;
+  rewardPointsFormatted: string;
+  rewardCents: number;
+  rewardUsdtFormatted: string;
+  availableClaims: number;
+  dailyLimit: number;
+  adType: 'Iframe' | 'Window';
+  launchUrl: string;
+  isFeatured: boolean;
 }
 
 export interface CpxConfigStatus {
@@ -99,5 +153,8 @@ export interface CpxConfigStatus {
   appIdConfigured: boolean;
   hashKeyConfigured: boolean;
   postbackSecretConfigured: boolean;
-  mode: 'live' | 'demo';
+  appId?: string;
+  integrationMode?: 'hybrid_api' | 'direct_wall' | 'paused';
+  mode: 'live' | 'demo' | 'unconfigured';
 }
+

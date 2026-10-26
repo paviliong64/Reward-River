@@ -5,19 +5,20 @@ import {
   Coins,
   ArrowUpRight,
   ClipboardList,
-  Receipt,
-  CheckCircle2,
   Clock,
-  AlertCircle,
+  TrendingUp,
+  CheckCircle2,
   ExternalLink,
-  ShieldCheck,
-  TrendingUp
+  Sparkles
 } from 'lucide-react';
+import { RiverLoader } from './RiverLoader';
 
 interface UserDashboardProps {
   user: User;
   balances: UserBalances | null;
   usdtQuote: UsdtQuote | null;
+  pointsPerUsdt?: number;
+  userSharePercent?: number;
   recentLedger: LedgerEntry[];
   recentWithdrawals: Withdrawal[];
   onSelectTab?: (tab: string) => void;
@@ -31,277 +32,256 @@ interface UserDashboardProps {
 export const UserDashboard: React.FC<UserDashboardProps> = ({
   user,
   balances,
-  usdtQuote,
+  pointsPerUsdt = 10000,
+  userSharePercent = 40,
   recentLedger,
-  recentWithdrawals,
   onSelectTab,
   onNavigateTab,
-  onVerifyEmail,
-  surveys,
-  surveysLoading,
+  surveys = [],
+  surveysLoading = false,
   onStartSurvey
 }) => {
   const navigate = onSelectTab || onNavigateTab || (() => {});
   const availableCents = balances?.availableCents ?? 0;
   const pendingCents = balances?.pendingCents ?? 0;
-  const totalEarnedCents = balances?.totalEarnedCents ?? 0;
   const totalWithdrawnCents = balances?.totalWithdrawnCents ?? 0;
+
+  const safeShare = Math.max(1, userSharePercent);
+  const centsToPts = (c: number) => Math.round((Math.max(0, c) / safeShare) * pointsPerUsdt);
+
+  const availablePoints = balances?.availablePoints ?? centsToPts(availableCents);
+  const pendingPoints = balances?.pendingPoints ?? centsToPts(pendingCents);
+  const totalWithdrawnPoints = centsToPts(totalWithdrawnCents);
 
   const availableUsdt = usdCentsToUsdt(availableCents).toFixed(2);
   const pendingUsdt = usdCentsToUsdt(pendingCents).toFixed(2);
-
-  const completedSurveysCount = recentLedger.filter(
-    l => l.status === 'confirmed' && l.entryType === 'credit'
-  ).length;
+  const totalWithdrawnUsdt = usdCentsToUsdt(totalWithdrawnCents).toFixed(2);
+  const userUsdtPer10k = (safeShare / 100).toFixed(2);
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-6 animate-fadeIn pb-8 max-w-7xl w-full mx-auto">
+      {/* Top Welcome & Rate Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">
+            Welcome back, <span className="text-sky-600">{user.displayName || user.username || user.email.split('@')[0]}</span>!
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Complete surveys &amp; tasks to earn points and withdraw in USDT.
+          </p>
+        </div>
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-semibold self-start sm:self-auto font-mono">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          <span>{pointsPerUsdt.toLocaleString('en-US')} Pts = ${userUsdtPer10k} USDT</span>
+        </div>
+      </div>
 
-      {/* Welcome & Balance Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* Main Available Balance Card (Featured) */}
-        <div className="md:col-span-2 bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 rounded-2xl p-6 text-white border border-slate-800 shadow-md relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider font-semibold text-emerald-400">
-              Available Withdrawable Balance
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-medium border border-emerald-500/30">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Withdrawable
-            </span>
-          </div>
-
-          <div className="my-4">
-            <div className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-              ${(availableCents / 100).toFixed(2)}
-              <span className="text-base text-slate-400 font-normal ml-2">USD</span>
-            </div>
-            <div className="flex items-center gap-2 mt-1 text-emerald-400 font-mono text-sm font-semibold">
-              <span className="text-emerald-500 font-bold">₮</span>
-              <span>≈ {availableUsdt} USDT</span>
-              <span className="text-slate-400 text-xs font-sans">
-                (Pegged 1:1 USD)
+      {/* Main Balance Overview Card (Clean, Simple, Themed) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Available Balance Card */}
+        <div className="md:col-span-2 bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Available Balance
+              </span>
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                Ready to Withdraw
               </span>
             </div>
+
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 font-mono">
+                {availablePoints.toLocaleString('en-US')}
+              </span>
+              <span className="text-sm font-bold text-slate-400">Points</span>
+            </div>
+
+            <div className="flex items-center gap-2 mt-1.5 text-emerald-700 font-mono text-base font-bold">
+              <span>≈ ${availableUsdt} USDT</span>
+              <span className="text-xs text-slate-400 font-sans font-normal">(1:1 USD peg)</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              onClick={() => navigate('withdraw')}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-            >
-              Withdraw USDT
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
+          {/* Quick Action Buttons */}
+          <div className="flex flex-wrap items-center gap-3 mt-6 pt-5 border-t border-slate-100">
             <button
               onClick={() => navigate('surveys')}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1.5"
+              className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer"
             >
-              Earn More
-              <ClipboardList className="w-3.5 h-3.5" />
+              <ClipboardList className="w-4 h-4" />
+              <span>Start Earning (Surveys &amp; Tasks)</span>
+            </button>
+            <button
+              onClick={() => navigate('withdraw')}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <ArrowUpRight className="w-4 h-4" />
+              <span>Withdraw USDT</span>
             </button>
           </div>
         </div>
 
-        {/* Pending Rewards Card */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-500 mb-2">
+        {/* Secondary Stats: Pending & Withdrawn */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between text-slate-500 mb-1.5">
               <span className="text-xs font-semibold">Pending Rewards</span>
               <Clock className="w-4 h-4 text-amber-500" />
             </div>
-            <div className="text-2xl font-bold text-slate-900">
-              ${(pendingCents / 100).toFixed(2)}
+            <div className="text-xl font-bold text-slate-900 font-mono">
+              {pendingPoints.toLocaleString('en-US')} <span className="text-xs text-slate-400 font-sans">Pts</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1 font-mono">
-              ≈ {pendingUsdt} USDT
+            <p className="text-xs text-amber-600 font-semibold font-mono mt-0.5">
+              ≈ ${pendingUsdt} USDT
             </p>
           </div>
-          <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
-            Awaiting final survey sponsor validation.
-          </p>
-        </div>
 
-        {/* Lifetime Confirmed & Paid Card */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between text-slate-500 mb-1.5">
+              <span className="text-xs font-semibold">Total Paid Out</span>
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-xl font-bold text-slate-900 font-mono">
+              {totalWithdrawnPoints.toLocaleString('en-US')} <span className="text-xs text-slate-400 font-sans">Pts</span>
+            </div>
+            <p className="text-xs text-emerald-700 font-semibold font-mono mt-0.5">
+              ≈ ${totalWithdrawnUsdt} USDT
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Available Surveys Quick Preview (Simple & Direct) */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-semibold">Total Confirmed</span>
-              <TrendingUp className="w-4 h-4 text-emerald-500" />
-            </div>
-            <div className="text-2xl font-bold text-slate-900">
-              ${(totalEarnedCents / 100).toFixed(2)}
-            </div>
-            <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-              <span>Paid Out:</span>
-              <span className="font-semibold text-slate-700">${(totalWithdrawnCents / 100).toFixed(2)} USDT</span>
-            </div>
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-sky-600" />
+              <span>Available Surveys &amp; Tasks</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pick a survey to start earning points right away
+            </p>
           </div>
-          <div className="text-[11px] text-slate-500 mt-4 border-t border-slate-100 pt-2 flex items-center justify-between">
-            <span>Surveys Completed:</span>
-            <span className="font-bold text-slate-900">{completedSurveysCount}</span>
-          </div>
+          <button
+            onClick={() => navigate('surveys')}
+            className="text-xs font-bold text-sky-600 hover:text-sky-700 inline-flex items-center gap-1 cursor-pointer"
+          >
+            <span>View All</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
         </div>
-      </div>
 
-      {/* Primary Action Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <button
-          onClick={() => navigate('surveys')}
-          className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all text-left group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-3 group-hover:bg-sky-600 group-hover:text-white transition-colors">
-            <ClipboardList className="w-5 h-5" />
-          </div>
-          <h4 className="text-sm font-bold text-slate-900 mb-1">Find Surveys</h4>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Explore live Reward River surveys tailored to your demographic.
-          </p>
-        </button>
-
-        <button
-          onClick={() => navigate('withdraw')}
-          className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-300 hover:shadow-md transition-all text-left group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-            <ArrowUpRight className="w-5 h-5" />
-          </div>
-          <h4 className="text-sm font-bold text-slate-900 mb-1">Withdraw USDT</h4>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Convert balance into on-chain USDT dispatched directly to your wallet.
-          </p>
-        </button>
-
-        <button
-          onClick={() => navigate('transactions')}
-          className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all text-left group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center mb-3 group-hover:bg-cyan-600 group-hover:text-white transition-colors">
-            <Receipt className="w-5 h-5" />
-          </div>
-          <h4 className="text-sm font-bold text-slate-900 mb-1">Transaction Ledger</h4>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Audit your complete immutable rewards and withdrawal history.
-          </p>
-        </button>
-
-        <button
-          onClick={() => navigate('settings')}
-          className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all text-left group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center mb-3 group-hover:bg-slate-700 group-hover:text-white transition-colors">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <h4 className="text-sm font-bold text-slate-900 mb-1">Account Security</h4>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Manage your verified email, display preferences, and password.
-          </p>
-        </button>
-      </div>
-
-      {/* Live Market Rate & Recent Activity Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live USDT Feed Card */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
-                ₮
+        {surveysLoading ? (
+          <RiverLoader size="sm" label="Loading available surveys..." />
+        ) : surveys && surveys.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {surveys.slice(0, 3).map((s, idx) => (
+              <div
+                key={s.id || idx}
+                className="p-4 rounded-xl border border-slate-200 hover:border-sky-300 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 flex flex-col justify-between bg-white"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-mono">
+                      +{(s.userPoints || 1000).toLocaleString('en-US')} Pts
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {s.loiMinutes || 5} mins
+                    </span>
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-800 line-clamp-1">
+                    {s.title || `Research Survey #${idx + 1}`}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    ≈ ${((s.userPoints || 1000) / pointsPerUsdt * (safeShare / 100)).toFixed(2)} USDT
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => (onStartSurvey ? onStartSurvey(s) : navigate('surveys'))}
+                  className="mt-3 w-full py-2 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all text-center cursor-pointer"
+                >
+                  Start Survey
+                </button>
               </div>
-              <h3 className="text-sm font-bold text-slate-900">USDT Stablecoin Rate</h3>
-            </div>
-            <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              1:1 Pegged
-            </span>
+            ))}
           </div>
-
-          <div>
-            <div className="text-2xl font-extrabold text-slate-900 font-mono">
-              $1.00 USD
-            </div>
-            <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-              <span>1 USD = 1 USDT</span>
-              <span>TRC-20 & ERC-20</span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-50 text-xs text-slate-600 space-y-1.5 border border-slate-100">
-            <div className="flex justify-between font-medium">
-              <span>TRON (TRC-20) Fee:</span>
-              <span className="font-mono font-bold text-emerald-700">$1.00 USDT</span>
-            </div>
-            <div className="flex justify-between font-medium">
-              <span>Ethereum (ERC-20) Fee:</span>
-              <span className="font-mono font-bold text-slate-700">$2.50 USDT</span>
-            </div>
-            <div className="flex justify-between font-medium">
-              <span>Min Payout:</span>
-              <span className="font-mono font-bold text-slate-800">$5.00 USDT</span>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-slate-400">
-            USDT is pegged 1:1 to the US Dollar. Zero market volatility risk while participating in surveys.
-          </p>
-        </div>
-
-        {/* Recent Ledger Activity */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-slate-900">Recent Account Activity</h3>
+        ) : (
+          <div className="text-center py-6 bg-slate-50/70 rounded-xl border border-dashed border-slate-200">
+            <ClipboardList className="w-7 h-7 mx-auto mb-1.5 text-slate-300" />
+            <p className="text-xs font-medium text-slate-600">Surveys &amp; Tasks are ready!</p>
             <button
-              onClick={() => navigate('transactions')}
-              className="text-xs font-semibold text-sky-600 hover:text-sky-800 flex items-center gap-1"
+              onClick={() => navigate('surveys')}
+              className="mt-2 text-xs font-bold text-sky-600 hover:underline cursor-pointer"
             >
-              View Full Ledger
-              <ExternalLink className="w-3 h-3" />
+              Click here to open survey wall &rarr;
             </button>
           </div>
+        )}
+      </div>
 
-          {recentLedger.length === 0 ? (
-            <div className="py-8 text-center text-slate-400 text-xs">
-              <ClipboardList className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-              <span>No transactions yet. Complete your first survey to begin earning!</span>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {recentLedger.slice(0, 5).map(entry => (
+      {/* Recent Earnings History (Clean, Simple Table/List) */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Recent Earnings History</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Your recent rewards and credits</p>
+          </div>
+          <button
+            onClick={() => navigate('transactions')}
+            className="text-xs font-bold text-sky-600 hover:text-sky-700 inline-flex items-center gap-1 cursor-pointer"
+          >
+            <span>View Full Ledger</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {recentLedger.length === 0 ? (
+          <div className="py-8 text-center text-slate-400 text-xs">
+            <Coins className="w-7 h-7 mx-auto mb-2 text-slate-300" />
+            <span>No activity yet. Complete a survey to see your points credited here!</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {recentLedger.slice(0, 5).map(entry => {
+              const entryPoints = entry.points ?? centsToPts(entry.amountCents);
+              const isCredit = entry.entryType === 'credit';
+              return (
                 <div key={entry.id} className="py-3 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
-                        entry.entryType === 'credit'
-                          ? 'bg-emerald-50 text-emerald-600'
-                          : 'bg-red-50 text-red-600'
+                        isCredit ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                       }`}
                     >
-                      {entry.entryType === 'credit' ? '+' : '-'}
+                      {isCredit ? '+' : '-'}
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-slate-800">{entry.description}</p>
                       <p className="text-[11px] text-slate-400">
-                        {new Date(entry.createdAt).toLocaleDateString()} at{' '}
-                        {new Date(entry.createdAt).toLocaleTimeString()}
+                        {new Date(entry.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right font-mono">
                     <span
-                      className={`text-xs font-bold ${
-                        entry.entryType === 'credit' ? 'text-emerald-600' : 'text-red-600'
+                      className={`text-xs font-bold block ${
+                        isCredit ? 'text-emerald-600' : 'text-rose-600'
                       }`}
                     >
-                      {entry.entryType === 'credit' ? '+' : '-'}${ (entry.amountCents / 100).toFixed(2) } USDT
+                      {isCredit ? '+' : '-'}{entryPoints.toLocaleString('en-US')} Pts
                     </span>
-                    <span className="block text-[10px] text-slate-400 uppercase font-semibold">
-                      {entry.status}
+                    <span className="block text-[10px] text-slate-400">
+                      ≈ ${(entry.amountCents / 100).toFixed(2)} USDT
                     </span>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

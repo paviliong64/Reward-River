@@ -7,13 +7,18 @@ export interface LedgerEntry {
   id: string;
   userId: string;
   providerTxId: string;
-  amountCents: number; // integer minor units (USD cents)
+  amountCents: number; // integer minor units (USD cents credited to user)
+  points?: number; // hybrid points credited to user (10,000 points = 1 USDT)
+  grossCents?: number; // 100% gross CPX survey revenue in USD cents
+  adminProfitCents?: number; // hidden admin net profit in USD cents (e.g. 60%)
+  appliedSharePercent?: number; // user share % at time of completion (e.g. 40)
   entryType: 'credit' | 'debit' | 'reversal';
   status: 'pending' | 'confirmed' | 'reversed';
   createdAt: string;
   processedAt?: string;
   reversalRef?: string;
   description?: string;
+  cpxOfferId?: string;
 }
 
 export interface WithdrawalRecord {
@@ -30,21 +35,38 @@ export interface UserBalanceSummary {
   totalEarnedCents: number;
   totalWithdrawnCents: number;
   reservedWithdrawalCents: number;
+  availablePoints: number;
+  pendingPoints: number;
+  totalEarnedPoints: number;
+  totalWithdrawnPoints: number;
+  totalAdminProfitCents: number;
+  totalGrossRevenueCents: number;
 }
 
 /**
  * Calculates accurate account balances from immutable ledger entries and withdrawal states.
  * Guarantees zero floating-point discrepancies.
+ * Real ("Asl") value of 10,000 Points is $1.00 (hidden from user).
+ * At 40% user share, 10,000 Points = 40 user cents ($0.40 USDT).
  */
 export function calculateUserBalances(
   userId: string,
   entries: LedgerEntry[],
-  withdrawals: WithdrawalRecord[]
+  withdrawals: WithdrawalRecord[],
+  pointsPerUsdt: number = 10000,
+  userSharePercent: number = 40
 ): UserBalanceSummary {
   let totalConfirmedCredits = 0;
   let totalDebitsAndReversals = 0;
   let pendingCents = 0;
   let totalEarnedCents = 0;
+  let totalAdminProfitCents = 0;
+  let totalGrossRevenueCents = 0;
+
+  const safePointsRate = pointsPerUsdt > 0 ? pointsPerUsdt : 10000;
+  const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 40)));
+  const centsToPts = (c: number) => Math.round((Math.max(0, c) / safeShare) * safePointsRate);
+
 
   for (const entry of entries) {
     if (entry.userId !== userId) continue;
@@ -53,8 +75,17 @@ export function calculateUserBalances(
       if (entry.entryType === 'credit') {
         totalConfirmedCredits += entry.amountCents;
         totalEarnedCents += entry.amountCents;
+        const gross = entry.grossCents ?? Math.round(entry.amountCents / 0.4);
+        const profit = entry.adminProfitCents ?? Math.max(0, gross - entry.amountCents);
+        totalGrossRevenueCents += gross;
+        totalAdminProfitCents += profit;
       } else if (entry.entryType === 'reversal' || entry.entryType === 'debit') {
-        totalDebitsAndReversals += Math.abs(entry.amountCents);
+        const absAmount = Math.abs(entry.amountCents);
+        totalDebitsAndReversals += absAmount;
+        const grossRev = entry.grossCents ?? Math.round(absAmount / 0.4);
+        const profitRev = entry.adminProfitCents ?? Math.max(0, grossRev - absAmount);
+        totalGrossRevenueCents = Math.max(0, totalGrossRevenueCents - grossRev);
+        totalAdminProfitCents = Math.max(0, totalAdminProfitCents - profitRev);
       }
     } else if (entry.status === 'pending' && entry.entryType === 'credit') {
       pendingCents += entry.amountCents;
@@ -85,7 +116,13 @@ export function calculateUserBalances(
     pendingCents,
     totalEarnedCents,
     totalWithdrawnCents,
-    reservedWithdrawalCents
+    reservedWithdrawalCents,
+    availablePoints: centsToPts(availableCents),
+    pendingPoints: centsToPts(pendingCents),
+    totalEarnedPoints: centsToPts(totalEarnedCents),
+    totalWithdrawnPoints: centsToPts(totalWithdrawnCents),
+    totalAdminProfitCents,
+    totalGrossRevenueCents
   };
 }
 

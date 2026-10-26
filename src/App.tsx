@@ -17,6 +17,7 @@ import { TransactionsView } from './components/TransactionsView';
 import { SettingsView } from './components/SettingsView';
 import { AdminView } from './components/AdminView';
 import { LegalModal } from './components/LegalModal';
+import { ArticleView } from './components/ArticleView';
 import { PhoneOnboardingModal } from './components/PhoneOnboardingModal';
 import { auth, logOutFromFirebase, resendVerification } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -32,12 +33,15 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'signup'>('signin');
-  const [legalModalPage, setLegalModalPage] = useState<string | null>(null);
+  const [activeArticle, setActiveArticle] = useState<string | null>(null);
 
   // Data states
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [surveysLoading, setSurveysLoading] = useState(false);
   const [surveysError, setSurveysError] = useState<string | null>(null);
+  const [surveyDisplayMode, setSurveyDisplayMode] = useState<'hybrid' | 'points_only'>('hybrid');
+  const [pointsPerUsdt, setPointsPerUsdt] = useState<number>(10000);
+  const [userSharePercent, setUserSharePercent] = useState<number>(40);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
 
@@ -83,6 +87,8 @@ export default function App() {
         const data = await res.json();
         setUser(data.user);
         setBalances(data.balances);
+        if (data.pointsPerUsdt) setPointsPerUsdt(Number(data.pointsPerUsdt) || 10000);
+        if (data.userSharePercent) setUserSharePercent(Number(data.userSharePercent) || 40);
       } else {
         localStorage.removeItem('rr_auth_token');
         setUser(null);
@@ -109,6 +115,15 @@ export default function App() {
         setSurveysError(data.error || 'Failed to fetch available surveys.');
       } else {
         setSurveys(data.surveys || []);
+        if (data.surveyDisplayMode) {
+          setSurveyDisplayMode(data.surveyDisplayMode);
+        }
+        if (data.pointsPerUsdt) {
+          setPointsPerUsdt(Number(data.pointsPerUsdt) || 10000);
+        }
+        if (data.userSharePercent) {
+          setUserSharePercent(Number(data.userSharePercent) || 40);
+        }
         if (data.usdtQuote) {
           setUsdtQuote(data.usdtQuote);
         }
@@ -135,6 +150,8 @@ export default function App() {
         const lData = await ledgRes.json();
         setLedgerEntries(lData.entries || []);
         if (lData.balances) setBalances(lData.balances);
+        if (lData.pointsPerUsdt) setPointsPerUsdt(Number(lData.pointsPerUsdt) || 10000);
+        if (lData.userSharePercent) setUserSharePercent(Number(lData.userSharePercent) || 40);
       }
 
       if (withRes.ok) {
@@ -221,7 +238,7 @@ export default function App() {
     localStorage.setItem('rr_auth_token', token);
     setUser(newUser);
     if (newBalances) setBalances(newBalances);
-    setCurrentTab('dashboard');
+    setCurrentTab(newUser.role === 'admin' ? 'admin' : 'dashboard');
     handleRefreshAll();
   };
 
@@ -396,103 +413,133 @@ export default function App() {
         balances={balances}
         usdtQuote={usdtQuote}
         currentTab={currentTab}
-        onSelectTab={setCurrentTab}
+        onSelectTab={(tab) => {
+          setCurrentTab(tab);
+          setActiveArticle(null);
+        }}
         onOpenAuth={(mode) => {
           setAuthInitialMode(mode);
           setAuthModalOpen(true);
         }}
         onSignOut={handleSignOut}
-        onOpenLegal={(page) => setLegalModalPage(page)}
+        onOpenLegal={(page) => setActiveArticle(page)}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {currentTab === 'landing' && (
-          <LandingPage
-            onGetStarted={() => {
-              setAuthInitialMode('signup');
-              setAuthModalOpen(true);
-            }}
-            onOpenLegal={(page) => setLegalModalPage(page)}
-            usdtQuote={usdtQuote}
-          />
-        )}
+      <main
+        className={
+          currentTab === 'admin' && user?.role === 'admin' && !activeArticle
+            ? 'flex-1 w-full flex flex-col'
+            : activeArticle
+            ? 'flex-1 w-full'
+            : 'flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6'
+        }
+      >
+        {activeArticle ? (
+          <ArticleView page={activeArticle} onBack={() => setActiveArticle(null)} />
+        ) : (
+          <div key={currentTab} className="animate-fade-in-up">
+            {currentTab === 'landing' && (
+              <LandingPage
+                onGetStarted={() => {
+                  setAuthInitialMode('signup');
+                  setAuthModalOpen(true);
+                }}
+                onOpenLegal={(page) => setActiveArticle(page)}
+                usdtQuote={usdtQuote}
+              />
+            )}
 
-        {currentTab === 'dashboard' && user && (
-          <UserDashboard
-            user={user}
-            balances={balances}
-            usdtQuote={usdtQuote}
-            surveys={surveys.slice(0, 4)}
-            surveysLoading={surveysLoading}
-            recentWithdrawals={withdrawals.slice(0, 3)}
-            recentLedger={ledgerEntries.slice(0, 5)}
-            onNavigateTab={setCurrentTab}
-            onStartSurvey={handleStartSurvey}
-            onVerifyEmail={handleVerifyEmail}
-          />
-        )}
+            {(currentTab === 'dashboard' || currentTab === 'earnings') && user && (
+              <UserDashboard
+                user={user}
+                balances={balances}
+                usdtQuote={usdtQuote}
+                pointsPerUsdt={pointsPerUsdt}
+                userSharePercent={userSharePercent}
+                surveys={surveys.slice(0, 4)}
+                surveysLoading={surveysLoading}
+                recentWithdrawals={withdrawals.slice(0, 3)}
+                recentLedger={ledgerEntries.slice(0, 5)}
+                onNavigateTab={setCurrentTab}
+                onStartSurvey={handleStartSurvey}
+                onVerifyEmail={handleVerifyEmail}
+              />
+            )}
 
-        {currentTab === 'surveys' && user && (
-          <SurveysView
-            surveys={surveys}
-            loading={surveysLoading}
-            error={surveysError}
-            cpxStatus={cpxStatus}
-            usdtQuote={usdtQuote}
-            onRefresh={fetchSurveys}
-            onStartSurvey={handleStartSurvey}
-          />
-        )}
+            {currentTab === 'surveys' && user && (
+              <SurveysView
+                surveys={surveys}
+                loading={surveysLoading}
+                error={surveysError}
+                cpxStatus={cpxStatus}
+                usdtQuote={usdtQuote}
+                surveyDisplayMode={surveyDisplayMode}
+                pointsPerUsdt={pointsPerUsdt}
+                userSharePercent={userSharePercent}
+                onRefresh={fetchSurveys}
+                onStartSurvey={handleStartSurvey}
+                onTaskCompleted={handleRefreshAll}
+              />
+            )}
 
-        {currentTab === 'withdraw' && user && (
-          <WithdrawalView
-            user={user}
-            balances={balances}
-            usdtQuote={usdtQuote}
-            withdrawals={withdrawals}
-            onRefreshQuote={fetchUsdtQuote}
-            onSubmitWithdrawal={async (usdtAddress, network, amountCents) => {
-              try {
-                await handleSubmitWithdrawal(amountCents, usdtAddress, network);
-                return { success: true };
-              } catch (err) {
-                return { success: false, error: err instanceof Error ? err.message : String(err) };
-              }
-            }}
-            onVerifyEmail={handleVerifyEmail}
-          />
-        )}
+            {currentTab === 'withdraw' && user && (
+              <WithdrawalView
+                user={user}
+                balances={balances}
+                usdtQuote={usdtQuote}
+                pointsPerUsdt={pointsPerUsdt}
+                userSharePercent={userSharePercent}
+                withdrawals={withdrawals}
+                onRefreshQuote={fetchUsdtQuote}
+                onSubmitWithdrawal={async (usdtAddress, network, amountCents) => {
+                  try {
+                    await handleSubmitWithdrawal(amountCents, usdtAddress, network);
+                    return { success: true };
+                  } catch (err) {
+                    return { success: false, error: err instanceof Error ? err.message : String(err) };
+                  }
+                }}
+                onVerifyEmail={handleVerifyEmail}
+              />
+            )}
 
-        {currentTab === 'transactions' && user && (
-          <TransactionsView
-            entries={ledgerEntries}
-            usdtQuote={usdtQuote}
-            onRefresh={fetchLedgerAndWithdrawals}
-          />
-        )}
+            {currentTab === 'transactions' && user && (
+              <TransactionsView
+                entries={ledgerEntries}
+                usdtQuote={usdtQuote}
+                pointsPerUsdt={pointsPerUsdt}
+                userSharePercent={userSharePercent}
+                onRefresh={fetchLedgerAndWithdrawals}
+              />
+            )}
 
-        {currentTab === 'settings' && user && (
-          <SettingsView
-            user={user}
-            onVerifyEmail={handleVerifyEmail}
-            onPasswordChange={handlePasswordChange}
-          />
-        )}
+            {currentTab === 'settings' && user && (
+              <SettingsView
+                user={user}
+                onVerifyEmail={handleVerifyEmail}
+                onPasswordChange={handlePasswordChange}
+              />
+            )}
 
-        {currentTab === 'admin' && user?.role === 'admin' && (
-          <AdminView
-            adminUser={user}
-            cpxStatus={cpxStatus}
-            onDataChanged={handleRefreshAll}
-          />
+            {currentTab === 'admin' && user?.role === 'admin' && (
+              <AdminView
+                adminUser={user}
+                cpxStatus={cpxStatus}
+                onDataChanged={handleRefreshAll}
+                onExitAdmin={() => setCurrentTab('dashboard')}
+              />
+            )}
+          </div>
         )}
       </main>
 
-      {/* Footer */}
-      <Footer
-        onOpenLegal={(page) => setLegalModalPage(page)}
-      />
+      {/* Footer (hidden inside full-screen Admin Console for clean sidebar layout) */}
+      {currentTab !== 'admin' && (
+        <Footer
+          onOpenLegal={(page) => setActiveArticle(page)}
+        />
+      )}
 
       {/* Auth Modal */}
       <AuthModal
@@ -500,16 +547,11 @@ export default function App() {
         initialMode={authInitialMode}
         onClose={() => setAuthModalOpen(false)}
         onSuccess={handleAuthSuccess}
-        onOpenLegal={(page) => setLegalModalPage(page)}
+        onOpenLegal={(page) => {
+          setAuthModalOpen(false);
+          setActiveArticle(page);
+        }}
       />
-
-      {/* Legal & Policy Modals */}
-      {legalModalPage && (
-        <LegalModal
-          page={legalModalPage}
-          onClose={() => setLegalModalPage(null)}
-        />
-      )}
 
       {/* Phone & WhatsApp Onboarding Modal */}
       {user && (
