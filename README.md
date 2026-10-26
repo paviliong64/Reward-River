@@ -28,7 +28,7 @@ Click any link below to download pre-packaged, ready-to-deploy ZIP archives dire
 
 This platform is co-founded, engineered, and maintained by:
 
-* 🛠️ **Rayan Mirza** ([@zeroxnetworks](https://github.com/zeroxnetworks))
+* 🛠️ **Rayan Mirza** ([@zeroxnetworks](https://github.com/rynzer0x))
   * *Co-Founder, Lead Software Engineer, Systems Architect & Repository Owner*
 * 💡 **Tahir Sanaullah**
   * *Co-Founder, Lead Software Engineer, Product Architect & Repository Owner*
