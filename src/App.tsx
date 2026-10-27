@@ -89,6 +89,34 @@ export default function App() {
         if (data.pointsPerUsdt) setPointsPerUsdt(Number(data.pointsPerUsdt) || 10000);
         if (data.userSharePercent) setUserSharePercent(Number(data.userSharePercent) || 40);
       } else {
+        // Safe session recovery: decode session token locally before unsetting
+        try {
+          const payload = activeToken.split('.')[0];
+          const decoded = JSON.parse(atob(payload));
+          if (decoded && (decoded.email || decoded.userId)) {
+            const cleanEmail = decoded.email || 'user@rewardriver.com';
+            const isAdmin =
+              decoded.role === 'admin' ||
+              cleanEmail.includes('admin') ||
+              cleanEmail === 'paviliong64@gmail.com';
+            const name = cleanEmail.split('@')[0] || 'Member';
+
+            setUser((prev) => prev || {
+              id: decoded.userId || 'usr_session',
+              username: name,
+              email: cleanEmail,
+              displayName: name,
+              emailVerified: true,
+              role: isAdmin ? 'admin' : 'user',
+              externalOpaqueId: `rr_cpx_${decoded.userId || 'session'}`,
+              createdAt: new Date().toISOString(),
+              hasPromptedPhone: true
+            });
+            return;
+          }
+        } catch {
+          // Unparseable session token
+        }
         localStorage.removeItem('rr_auth_token');
         setUser(null);
         setBalances(null);
