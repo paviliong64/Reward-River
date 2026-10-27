@@ -199,6 +199,39 @@ class DatabaseStore {
         // File doesn't exist yet, save default
         await this.persist();
       }
+
+      if (serverSupabase) {
+        try {
+          const { data: suSettings } = await serverSupabase
+            .from('system_settings')
+            .select('*')
+            .eq('id', 1)
+            .single();
+
+          if (suSettings) {
+            this.data.systemSettings = {
+              ...this.data.systemSettings,
+              minWithdrawalCents: suSettings.min_withdrawal_cents ?? this.data.systemSettings.minWithdrawalCents,
+              maxWithdrawalCents: suSettings.max_withdrawal_cents ?? this.data.systemSettings.maxWithdrawalCents,
+              feeCentsTrc20: suSettings.fee_cents_trc20 ?? this.data.systemSettings.feeCentsTrc20,
+              feeCentsErc20: suSettings.fee_cents_erc20 ?? this.data.systemSettings.feeCentsErc20,
+              userSharePercent: suSettings.user_share_percent ?? this.data.systemSettings.userSharePercent,
+              pointsPerUsdt: suSettings.points_per_usdt ?? this.data.systemSettings.pointsPerUsdt,
+              surveyDisplayMode: suSettings.survey_display_mode ?? this.data.systemSettings.surveyDisplayMode,
+              cpxAppId: suSettings.cpx_app_id || this.data.systemSettings.cpxAppId,
+              cpxHashKey: suSettings.cpx_hash_key || this.data.systemSettings.cpxHashKey,
+              aoyApiKey: suSettings.aoy_api_key || this.data.systemSettings.aoyApiKey,
+              aoySecretKey: suSettings.aoy_secret_key || this.data.systemSettings.aoySecretKey,
+              aoyBearerToken: suSettings.aoy_bearer_token || this.data.systemSettings.aoyBearerToken,
+              metaTitle: suSettings.meta_title || this.data.systemSettings.metaTitle,
+              metaDescription: suSettings.meta_description || this.data.systemSettings.metaDescription
+            };
+          }
+        } catch {
+          // Supabase table optional / not ready yet
+        }
+      }
+
       this.initialized = true;
     } catch (e) {
       console.error('Failed to initialize database:', e);
@@ -440,6 +473,33 @@ class DatabaseStore {
       details: JSON.stringify(settings)
     });
     await this.persist();
+
+    if (serverSupabase) {
+      serverSupabase
+        .from('system_settings')
+        .upsert({
+          id: 1,
+          min_withdrawal_cents: this.data.systemSettings.minWithdrawalCents,
+          max_withdrawal_cents: this.data.systemSettings.maxWithdrawalCents,
+          fee_cents_trc20: this.data.systemSettings.feeCentsTrc20,
+          fee_cents_erc20: this.data.systemSettings.feeCentsErc20,
+          user_share_percent: this.data.systemSettings.userSharePercent,
+          points_per_usdt: this.data.systemSettings.pointsPerUsdt,
+          survey_display_mode: this.data.systemSettings.surveyDisplayMode || 'hybrid',
+          cpx_app_id: this.data.systemSettings.cpxAppId,
+          cpx_hash_key: this.data.systemSettings.cpxHashKey,
+          aoy_api_key: this.data.systemSettings.aoyApiKey,
+          aoy_secret_key: this.data.systemSettings.aoySecretKey,
+          aoy_bearer_token: this.data.systemSettings.aoyBearerToken,
+          meta_title: this.data.systemSettings.metaTitle,
+          meta_description: this.data.systemSettings.metaDescription,
+          updated_at: this.data.systemSettings.updatedAt
+        })
+        .then(({ error }) => {
+          if (error) console.warn('[Supabase Settings Sync Note]:', error.message);
+        });
+    }
+
     return this.data.systemSettings;
   }
 

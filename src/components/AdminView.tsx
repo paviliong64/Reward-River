@@ -82,7 +82,44 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [usersList, setUsersList] = useState<AdminUserDetail[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const defaultAdminSettings: SystemSettings = {
+    supabaseUrl: '',
+    supabaseAnonKey: '',
+    supabaseServiceKey: '',
+    minWithdrawalCents: 2500,
+    maxWithdrawalCents: 50000,
+    feeCentsTrc20: 100,
+    feeCentsErc20: 250,
+    userSharePercent: 40,
+    pointsPerUsdt: 10000,
+    surveyDisplayMode: 'hybrid',
+    cpxAppId: '37479',
+    cpxHashKey: 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY',
+    cpxIntegrationMode: 'hybrid_api',
+    cpxMaxSurveys: 12,
+    cpxThemeColor: '10b981',
+    cpxEnableFallback: true,
+    cpxVerifySignature: true,
+    aoyApiKey: '',
+    aoySecretKey: '',
+    aoyBearerToken: '',
+    aoyExchangeRate: 10000,
+    aoyEnableFallback: true,
+    aoyVerifySignature: true,
+    maintenanceMode: false,
+    defaultNetwork: 'TRC20',
+    googleAnalyticsId: 'G-REWARDRIVER1',
+    googleAnalyticsEnabled: true,
+    metaTitle: 'Reward River - Real Opinions. Real Value.',
+    metaDescription: 'Discover available research surveys, share verified opinions, and earn rewards paid directly to your TRC-20 or ERC-20 USDT crypto wallet.',
+    metaKeywords: 'surveys, earn usdt, crypto rewards, cpx research, paid surveys, tether rewards',
+    ogImageUrl: '/favicon.svg',
+    googleSearchConsoleKey: '',
+    sitemapEnabled: true,
+    updatedAt: new Date().toISOString()
+  };
+
+  const [settings, setSettings] = useState<SystemSettings>(defaultAdminSettings);
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -501,7 +538,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     { id: 'system_health', label: 'System Health', icon: Cpu },
     { id: 'seo_analytics', label: 'SEO & Analytics', icon: SearchCheck },
     { id: 'settings', label: 'Platform Settings', icon: Settings },
-    { id: 'audit_logs', label: 'Draft & Audit Approvals', icon: FileCheck2 }
+    { id: 'audit_logs', label: 'System Audit Logs', icon: FileCheck2 }
   ];
 
   return (
@@ -3110,10 +3147,20 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <div className="space-y-6">
               <div>
                 <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
-                  System Audit & Approval Logs
+                  System Audit & Activity Logs
                 </h1>
                 <p className="text-sm text-slate-500 mt-1">
-                  Immutable administrative log of payout approvals, profit split updates, and CPX postback events.
+                  Immutable administrative log of payout approvals, profit split updates, and CPX/AoyTasks postback events.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-blue-50/80 border border-blue-200/80 text-xs text-blue-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  <span>Yeh Audit Logs kya hain aur inki kya need hai?</span>
+                </p>
+                <p className="text-blue-800 leading-relaxed">
+                  Yeh platform ki automatic security & audit history hai. Jab bhi koi admin settings update karta hai ya kisi user ka USDT withdrawal approve/process karta hai, uska permanent record yahan automatic generate hota hai. Aapko yahan koi manual draft ya approval approve nahi karna hota — withdrawals ko process karne ke liye sidha <strong>USDT Withdrawals</strong> tab use karein.
                 </p>
               </div>
 

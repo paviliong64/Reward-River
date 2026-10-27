@@ -1,10 +1,12 @@
 -- =============================================================================
 -- REWARD RIVER - SUPABASE POSTGRESQL DATABASE SCHEMA & MIGRATION SCRIPT
 -- =============================================================================
+-- Run this complete script in your Supabase Dashboard -> SQL Editor -> Run
+-- This sets up all 5 required tables, indexes, and row-level security policies.
 
 -- 1. USERS TABLE
 CREATE TABLE IF NOT EXISTS public.users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
@@ -18,8 +20,8 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 -- 2. LEDGER ENTRIES TABLE (DOUBLE-ENTRY REWARD LEDGER)
 CREATE TABLE IF NOT EXISTS public.ledger_entries (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   amount_cents INTEGER NOT NULL DEFAULT 0,
   points_change INTEGER NOT NULL DEFAULT 0,
   type TEXT NOT NULL, -- 'credit', 'debit', 'reserved', 'refund', 'chargeback'
@@ -31,8 +33,8 @@ CREATE TABLE IF NOT EXISTS public.ledger_entries (
 
 -- 3. WITHDRAWAL REQUESTS TABLE
 CREATE TABLE IF NOT EXISTS public.withdrawal_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   usdt_address TEXT NOT NULL,
   network TEXT NOT NULL DEFAULT 'TRC20', -- 'TRC20' or 'ERC20'
   amount_cents INTEGER NOT NULL,
@@ -43,7 +45,7 @@ CREATE TABLE IF NOT EXISTS public.withdrawal_requests (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. SYSTEM SETTINGS TABLE
+-- 4. SYSTEM SETTINGS TABLE (CPX, AOYTASKS, PROFIT SPLIT & PLATFORM SETTINGS)
 CREATE TABLE IF NOT EXISTS public.system_settings (
   id INTEGER PRIMARY KEY DEFAULT 1,
   min_withdrawal_cents INTEGER NOT NULL DEFAULT 2500,
@@ -65,8 +67,8 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
 
 -- 5. ADMIN AUDIT LOGS TABLE
 CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  admin_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  id TEXT PRIMARY KEY,
+  admin_user_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
   action TEXT NOT NULL,
   details JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -76,8 +78,8 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
 -- INITIAL SEED DATA & INDEXES
 -- =============================================================================
 
-INSERT INTO public.system_settings (id, min_withdrawal_cents, max_withdrawal_cents, user_share_percent, points_per_usdt)
-VALUES (1, 2500, 50000, 40, 10000)
+INSERT INTO public.system_settings (id, min_withdrawal_cents, max_withdrawal_cents, user_share_percent, points_per_usdt, cpx_app_id, cpx_hash_key)
+VALUES (1, 2500, 50000, 40, 10000, '37479', 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY')
 ON CONFLICT (id) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_ledger_user_id ON public.ledger_entries(user_id);
