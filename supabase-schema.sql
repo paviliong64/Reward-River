@@ -55,8 +55,8 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   user_share_percent INTEGER NOT NULL DEFAULT 40,
   points_per_usdt INTEGER NOT NULL DEFAULT 10000,
   survey_display_mode TEXT NOT NULL DEFAULT 'hybrid',
-  cpx_app_id TEXT DEFAULT '37479',
-  cpx_hash_key TEXT DEFAULT 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY',
+  cpx_app_id TEXT DEFAULT '37699',
+  cpx_hash_key TEXT DEFAULT '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
   aoy_api_key TEXT DEFAULT '',
   aoy_secret_key TEXT DEFAULT '',
   aoy_bearer_token TEXT DEFAULT '',
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
 -- =============================================================================
 
 INSERT INTO public.system_settings (id, min_withdrawal_cents, max_withdrawal_cents, user_share_percent, points_per_usdt, cpx_app_id, cpx_hash_key)
-VALUES (1, 2500, 50000, 40, 10000, '37479', 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY')
+VALUES (1, 2500, 50000, 40, 10000, '37699', '1u8hIFGwUYYORM76NM76PDxenCC50bCZ')
 ON CONFLICT (id) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_ledger_user_id ON public.ledger_entries(user_id);

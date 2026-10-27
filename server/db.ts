@@ -141,8 +141,8 @@ class DatabaseStore {
         userSharePercent: 40, // Default 40% user share (60% hidden admin profit)
         pointsPerUsdt: 10000, // 10,000 Points = 1.00 USDT
         surveyDisplayMode: 'hybrid',
-        cpxAppId: process.env.CPX_APP_ID || '37479',
-        cpxHashKey: process.env.CPX_HASH_KEY || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY',
+        cpxAppId: process.env.CPX_APP_ID || '37699',
+        cpxHashKey: process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
         cpxIntegrationMode: 'hybrid_api',
         cpxMaxSurveys: 12,
         cpxThemeColor: '10b981',

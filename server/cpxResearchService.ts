@@ -43,17 +43,17 @@ export interface UserProfilingInfo {
 export class CpxResearchService {
   get appId(): string {
     const settingsAppId = dbStore.getSettings()?.cpxAppId?.trim();
-    return settingsAppId || process.env.CPX_APP_ID || '37479';
+    return settingsAppId || process.env.CPX_APP_ID || '37699';
   }
 
   get hashKey(): string {
     const settingsHash = dbStore.getSettings()?.cpxHashKey?.trim();
-    return settingsHash || process.env.CPX_HASH_KEY || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
+    return settingsHash || process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
   }
 
   get postbackSecret(): string {
     const settingsHash = dbStore.getSettings()?.cpxHashKey?.trim();
-    return settingsHash || process.env.CPX_POSTBACK_SECRET || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY';
+    return settingsHash || process.env.CPX_POSTBACK_SECRET || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
   }
 
   /**
