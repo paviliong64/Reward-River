@@ -19,8 +19,7 @@ import { AdminView } from './components/AdminView';
 import { LegalModal } from './components/LegalModal';
 import { ArticleView } from './components/ArticleView';
 import { PhoneOnboardingModal } from './components/PhoneOnboardingModal';
-import { auth, logOutFromFirebase, resendVerification } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { supabase } from './supabase';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -172,55 +171,40 @@ export default function App() {
     fetchCpxStatus();
   }, [fetchUserData, fetchSurveys, fetchLedgerAndWithdrawals, fetchUsdtQuote, fetchCpxStatus]);
 
-  // Listen to Firebase Auth state for real persistent account status
+  // Listen to Session and Supabase Auth state
   useEffect(() => {
     fetchUsdtQuote();
     fetchCpxStatus();
 
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        try {
-          const idToken = await fbUser.getIdToken();
-          const res = await fetch('/api/auth/firebase-sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              idToken,
-              uid: fbUser.uid,
-              email: fbUser.email,
-              displayName: fbUser.displayName || fbUser.email?.split('@')[0],
-              emailVerified: fbUser.emailVerified,
-              photoURL: fbUser.photoURL || undefined,
-              phoneNumber: fbUser.phoneNumber || undefined,
-              provider: fbUser.providerData?.[0]?.providerId || 'google.com'
-            })
-          });
+    const token = getAuthToken();
+    if (token) {
+      fetchUserData(token).then(() => {
+        setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
+      });
+    }
 
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        try {
+          const res = await fetch('/api/auth/me', {
+            headers: { Authorization: `Bearer ${session.access_token}` }
+          });
           if (res.ok) {
             const data = await res.json();
-            localStorage.setItem('rr_auth_token', data.token);
+            localStorage.setItem('rr_auth_token', session.access_token);
             setUser(data.user);
             setBalances(data.balances);
             setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
-
-            if (data.user && !data.user.whatsappNumber && !data.user.phoneNumber && !data.user.hasPromptedPhone && !sessionStorage.getItem('phone_prompt_dismissed')) {
-              setPhoneModalOpen(true);
-            }
           }
         } catch (e) {
-          console.warn('Firebase state sync warning:', e);
-        }
-      } else {
-        const token = getAuthToken();
-        if (token) {
-          fetchUserData(token).then(() => {
-            setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
-          });
+          console.warn('Supabase state sync warning:', e);
         }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, [fetchUsdtQuote, fetchCpxStatus, fetchUserData]);
 
   // When tab changes, load specific tab data
@@ -245,7 +229,7 @@ export default function App() {
   // Sign out
   const handleSignOut = async () => {
     try {
-      await logOutFromFirebase();
+      await supabase.auth.signOut();
     } catch {
       // Ignored
     }
@@ -259,7 +243,6 @@ export default function App() {
   const handleVerifyEmail = async () => {
     const token = getAuthToken();
     try {
-      await resendVerification();
       if (token) {
         await fetch('/api/auth/verify-email', {
           method: 'POST',

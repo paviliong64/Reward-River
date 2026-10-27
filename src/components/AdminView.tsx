@@ -2985,6 +2985,52 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 onSubmit={(e) => handleSaveSettings(e)}
                 className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5"
               >
+                {/* Supabase Connection Credentials */}
+                <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/80 space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-950 font-bold text-sm">
+                    <Server className="w-4 h-4 text-emerald-600" />
+                    <span>⚡ Supabase Database Credentials (Admin Managed)</span>
+                  </div>
+                  <p className="text-xs text-emerald-800 leading-relaxed">
+                    Manage your Supabase PostgreSQL project credentials directly here from the Admin Portal. Zero Vercel environment variables needed!
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Supabase Project URL</label>
+                      <input
+                        type="text"
+                        value={settings.supabaseUrl || ''}
+                        onChange={(e) => setSettings({ ...settings, supabaseUrl: e.target.value })}
+                        placeholder="https://xxxx.supabase.co"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Supabase Anon Key</label>
+                      <input
+                        type="password"
+                        value={settings.supabaseAnonKey || ''}
+                        onChange={(e) => setSettings({ ...settings, supabaseAnonKey: e.target.value })}
+                        placeholder="eyJ..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Supabase Service Role Key</label>
+                      <input
+                        type="password"
+                        value={settings.supabaseServiceKey || ''}
+                        onChange={(e) => setSettings({ ...settings, supabaseServiceKey: e.target.value })}
+                        placeholder="eyJ..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">

@@ -98,6 +98,9 @@ export interface LedgerEntry {
 }
 
 export interface SystemSettings {
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  supabaseServiceKey?: string;
   minWithdrawalCents: number;
   maxWithdrawalCents: number;
   feeCentsTrc20: number;

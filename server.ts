@@ -32,6 +32,7 @@ import { canSubmitWithdrawal } from './src/utils/ledger';
 dotenv.config();
 
 const app = express();
+export { app };
 const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -1358,6 +1359,9 @@ app.get('/api/admin/settings', requireAuth, requireAdmin, (req: AuthenticatedReq
 app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   const admin = req.user!;
   const {
+    supabaseUrl,
+    supabaseAnonKey,
+    supabaseServiceKey,
     minWithdrawalCents,
     maxWithdrawalCents,
     feeCentsTrc20,
@@ -1411,6 +1415,9 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
 
   const updated = await dbStore.updateSettings(
     {
+      supabaseUrl: typeof supabaseUrl === 'string' ? supabaseUrl.trim() : (current.supabaseUrl || ''),
+      supabaseAnonKey: typeof supabaseAnonKey === 'string' ? supabaseAnonKey.trim() : (current.supabaseAnonKey || ''),
+      supabaseServiceKey: typeof supabaseServiceKey === 'string' ? supabaseServiceKey.trim() : (current.supabaseServiceKey || ''),
       minWithdrawalCents: Number(minWithdrawalCents) || current.minWithdrawalCents,
       maxWithdrawalCents: Number(maxWithdrawalCents) || current.maxWithdrawalCents,
       feeCentsTrc20: Number(feeCentsTrc20) >= 0 ? Number(feeCentsTrc20) : current.feeCentsTrc20,
@@ -1797,7 +1804,11 @@ async function startServer() {
   });
 }
 
-startServer().catch(err => {
-  console.error('Fatal server startup error:', err);
-  process.exit(1);
-});
+if (!process.env.VERCEL) {
+  startServer().catch(err => {
+    console.error('Fatal server startup error:', err);
+    process.exit(1);
+  });
+} else {
+  dbStore.init().catch(console.error);
+}

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { LedgerEntry, WithdrawalRecord, calculateUserBalances, isDuplicateTransaction } from '../src/utils/ledger';
+import { serverSupabase } from './supabase';
 
 export interface UserAccount {
   id: string;
@@ -66,6 +67,9 @@ export interface AdminAuditLog {
 }
 
 export interface SystemSettings {
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  supabaseServiceKey?: string;
   minWithdrawalCents: number;
   maxWithdrawalCents: number;
   feeCentsTrc20: number;
@@ -127,6 +131,9 @@ class DatabaseStore {
       withdrawalRequests: [],
       withdrawalEvents: [],
       systemSettings: {
+        supabaseUrl: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+        supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '',
+        supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
         minWithdrawalCents: 2500, // $25.00 min (250,000 Points)
         maxWithdrawalCents: 50000, // $500.00 max (5,000,000 Points)
         feeCentsTrc20: 100, // $1.00 USDT fee for TRC-20
@@ -248,6 +255,25 @@ class DatabaseStore {
   async createUser(user: UserAccount): Promise<UserAccount> {
     this.data.users.push(user);
     await this.persist();
+    if (serverSupabase) {
+      serverSupabase
+        .from('users')
+        .upsert({
+          id: user.id,
+          username: user.username || user.email.split('@')[0],
+          email: user.email,
+          password_hash: user.passwordHash,
+          salt: user.salt,
+          role: user.role || 'user',
+          has_prompted_phone: user.hasPromptedPhone || false,
+          phone_number: user.phoneNumber || user.whatsappNumber || null,
+          created_at: user.createdAt,
+          updated_at: user.updatedAt
+        })
+        .then(({ error }) => {
+          if (error) console.warn('[Supabase Auto Sync] User upsert note:', error.message);
+        });
+    }
     return user;
   }
 
