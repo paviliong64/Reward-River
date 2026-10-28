@@ -1,118 +1,6 @@
 {
-  "users": [
-    {
-      "id": "usr_admin_rewardriver",
-      "username": "admin@reward-river",
-      "email": "admin@reward-river",
-      "passwordHash": "4cf4e9a6d0e04aad01946509ff83aaabd728d1cc6afd02b7c14f919e3cdb3ebbfa82729255ed1a27438c336e040762cded0369b65d3d3f4906a5b4e77edf933a",
-      "salt": "53f356f87d13c018175c3100428fdbea",
-      "displayName": "Reward River Admin",
-      "emailVerified": true,
-      "role": "admin",
-      "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
-      "createdAt": "2026-10-28T13:43:11.840Z",
-      "updatedAt": "2026-10-28T18:15:13.198Z",
-      "provider": "password",
-      "hasPromptedPhone": true,
-      "countryCode": "PK"
-    },
-    {
-      "id": "e395cad7-3b23-4117-862c-31da97c21327",
-      "username": "gojolag383",
-      "email": "gojolag383@ofags.com",
-      "passwordHash": "",
-      "salt": "",
-      "displayName": "gojolag383",
-      "emailVerified": true,
-      "role": "user",
-      "externalOpaqueId": "rr_cpx_e395cad73b234117862c31da",
-      "createdAt": "2026-10-23T16:23:07.468692+00:00",
-      "updatedAt": "2026-10-23T16:23:06.402+00:00",
-      "countryCode": "US",
-      "provider": "supabase",
-      "hasPromptedPhone": false
-    },
-    {
-      "id": "028c2221-8d81-4893-b44c-6525f4936e10",
-      "username": "alexnooah11",
-      "email": "alexnooah11@gmail.com",
-      "passwordHash": "",
-      "salt": "",
-      "displayName": "alexnooah11",
-      "emailVerified": true,
-      "role": "user",
-      "externalOpaqueId": "rr_cpx_028c22218d814893b44c6525",
-      "createdAt": "2026-10-23T17:24:19.171859+00:00",
-      "updatedAt": "2026-10-23T17:24:18.983+00:00",
-      "countryCode": "US",
-      "provider": "supabase",
-      "hasPromptedPhone": false
-    },
-    {
-      "id": "50ef23d0-7b16-45b7-b866-ceede570e7e7",
-      "username": "kashif khan",
-      "email": "paviliong64@gmail.com",
-      "passwordHash": "74d6fea23998b1d9cee396a2c96281f3d73982901a13c98f21be54d7461f38b1b287888498192580c2da9d1749146fa771c6eb0b8455190dfab5870f68f6c7ba",
-      "salt": "0cf39bcd94b7c78f459b496ca3a88b78",
-      "displayName": "kashif khan",
-      "emailVerified": true,
-      "role": "user",
-      "externalOpaqueId": "rr_cpx_50ef23d07b1645b7b866ceed",
-      "createdAt": "2026-10-23T17:47:56.186216+00:00",
-      "updatedAt": "2026-10-28T16:08:15.844Z",
-      "countryCode": "US",
-      "provider": "supabase",
-      "hasPromptedPhone": true
-    },
-    {
-      "id": "390c870e-f94a-46ec-b7cf-f613238245e3",
-      "username": "erterrtwe",
-      "email": "erterrtwe@gmail.com",
-      "passwordHash": "",
-      "salt": "",
-      "displayName": "erterrtwe",
-      "emailVerified": true,
-      "role": "user",
-      "externalOpaqueId": "rr_cpx_390c870ef94a46ecb7cff613",
-      "createdAt": "2026-10-23T12:45:12.397827+00:00",
-      "updatedAt": "2026-10-23T12:45:12.513+00:00",
-      "countryCode": "US",
-      "provider": "supabase",
-      "hasPromptedPhone": false
-    },
-    {
-      "id": "usr_d59ce316-d10e-4216-9a63-9eb920e4dbfc",
-      "username": "testuser_1793211312264",
-      "email": "test_1793211312264@example.com",
-      "passwordHash": "e4fdac3f8309e4a62b524b2101cef5ed212a65e9560e0d49f56955df325f9a05720a6ba6f936d6129232a61cf36d7743b09cb6c533b95b289f63621aa250f898",
-      "salt": "76ec3736c35a464a30de8afd6c096bb8",
-      "displayName": "testuser_1793211312264",
-      "emailVerified": true,
-      "role": "user",
-      "externalOpaqueId": "rr_cpx_usrd59ce316d10e42169a639",
-      "createdAt": "2026-10-28T18:15:12.289Z",
-      "updatedAt": "2026-10-28T18:15:12.289Z",
-      "provider": "password",
-      "hasPromptedPhone": true
-    }
-  ],
-  "rewardLedger": [
-    {
-      "id": "led_cpx_19129457",
-      "userId": "e395cad7-3b23-4117-862c-31da97c21327",
-      "providerTxId": "cpx_verify_19129457",
-      "amountCents": 13,
-      "points": 3200,
-      "grossCents": 32,
-      "adminProfitCents": 19,
-      "appliedSharePercent": 40,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "CPX Research Survey #19129457 Completed (+3,200 Pts)",
-      "createdAt": "2026-10-28T13:52:10.000Z",
-      "processedAt": "2026-10-28T13:52:10.000Z"
-    }
-  ],
+  "users": [],
+  "rewardLedger": [],
   "withdrawalRequests": [],
   "withdrawalEvents": [],
   "systemSettings": {
@@ -127,7 +15,7 @@
     "pointsPerUsdt": 10000,
     "surveyDisplayMode": "points_only",
     "cpxAppId": "37699",
-    "cpxHashKey": "1u8hIFGwUYYORM76NM76PDxenCC50bCZ",
+    "cpxHashKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3b3NrdXN4Znptbm9hd2JycG5yIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjcwNDczMiwiZXhwIjoyMTA4MjgwNzMyfQ.5zT9Gw3C1AI2IKDlpC9pmrm8BEh5-5M-Qw7f-edE1zk",
     "cpxIntegrationMode": "hybrid_api",
     "cpxMaxSurveys": 12,
     "cpxThemeColor": "10b981",
@@ -149,7 +37,7 @@
     "ogImageUrl": "/favicon.svg",
     "googleSearchConsoleKey": "",
     "sitemapEnabled": true,
-    "updatedAt": "2026-10-28T14:36:00.000Z"
+    "updatedAt": "2026-10-20T00:00:00.000Z"
   },
   "adminAuditLogs": []
 }

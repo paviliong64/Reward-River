@@ -319,10 +319,28 @@ class DatabaseStore {
               this.data.users[existingIdx].role = effectiveRole;
               changed = true;
             }
+            if (row.password_hash && row.salt && (!current.passwordHash || !current.salt)) {
+              this.data.users[existingIdx].passwordHash = String(row.password_hash);
+              this.data.users[existingIdx].salt = String(row.salt);
+              changed = true;
+            }
             if (!current.countryCode && row.country_code) {
               this.data.users[existingIdx].countryCode = row.country_code;
               changed = true;
             }
+          }
+        }
+
+        // Push any local users not yet in Supabase up to Supabase
+        for (const localUser of this.data.users) {
+          const inSb = sbUsers.some(
+            (r: any) =>
+              r &&
+              (r.id === localUser.id ||
+                (r.email && String(r.email).toLowerCase() === localUser.email.toLowerCase()))
+          );
+          if (!inSb) {
+            await this.upsertUserToSupabase(localUser);
           }
         }
       }
@@ -447,9 +465,11 @@ class DatabaseStore {
 
   getUserByUsernameOrEmail(identifier: string): UserAccount | undefined {
     const clean = identifier.trim().toLowerCase();
+    if (!clean) return undefined;
     return this.data.users.find(
       u =>
         u.email.toLowerCase() === clean ||
+        u.email.split('@')[0].toLowerCase() === clean ||
         (u.username && u.username.toLowerCase() === clean) ||
         u.displayName.toLowerCase() === clean
     );
@@ -512,29 +532,70 @@ class DatabaseStore {
     });
   }
 
-  async createUser(user: UserAccount): Promise<UserAccount> {
-    this.data.users.push(user);
-    await this.persist();
+  private async upsertUserToSupabase(user: UserAccount): Promise<void> {
     const sb = this.getSupabaseClient();
-    if (sb) {
-      try {
-        const { error } = await sb.from('users').upsert({
+    if (!sb) return;
+    const displayName = user.username || user.displayName || user.email.split('@')[0];
+    try {
+      const { error } = await sb.from('users').upsert(
+        {
           id: user.id,
-          username: user.username || user.displayName || user.email.split('@')[0],
-          email: user.email,
-          password_hash: user.passwordHash,
-          salt: user.salt,
+          email: user.email.toLowerCase(),
+          password_hash: user.passwordHash || '',
+          salt: user.salt || '',
+          display_name: displayName,
+          email_verified: user.emailVerified !== false,
           role: user.role || 'user',
-          has_prompted_phone: user.hasPromptedPhone || false,
+          external_opaque_id:
+            user.externalOpaqueId ||
+            `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
           phone_number: user.phoneNumber || user.whatsappNumber || null,
-          created_at: user.createdAt,
-          updated_at: user.updatedAt
-        });
-        if (error) console.warn('[Supabase Auto Sync] User upsert note:', error.message);
-      } catch (err) {
-        console.warn('[Supabase Auto Sync] User upsert error:', err);
+          whatsapp_number: user.whatsappNumber || user.phoneNumber || null,
+          country_code: user.countryCode || 'US',
+          provider: user.provider || 'password',
+          has_prompted_phone: Boolean(user.hasPromptedPhone),
+          created_at: user.createdAt || new Date().toISOString(),
+          updated_at: user.updatedAt || new Date().toISOString()
+        },
+        { onConflict: 'id' }
+      );
+      if (error) {
+        // Fallback if using alternate schema with 'username' column
+        const { error: fallbackErr } = await sb.from('users').upsert(
+          {
+            id: user.id,
+            username: displayName,
+            email: user.email.toLowerCase(),
+            password_hash: user.passwordHash || '',
+            salt: user.salt || '',
+            role: user.role || 'user',
+            has_prompted_phone: Boolean(user.hasPromptedPhone),
+            phone_number: user.phoneNumber || user.whatsappNumber || null,
+            created_at: user.createdAt || new Date().toISOString(),
+            updated_at: user.updatedAt || new Date().toISOString()
+          },
+          { onConflict: 'id' }
+        );
+        if (fallbackErr) {
+          console.warn('[Supabase Auto Sync] User upsert note:', error.message);
+        }
       }
+    } catch (err) {
+      console.warn('[Supabase Auto Sync] User upsert error:', err);
     }
+  }
+
+  async createUser(user: UserAccount): Promise<UserAccount> {
+    const existingIdx = this.data.users.findIndex(
+      u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()
+    );
+    if (existingIdx !== -1) {
+      this.data.users[existingIdx] = { ...this.data.users[existingIdx], ...user };
+    } else {
+      this.data.users.push(user);
+    }
+    await this.persist();
+    await this.upsertUserToSupabase(user);
     return user;
   }
 
@@ -544,26 +605,7 @@ class DatabaseStore {
     this.data.users[idx] = { ...this.data.users[idx], ...updates, updatedAt: new Date().toISOString() };
     await this.persist();
     const updated = this.data.users[idx];
-    const sb = this.getSupabaseClient();
-    if (sb) {
-      try {
-        const { error } = await sb.from('users').upsert({
-          id: updated.id,
-          username: updated.username || updated.displayName || updated.email.split('@')[0],
-          email: updated.email,
-          password_hash: updated.passwordHash,
-          salt: updated.salt,
-          role: updated.role || 'user',
-          has_prompted_phone: updated.hasPromptedPhone || false,
-          phone_number: updated.phoneNumber || updated.whatsappNumber || null,
-          created_at: updated.createdAt,
-          updated_at: updated.updatedAt
-        });
-        if (error) console.warn('[Supabase Auto Sync] User update note:', error.message);
-      } catch (err) {
-        console.warn('[Supabase Auto Sync] User update error:', err);
-      }
-    }
+    await this.upsertUserToSupabase(updated);
     return updated;
   }
 

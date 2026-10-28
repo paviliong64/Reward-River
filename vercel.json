@@ -5,11 +5,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": "/api?__pathname=/api/$1"
     },
     {
       "source": "/wh/(.*)",
-      "destination": "/api"
+      "destination": "/api?__pathname=/wh/$1"
     },
     {
       "source": "/downloads/(.*)",

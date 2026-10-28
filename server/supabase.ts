@@ -11,10 +11,7 @@ const defaultSupabaseUrl =
 
 const defaultSupabaseServiceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  'sb_publishable_HVjFoLz84HMQ3ONultKhSA_rrnOtIpZ';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3b3NrdXN4Znptbm9hd2JycG5yIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjcwNDczMiwiZXhwIjoyMTA4MjgwNzMyfQ.5zT9Gw3C1AI2IKDlpC9pmrm8BEh5-5M-Qw7f-edE1zk';
 
 export const isServerSupabaseConfigured = Boolean(defaultSupabaseUrl && defaultSupabaseServiceKey);
 

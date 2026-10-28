@@ -120,17 +120,37 @@ export default function App() {
         const data = await res.json();
         setUser(data.user);
         setBalances(data.balances);
+        try {
+          localStorage.setItem('rr_auth_user', JSON.stringify(data.user));
+        } catch {
+          // ignore storage quota errors
+        }
         if (data.pointsPerUsdt) setPointsPerUsdt(Number(data.pointsPerUsdt) || 10000);
         if (data.userSharePercent) setUserSharePercent(Number(data.userSharePercent) || 40);
         return data.user;
-      } else {
-        localStorage.removeItem('rr_auth_token');
-        setUser(null);
-        setBalances(null);
       }
     } catch (e) {
       console.warn('Failed to fetch user session:', e);
     }
+
+    // Fallback to cached user if backend is cold-starting or temporarily unreachable
+    try {
+      const cachedRaw = localStorage.getItem('rr_auth_user');
+      if (cachedRaw) {
+        const cachedUser = JSON.parse(cachedRaw) as User;
+        if (cachedUser && cachedUser.id && cachedUser.email) {
+          setUser(cachedUser);
+          return cachedUser;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+
+    localStorage.removeItem('rr_auth_token');
+    localStorage.removeItem('rr_auth_user');
+    setUser(null);
+    setBalances(null);
     return null;
   }, []);
 
@@ -317,8 +337,28 @@ export default function App() {
   // Handle Authentication Success
   const handleAuthSuccess = (token: string, newUser: User, newBalances?: UserBalances) => {
     localStorage.setItem('rr_auth_token', token);
+    try {
+      localStorage.setItem('rr_auth_user', JSON.stringify(newUser));
+    } catch {
+      // ignore storage errors
+    }
     setUser(newUser);
-    if (newBalances) setBalances(newBalances);
+    if (newBalances) {
+      setBalances(newBalances);
+    } else {
+      setBalances({
+        availableCents: 0,
+        pendingCents: 0,
+        totalEarnedCents: 0,
+        totalWithdrawnCents: 0,
+        reservedWithdrawalCents: 0,
+        availablePoints: 0,
+        pendingPoints: 0,
+        totalEarnedPoints: 0,
+        totalWithdrawnPoints: 0,
+        completedSurveysCount: 0
+      });
+    }
     setCurrentTab(newUser.role === 'admin' ? 'admin' : 'surveys');
     handleRefreshAll();
   };
@@ -331,6 +371,7 @@ export default function App() {
       // Ignored
     }
     localStorage.removeItem('rr_auth_token');
+    localStorage.removeItem('rr_auth_user');
     setUser(null);
     setBalances(null);
     setCurrentTab('landing');

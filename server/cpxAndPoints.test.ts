@@ -1,6 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dbStore } from './db';
+import { hashPassword, verifyPassword, createSessionToken, verifySessionToken } from './auth';
+
+test('authentication hashing, session token verification, and user lookup work reliably', async () => {
+  const { hash, salt } = hashPassword('MySecurePass123');
+  assert.equal(verifyPassword('MySecurePass123', hash, salt), true);
+  assert.equal(verifyPassword('WrongPass', hash, salt), false);
+  assert.equal(verifyPassword('MySecurePass123', '', ''), false);
+
+  const testUserId = 'usr_auth_unit_test_1';
+  const created = await dbStore.createUser({
+    id: testUserId,
+    username: 'river_earner',
+    email: 'river_earner@gmail.com',
+    passwordHash: hash,
+    salt,
+    displayName: 'river_earner',
+    emailVerified: true,
+    role: 'user',
+    externalOpaqueId: 'rr_cpx_river_earner',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    provider: 'password',
+    hasPromptedPhone: true
+  });
+
+  // Lookup by email, username, and email local-part
+  assert.equal(dbStore.getUserByUsernameOrEmail('river_earner@gmail.com')?.id, testUserId);
+  assert.equal(dbStore.getUserByUsernameOrEmail('river_earner')?.id, testUserId);
+  assert.equal(dbStore.getUserByUsernameOrEmail('RIVER_EARNER')?.id, testUserId);
+
+  const token = createSessionToken(created);
+  const session = verifySessionToken(token);
+  assert.ok(session);
+  assert.equal(session.userId, testUserId);
+  assert.equal(session.email, 'river_earner@gmail.com');
+  assert.equal(session.username, 'river_earner');
+
+  await dbStore.deleteUser(testUserId);
+});
 
 test('getUserByExternalId resolves exact, stripped rr_cpx_, and alphanumeric IDs', async () => {
   const userId = 'u_test_user_987654';
