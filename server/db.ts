@@ -249,10 +249,27 @@ class DatabaseStore {
     if (!sb) return;
 
     try {
-      const [{ data: sbUsers }, { data: sbLedger }] = await Promise.all([
-        sb.from('users').select('*'),
-        sb.from('reward_ledger').select('*')
-      ]);
+      const { data: sbUsers } = await sb.from('users').select('*');
+      
+      let sbLedger: any[] | null = null;
+      const { data: rlData, error: rlError } = await sb.from('reward_ledger').select('*');
+      if (!rlError && Array.isArray(rlData)) {
+        sbLedger = rlData;
+      } else {
+        const { data: leData } = await sb.from('ledger_entries').select('*');
+        if (Array.isArray(leData)) {
+          sbLedger = leData.map(r => ({
+            id: r.id,
+            user_id: r.user_id,
+            provider_tx_id: r.reference_id || r.id,
+            amount_cents: r.amount_cents,
+            entry_type: r.type || 'credit',
+            status: 'confirmed',
+            description: r.description,
+            created_at: r.created_at
+          }));
+        }
+      }
 
       let changed = false;
 
@@ -627,7 +644,7 @@ class DatabaseStore {
     const sb = this.getSupabaseClient();
     if (sb) {
       try {
-        await sb.from('reward_ledger').upsert({
+        const { error } = await sb.from('reward_ledger').upsert({
           id: entry.id,
           user_id: entry.userId,
           provider_tx_id: entry.providerTxId,
@@ -637,6 +654,18 @@ class DatabaseStore {
           description: entry.description || `Survey Completion (+${(entry.points || 0).toLocaleString('en-US')} Pts)`,
           created_at: entry.createdAt
         });
+        if (error) {
+          await sb.from('ledger_entries').upsert({
+            id: entry.id,
+            user_id: entry.userId,
+            amount_cents: entry.amountCents,
+            points_change: entry.points || 0,
+            type: entry.entryType || 'credit',
+            description: entry.description || `Survey Completion (+${(entry.points || 0).toLocaleString('en-US')} Pts)`,
+            reference_id: entry.providerTxId || entry.id,
+            created_at: entry.createdAt
+          });
+        }
       } catch (e) {
         console.warn('[Supabase Auto Sync] Ledger upsert note:', e);
       }

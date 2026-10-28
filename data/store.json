@@ -4,14 +4,14 @@
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "b676f86a7be0948205b2cc645094cae2e26b5ab826ca4e132220bd5604bd348841b7286e31f03f01b99929ddfdf5df36bab71b3dfe5f9d73772244344962f1b5",
-      "salt": "57ee1deb21a120cde14d0888a40130e9",
+      "passwordHash": "4cf4e9a6d0e04aad01946509ff83aaabd728d1cc6afd02b7c14f919e3cdb3ebbfa82729255ed1a27438c336e040762cded0369b65d3d3f4906a5b4e77edf933a",
+      "salt": "53f356f87d13c018175c3100428fdbea",
       "displayName": "Reward River Admin",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.840Z",
-      "updatedAt": "2026-10-28T16:26:27.749Z",
+      "updatedAt": "2026-10-28T18:15:13.198Z",
       "provider": "password",
       "hasPromptedPhone": true,
       "countryCode": "PK"
@@ -79,6 +79,21 @@
       "countryCode": "US",
       "provider": "supabase",
       "hasPromptedPhone": false
+    },
+    {
+      "id": "usr_d59ce316-d10e-4216-9a63-9eb920e4dbfc",
+      "username": "testuser_1793211312264",
+      "email": "test_1793211312264@example.com",
+      "passwordHash": "e4fdac3f8309e4a62b524b2101cef5ed212a65e9560e0d49f56955df325f9a05720a6ba6f936d6129232a61cf36d7743b09cb6c533b95b289f63621aa250f898",
+      "salt": "76ec3736c35a464a30de8afd6c096bb8",
+      "displayName": "testuser_1793211312264",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_usrd59ce316d10e42169a639",
+      "createdAt": "2026-10-28T18:15:12.289Z",
+      "updatedAt": "2026-10-28T18:15:12.289Z",
+      "provider": "password",
+      "hasPromptedPhone": true
     }
   ],
   "rewardLedger": [
