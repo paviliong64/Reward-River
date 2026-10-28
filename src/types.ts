@@ -60,6 +60,10 @@ export interface Survey {
   ratingCount: number;
   isTop: boolean;
   directUrl: string;
+  category?: string;
+  conversionRate?: number;
+  rawPoints?: number;
+  isLiveCpx?: boolean;
 }
 
 export interface Withdrawal {

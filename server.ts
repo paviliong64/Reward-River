@@ -25,7 +25,7 @@ import {
   generateAoyPostbackSignature,
   verifyAoyPostbackSignature
 } from './src/utils/aoytasks';
-import { generateCpxSecureHash, verifyCpxPostbackSignature } from './src/utils/cpx';
+import { generateCpxSecureHash, verifyCpxPostbackSignature, normalizeCpxPostbackGrossCents } from './src/utils/cpx';
 import { buildPartnerAccountingReport } from './src/utils/partnerAccounting';
 import { canSubmitWithdrawal } from './src/utils/ledger';
 
@@ -40,6 +40,10 @@ const isProduction = process.env.NODE_ENV === 'production';
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
+app.use(async (_req, _res, next) => {
+  await dbStore.init();
+  next();
+});
 app.use(authMiddleware);
 
 // Request logging for API endpoints
@@ -715,68 +719,71 @@ app.get('/api/cpx/status', (req: Request, res: Response) => {
 
 // GET /api/surveys
 app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  const user = req.user!;
-  const settings = dbStore.getSettings();
-  const userSharePercent = settings.userSharePercent || 40;
-  const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+  try {
+    const user = req.user!;
+    const settings = dbStore.getSettings();
+    const userSharePercent = settings.userSharePercent || 40;
+    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const opaqueId = user.externalOpaqueId || (user.id ? `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}` : 'rr_cpx_guest_1');
 
-  const rawIp = (
-    (req.headers['cf-connecting-ip'] as string) ||
-    (req.headers['x-real-ip'] as string) ||
-    (req.headers['x-client-ip'] as string) ||
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-    req.ip ||
-    ''
-  ).trim();
-  const isPrivateOrLoopback = !rawIp || rawIp === '127.0.0.1' || rawIp === '::1' || rawIp.startsWith('::ffff:127.') || rawIp.startsWith('10.') || rawIp.startsWith('192.168.');
-  const clientIp = isPrivateOrLoopback ? '5.146.176.100' : rawIp;
-  const userAgent = req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+    const rawIp = (
+      (req.headers['cf-connecting-ip'] as string) ||
+      (req.headers['x-real-ip'] as string) ||
+      (req.headers['x-client-ip'] as string) ||
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+      req.ip ||
+      ''
+    ).trim();
+    const isPrivateOrLoopback = !rawIp || rawIp === '127.0.0.1' || rawIp === '::1' || rawIp.startsWith('::ffff:127.') || rawIp.startsWith('10.') || rawIp.startsWith('192.168.');
+    const clientIp = isPrivateOrLoopback ? '5.146.176.100' : rawIp;
+    const userAgent = req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-  const surveyData = await cpxResearchService.fetchEligibleSurveys({
-    externalUserId: user.externalOpaqueId,
-    ipAddress: clientIp,
-    userAgent
-  });
+    const surveyData = await cpxResearchService.fetchEligibleSurveys({
+      externalUserId: opaqueId,
+      ipAddress: clientIp,
+      userAgent
+    });
 
-  const usdtQuote = await usdtPriceService.getUsdtPriceQuote();
+    const usdtQuote = await usdtPriceService.getUsdtPriceQuote().catch(() => null);
 
-  // If live CPX returns 0 surveys due to server/datacenter IP filtering, provide standard CPX Research inventory
-  // linked directly to the user's authenticated CPX Research offerwall URL so cards are always visible.
-  const baseSurveys = surveyData.surveys.length > 0
-    ? surveyData.surveys
-    : [
-        { id: 'cpx_101', loiMinutes: 1, rewardCents: 100, rewardUsdFormatted: '$1.00', cpi: 1.00, ratingAvg: 4.5, ratingCount: 34, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '101') },
-        { id: 'cpx_102', loiMinutes: 1, rewardCents: 150, rewardUsdFormatted: '$1.50', cpi: 1.50, ratingAvg: 4.5, ratingCount: 3, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '102') },
-        { id: 'cpx_103', loiMinutes: 1, rewardCents: 80, rewardUsdFormatted: '$0.80', cpi: 0.80, ratingAvg: 4.2, ratingCount: 3, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '103') },
-        { id: 'cpx_104', loiMinutes: 3, rewardCents: 125, rewardUsdFormatted: '$1.25', cpi: 1.25, ratingAvg: 4.8, ratingCount: 103, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '104') },
-        { id: 'cpx_105', loiMinutes: 1, rewardCents: 140, rewardUsdFormatted: '$1.40', cpi: 1.40, ratingAvg: 4.3, ratingCount: 3, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '105') },
-        { id: 'cpx_106', loiMinutes: 1, rewardCents: 50, rewardUsdFormatted: '$0.50', cpi: 0.50, ratingAvg: 4.6, ratingCount: 53, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '106') },
-        { id: 'cpx_107', loiMinutes: 1, rewardCents: 250, rewardUsdFormatted: '$2.50', cpi: 2.50, ratingAvg: 4.4, ratingCount: 2, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '107') },
-        { id: 'cpx_108', loiMinutes: 1, rewardCents: 110, rewardUsdFormatted: '$1.10', cpi: 1.10, ratingAvg: 4.1, ratingCount: 1, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '108') },
-        { id: 'cpx_109', loiMinutes: 1, rewardCents: 300, rewardUsdFormatted: '$3.00', cpi: 3.00, ratingAvg: 4.7, ratingCount: 28, isTop: true, directUrl: cpxResearchService.generateSurveyStartUrl(user.externalOpaqueId, '109') }
-      ];
+    // Use 100% genuine live surveys returned from CPX Research API (https://live-api.cpx-research.com/api/get-surveys.php)
+    const baseSurveys = surveyData.surveys;
 
-  // Apply Hybrid Points + USDT custom user share (e.g. 40% visible to user; 60% hidden admin profit)
-  const surveysWithHybridShare = baseSurveys.map(s => {
-    const split = calculateHybridSurveySplit(s.rewardCents, userSharePercent, pointsPerUsdt);
-    return {
-      ...s,
-      rewardCents: split.userRewardCents,
-      rewardPoints: split.userRewardPoints,
-      rewardPointsFormatted: split.userRewardPointsFormatted,
-      rewardUsdFormatted: split.userRewardUsdFormatted,
-      rewardUsdtFormatted: `${(split.userRewardCents / 100).toFixed(2)} USDT`
-    };
-  });
+    // Apply Hybrid Points + USDT custom user share (e.g. 40% visible to user; 60% hidden admin profit)
+    const surveysWithHybridShare = baseSurveys.map(s => {
+      const split = calculateHybridSurveySplit(s.rewardCents, userSharePercent, pointsPerUsdt);
+      return {
+        ...s,
+        rewardCents: split.userRewardCents,
+        rewardPoints: split.userRewardPoints,
+        rewardPointsFormatted: split.userRewardPointsFormatted,
+        rewardUsdFormatted: split.userRewardUsdFormatted,
+        rewardUsdtFormatted: `${(split.userRewardCents / 100).toFixed(2)} USDT`,
+        isLiveCpx: true
+      };
+    });
 
-  res.json({
-    ...surveyData,
-    surveys: surveysWithHybridShare,
-    totalAvailable: surveysWithHybridShare.length,
-    pointsPerUsdt,
-    surveyDisplayMode: settings.surveyDisplayMode || 'hybrid',
-    usdtQuote
-  });
+    const cpxSecureHash = generateCpxSecureHash(opaqueId, cpxResearchService.hashKey);
+
+    res.json({
+      success: true,
+      surveys: surveysWithHybridShare,
+      totalAvailable: surveysWithHybridShare.length,
+      pointsPerUsdt,
+      surveyDisplayMode: settings.surveyDisplayMode || 'hybrid',
+      usdtQuote,
+      offerwallUrl: cpxResearchService.generateSurveyStartUrl(opaqueId),
+      cpxConfig: {
+        appId: cpxResearchService.appId,
+        extUserId: opaqueId,
+        secureHash: cpxSecureHash,
+        themeColor: (settings.cpxThemeColor || '10b981').replace('#', '')
+      }
+    });
+  } catch (err: unknown) {
+    console.error('[Surveys Route Error]:', err);
+    res.status(500).json({ error: 'Failed to load surveys from server.' });
+  }
 });
 
 // POST or GET /api/surveys/start and /api/surveys/start/:surveyId?
@@ -855,9 +862,8 @@ app.all(['/api/cpx/postback', '/api/cpx-postback', '/api/postback'], async (req:
   const userSharePercent = settings.userSharePercent || 40;
   const pointsPerUsdt = settings.pointsPerUsdt || 10000;
 
-  // Prefer amount_usd as the 100% gross USD revenue from CPX; fallback to amount_local
-  const rawGrossUsd = Number(amount_usd || amount_local) || 0;
-  const grossCents = rawGrossUsd > 0 ? Math.round(rawGrossUsd * 100) : 100;
+  // Normalize amount_usd / amount_local into 100% gross USD cents (prevents 10,000x inflation when amount_local is in Points)
+  const grossCents = normalizeCpxPostbackGrossCents(amount_usd, amount_local, pointsPerUsdt);
   const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
 
   if (statusCode === 1) {

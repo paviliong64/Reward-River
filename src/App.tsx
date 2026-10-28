@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserBalances, UsdtQuote, Survey, Withdrawal, LedgerEntry, CpxConfigStatus } from './types';
 import { UsdtNetwork } from './utils/usdt';
+import { fetchLiveCpxSurveysBrowser } from './utils/cpxClient';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { LandingPage } from './components/LandingPage';
@@ -43,6 +44,12 @@ export default function App() {
   const [userSharePercent, setUserSharePercent] = useState<number>(40);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [cpxConfig, setCpxConfig] = useState<{
+    appId: string;
+    extUserId: string;
+    secureHash: string;
+    themeColor?: string;
+  } | null>(null);
 
   // Token helper
   const getAuthToken = () => localStorage.getItem('rr_auth_token');
@@ -126,22 +133,22 @@ export default function App() {
     }
   }, []);
 
-  // Fetch surveys from CPX API
+  // Fetch surveys from CPX API (with direct live-api.cpx-research.com browser fallback)
   const fetchSurveys = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
 
     setSurveysLoading(true);
     setSurveysError(null);
+    const fallbackExtId = user?.externalOpaqueId || (user?.id ? `rr_cpx_${user.id}` : 'rr_cpx_member_1');
+
     try {
       const res = await fetch('/api/surveys', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setSurveysError(data.error || 'Failed to fetch available surveys.');
-      } else {
-        setSurveys(data.surveys || []);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.surveys) && data.surveys.length > 0) {
+        setSurveys(data.surveys);
         if (data.surveyDisplayMode) {
           setSurveyDisplayMode(data.surveyDisplayMode);
         }
@@ -154,13 +161,52 @@ export default function App() {
         if (data.usdtQuote) {
           setUsdtQuote(data.usdtQuote);
         }
+        if (data.cpxConfig) {
+          setCpxConfig(data.cpxConfig);
+        }
+        return;
       }
-    } catch (err: unknown) {
-      setSurveysError('Connection to survey server failed.');
+
+      // Direct live-api.cpx-research.com browser fetch if backend route is unreachable or empty
+      const liveBrowser = await fetchLiveCpxSurveysBrowser({
+        appId: data?.cpxConfig?.appId || '37699',
+        hashKey: '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
+        extUserId: data?.cpxConfig?.extUserId || fallbackExtId,
+        userSharePercent,
+        pointsPerUsdt,
+        limit: 12
+      });
+      setSurveys(liveBrowser.surveys);
+      setCpxConfig({
+        appId: liveBrowser.appId,
+        extUserId: fallbackExtId,
+        secureHash: liveBrowser.secureHash,
+        themeColor: '10b981'
+      });
+    } catch {
+      try {
+        const liveBrowser = await fetchLiveCpxSurveysBrowser({
+          appId: '37699',
+          hashKey: '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
+          extUserId: fallbackExtId,
+          userSharePercent,
+          pointsPerUsdt,
+          limit: 12
+        });
+        setSurveys(liveBrowser.surveys);
+        setCpxConfig({
+          appId: liveBrowser.appId,
+          extUserId: fallbackExtId,
+          secureHash: liveBrowser.secureHash,
+          themeColor: '10b981'
+        });
+      } catch {
+        setSurveysError('Connection to survey server failed. Please refresh or try again.');
+      }
     } finally {
       setSurveysLoading(false);
     }
-  }, []);
+  }, [user, userSharePercent, pointsPerUsdt]);
 
   // Fetch ledger and withdrawals
   const fetchLedgerAndWithdrawals = useCallback(async () => {
@@ -441,6 +487,8 @@ export default function App() {
         className={
           currentTab === 'admin' && user?.role === 'admin' && !activeArticle
             ? 'flex-1 w-full flex flex-col'
+            : currentTab === 'landing' && !activeArticle
+            ? 'flex-1 w-full'
             : activeArticle
             ? 'flex-1 w-full'
             : 'flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6'
@@ -491,6 +539,8 @@ export default function App() {
                 onRefresh={fetchSurveys}
                 onStartSurvey={handleStartSurvey}
                 onTaskCompleted={handleRefreshAll}
+                user={user}
+                cpxConfig={cpxConfig}
               />
             )}
 

@@ -77,8 +77,16 @@ export const Navbar: React.FC<NavbarProps> = ({
     setMobileMenuOpen(false);
   };
 
+  const isLandingMode = !user && currentTab === 'landing';
+
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
+    <header
+      className={`sticky top-0 z-40 transition-colors ${
+        isLandingMode
+          ? 'bg-slate-950/85 backdrop-blur-md border-b border-white/10 text-white'
+          : 'bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-800'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo */}
@@ -87,7 +95,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="text-left focus:outline-none focus:ring-2 focus:ring-sky-500 rounded-lg p-1"
             aria-label="Reward River Home"
           >
-            <Logo size="md" showTagline={!user} />
+            <Logo size="md" showTagline={false} inverted={isLandingMode} />
           </button>
 
           {/* Desktop Navigation */}
@@ -113,27 +121,51 @@ export const Navbar: React.FC<NavbarProps> = ({
               })}
             </nav>
           ) : (
-            <nav className="hidden md:flex items-center gap-6" aria-label="Public Navigation">
+            <nav className="hidden lg:flex items-center gap-7" aria-label="Public Navigation">
               <button
                 type="button"
-                onClick={() => scrollToSection('how-it-works')}
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                onClick={() => scrollToSection('who-we-help')}
+                className={`text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  isLandingMode ? 'text-white/80 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                How It Works
+                Who We Help
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('rewards')}
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                onClick={() => scrollToSection('what-we-do')}
+                className={`text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  isLandingMode ? 'text-white/80 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                Rewards
+                What We Do
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('how-it-works')}
+                className={`text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  isLandingMode ? 'text-white/80 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                How We Do It
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('why-reward-river')}
+                className={`text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  isLandingMode ? 'text-white/80 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Why Reward River
               </button>
               <button
                 type="button"
                 onClick={() => scrollToSection('faq')}
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                className={`text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  isLandingMode ? 'text-white/80 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                FAQ
+                Resources
               </button>
             </nav>
           )}
@@ -179,17 +211,32 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 </div>
               </div>
+            ) : isLandingMode ? (
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => onOpenAuth('signin')}
+                  className="px-4 sm:px-5 py-2 text-xs font-bold uppercase tracking-wider text-white border border-white/60 hover:border-white hover:bg-white/10 rounded-md transition-all cursor-pointer"
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => onOpenAuth('signup')}
+                  className="px-4 sm:px-6 py-2.5 text-xs font-black uppercase tracking-wider text-slate-950 bg-[#F7B928] hover:bg-[#e6ab1e] rounded-md shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                >
+                  Let's Connect
+                </button>
+              </div>
             ) : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onOpenAuth('signin')}
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Sign In
                 </button>
                 <button
                   onClick={() => onOpenAuth('signup')}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg shadow-sm transition-all"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg shadow-sm transition-all cursor-pointer"
                 >
                   Create Account
                 </button>
@@ -197,59 +244,124 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
 
             {/* Mobile Hamburger Button */}
-            {user && (
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
-                aria-label="Toggle mobile menu"
-              >
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
-            )}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className={`lg:hidden p-2 rounded-lg transition-colors ${
+                isLandingMode ? 'text-white hover:bg-white/10' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+              aria-label="Toggle mobile menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
       </div>
 
       {/* Mobile Drawer Menu */}
-      {mobileMenuOpen && user && (
-        <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-2 animate-fadeIn">
-          {/* Mobile Balance Display */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 mb-3">
-            <span className="text-xs font-medium text-slate-600">Balance</span>
-            <span className="text-sm font-bold text-emerald-700 font-mono">${usdtAmount}</span>
-          </div>
+      {mobileMenuOpen && (
+        <div
+          className={`lg:hidden border-t px-4 pt-3 pb-6 space-y-3 animate-fadeIn ${
+            isLandingMode ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-800'
+          }`}
+        >
+          {user ? (
+            <>
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 mb-3 text-slate-800">
+                <span className="text-xs font-medium text-slate-600">Balance</span>
+                <span className="text-sm font-bold text-emerald-700 font-mono">${usdtAmount}</span>
+              </div>
 
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = currentTab === item.id;
-            return (
+              {navItems.map(item => {
+                const Icon = item.icon;
+                const isActive = currentTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-sky-50 text-sky-700 font-semibold'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-sky-600' : 'text-slate-400'}`} />
+                    {item.label}
+                  </button>
+                );
+              })}
+
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onSignOut();
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3 pt-2">
               <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-sky-50 text-sky-700 font-semibold'
-                    : 'text-slate-700 hover:bg-slate-50'
-                }`}
+                type="button"
+                onClick={() => scrollToSection('who-we-help')}
+                className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/90 hover:text-white"
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-sky-600' : 'text-slate-400'}`} />
-                {item.label}
+                Who We Help
               </button>
-            );
-          })}
-
-          <div className="pt-2 border-t border-slate-100">
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onSignOut();
-              }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => scrollToSection('what-we-do')}
+                className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/90 hover:text-white"
+              >
+                What We Do
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('how-it-works')}
+                className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/90 hover:text-white"
+              >
+                How We Do It
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('why-reward-river')}
+                className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/90 hover:text-white"
+              >
+                Why Reward River
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('faq')}
+                className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/90 hover:text-white"
+              >
+                Resources
+              </button>
+              <div className="pt-3 border-t border-white/10 flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('signin');
+                  }}
+                  className="w-full py-2.5 text-xs font-bold uppercase tracking-wider text-white border border-white/60 rounded-md text-center"
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('signup');
+                  }}
+                  className="w-full py-2.5 text-xs font-black uppercase tracking-wider text-slate-950 bg-[#F7B928] rounded-md text-center shadow-md"
+                >
+                  Let's Connect
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </header>

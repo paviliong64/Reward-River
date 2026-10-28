@@ -22,13 +22,17 @@ export interface CpxRawSurvey {
 export interface NormalizedSurvey {
   id: string;
   loiMinutes: number;
-  rewardCents: number; // in USD cents (integer minor units)
+  rewardCents: number; // in USD cents (integer minor units, 100% gross publisher USD)
   rewardUsdFormatted: string; // e.g. "$1.20"
   cpi: number;
   ratingAvg: number;
   ratingCount: number;
   isTop: boolean;
   directUrl: string;
+  rawPoints?: number;
+  category?: string;
+  conversionRate?: number;
+  isLiveCpx?: boolean;
 }
 
 export interface CpxPostbackPayload {
@@ -89,6 +93,35 @@ export function verifyCpxPostbackSignature(
 }
 
 /**
+ * Normalizes CPX postback amount_usd / amount_local into 100% gross USD cents.
+ * Prevents 10,000x inflation when amount_local is in Points (e.g. 22800 points for $2.28).
+ */
+export function normalizeCpxPostbackGrossCents(
+  amountUsd?: unknown,
+  amountLocal?: unknown,
+  pointsPerUsdt = 10000
+): number {
+  const cleanUsd = typeof amountUsd === 'string' ? Number(amountUsd.replace(/[^0-9.-]/g, '')) : Number(amountUsd);
+  if (!isNaN(cleanUsd) && cleanUsd > 0) {
+    // If someone passed points in amount_usd by mistake (> 50), normalize via pointsPerUsdt
+    if (cleanUsd > 50) {
+      return Math.max(1, Math.round((cleanUsd / Math.max(100, pointsPerUsdt)) * 100));
+    }
+    return Math.max(1, Math.round(cleanUsd * 100));
+  }
+
+  const cleanLocal = typeof amountLocal === 'string' ? Number(amountLocal.replace(/[^0-9.-]/g, '')) : Number(amountLocal);
+  if (!isNaN(cleanLocal) && cleanLocal > 0) {
+    if (cleanLocal > 50) {
+      return Math.max(1, Math.round((cleanLocal / Math.max(100, pointsPerUsdt)) * 100));
+    }
+    return Math.max(1, Math.round(cleanLocal * 100));
+  }
+
+  return 100;
+}
+
+/**
  * Builds compliant CPX Survey URL.
  */
 export function buildCpxSurveyUrl(params: {
@@ -126,7 +159,7 @@ export function buildCpxSurveyUrl(params: {
 
 /**
  * Normalizes CPX API response to standard application format.
- * Guards against unexpected nulls or malformed properties.
+ * Preserves real CPX payout_publisher_usd, statistics_rating_count, statistics_rating_avg, and category.
  */
 export function normalizeCpxSurveyList(
   rawData: unknown,
@@ -154,19 +187,48 @@ export function normalizeCpxSurveyList(
 
     const loiMinutes = Math.max(1, Math.min(60, Number(raw.loi) || 10));
     
-    // Parse payout: CPX returns payout in decimal (e.g. 0.85 USD or publisher currency)
-    const rawPayout = Number(raw.payout || raw.cpi) || 0;
-    const rewardCents = Math.max(10, Math.round(rawPayout * 100)); // integer cents
-    const rewardUsdFormatted = `$${(rewardCents / 100).toFixed(2)}`;
+    // Parse payout: CPX returns payout_publisher_usd (e.g. 2.71 USD) and payout in currency points (e.g. "27100.00")
+    let rewardCents = 10;
+    const publisherUsd = raw.payout_publisher_usd !== undefined && raw.payout_publisher_usd !== null && raw.payout_publisher_usd !== ''
+      ? Number(raw.payout_publisher_usd)
+      : NaN;
+    const rawCpi = raw.cpi !== undefined && raw.cpi !== null && raw.cpi !== ''
+      ? Number(raw.cpi)
+      : NaN;
+    const rawPayoutNum = Number(raw.payout ?? raw.cpi) || 0;
 
-    const cpi = Number(raw.cpi) || 0;
-    const ratingAvg = Math.max(0, Math.min(5, Number(raw.statistics_rating_avg) || 4.5));
-    const ratingCount = Math.max(0, Number(raw.statistics_rating_count) || 0);
-    const isTop = Boolean(raw.top && raw.top > 0);
+    if (!isNaN(publisherUsd) && publisherUsd > 0) {
+      // Direct USD payout from CPX publisher feed (e.g. 2.71 -> 271 cents)
+      rewardCents = Math.max(1, Math.round(publisherUsd * 100));
+    } else if (!isNaN(rawCpi) && rawCpi > 0 && rawCpi <= 50) {
+      rewardCents = Math.max(1, Math.round(rawCpi * 100));
+    } else if (rawPayoutNum > 50) {
+      // CPX returns points value when app is configured as points currency (e.g. 27100 pts at 10000 pts/$ = 271 cents)
+      rewardCents = Math.max(1, Math.round((rawPayoutNum / 10000) * 100));
+    } else if (rawPayoutNum > 0) {
+      rewardCents = Math.max(1, Math.round(rawPayoutNum * 100));
+    }
+
+    const rewardUsdFormatted = `$${(rewardCents / 100).toFixed(2)}`;
+    const rawPoints = rawPayoutNum > 50 ? Math.round(rawPayoutNum) : rewardCents * 100;
+
+    const cpi = !isNaN(publisherUsd) && publisherUsd > 0 ? Number(publisherUsd.toFixed(2)) : (Number(raw.cpi) || (rewardCents / 100));
+    const ratingCount = Math.max(0, Math.floor(Number(raw.statistics_rating_count) || 0));
+    const rawRatingAvg = Number(raw.statistics_rating_avg);
+    const ratingAvg = !isNaN(rawRatingAvg) && rawRatingAvg > 0
+      ? Math.max(1, Math.min(5, rawRatingAvg))
+      : ratingCount > 0
+      ? 4.5
+      : 0;
+    const isTop = Boolean(raw.top && Number(raw.top) > 0);
+    const category = typeof raw.category === 'string' && raw.category.trim() ? raw.category.trim() : 'General';
+    const conversionRate = Number(raw.conversion_rate) || 0;
 
     // Direct survey URL or generated secure URL
-    const directUrl = raw.href && typeof raw.href === 'string' && raw.href.startsWith('https://')
+    const directUrl = (raw.href && typeof raw.href === 'string' && raw.href.startsWith('https://'))
       ? raw.href
+      : (raw.href_new && typeof raw.href_new === 'string' && raw.href_new.startsWith('https://'))
+      ? raw.href_new
       : buildCpxSurveyUrl({ appId, extUserId, hashKey, surveyId: id });
 
     results.push({
@@ -178,7 +240,11 @@ export function normalizeCpxSurveyList(
       ratingAvg,
       ratingCount,
       isTop,
-      directUrl
+      directUrl,
+      rawPoints,
+      category,
+      conversionRate,
+      isLiveCpx: true
     });
   }
 

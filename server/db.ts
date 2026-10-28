@@ -114,6 +114,7 @@ export interface DatabaseSchema {
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'store.json');
+const TMP_DB_FILE = '/tmp/reward-river-store.json';
 
 class DatabaseStore {
   private data: DatabaseSchema;
@@ -174,9 +175,24 @@ class DatabaseStore {
     if (this.initialized) return;
 
     try {
-      await fs.mkdir(DATA_DIR, { recursive: true });
-      try {
-        const fileContent = await fs.readFile(DB_FILE, 'utf-8');
+      await fs.mkdir(DATA_DIR, { recursive: true }).catch(() => {});
+      let fileContent: string | null = null;
+      if (process.env.VERCEL) {
+        try {
+          fileContent = await fs.readFile(TMP_DB_FILE, 'utf-8');
+        } catch {
+          // fallback to bundled store.json
+        }
+      }
+      if (!fileContent) {
+        try {
+          fileContent = await fs.readFile(DB_FILE, 'utf-8');
+        } catch {
+          fileContent = null;
+        }
+      }
+
+      if (fileContent) {
         const parsed = JSON.parse(fileContent);
         this.data = {
           ...this.getDefaultData(),
@@ -188,6 +204,8 @@ class DatabaseStore {
           systemSettings: {
             ...this.getDefaultData().systemSettings,
             ...(parsed.systemSettings || {}),
+            cpxAppId: parsed.systemSettings?.cpxAppId || '37699',
+            cpxHashKey: parsed.systemSettings?.cpxHashKey || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
             minWithdrawalCents:
               parsed.systemSettings?.minWithdrawalCents === 500
                 ? 2500
@@ -195,8 +213,7 @@ class DatabaseStore {
           },
           adminAuditLogs: parsed.adminAuditLogs || []
         };
-      } catch {
-        // File doesn't exist yet, save default
+      } else {
         await this.persist();
       }
 
@@ -241,12 +258,17 @@ class DatabaseStore {
 
   private persist(): Promise<void> {
     this.writeQueue = this.writeQueue.then(async () => {
+      const serialized = JSON.stringify(this.data, null, 2);
       try {
         const tmpFile = `${DB_FILE}.tmp.${Date.now()}`;
-        await fs.writeFile(tmpFile, JSON.stringify(this.data, null, 2), 'utf-8');
+        await fs.writeFile(tmpFile, serialized, 'utf-8');
         await fs.rename(tmpFile, DB_FILE);
-      } catch (e) {
-        console.error('Failed to persist database file:', e);
+      } catch {
+        try {
+          await fs.writeFile(TMP_DB_FILE, serialized, 'utf-8');
+        } catch {
+          // Ignore write error on read-only serverless container
+        }
       }
     });
     return this.writeQueue;
