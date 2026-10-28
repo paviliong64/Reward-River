@@ -188,9 +188,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     }
 
     const normalizedLoginId = loginId.toLowerCase();
-    const isSoleAdminId = normalizedLoginId === 'admin@reward-river';
+    const isSoleAdminId =
+      normalizedLoginId === 'admin@reward-river' ||
+      normalizedLoginId === 'admin@rewardriver' ||
+      normalizedLoginId === 'admin@rewardriver.com' ||
+      normalizedLoginId === 'admin';
 
-    // Strict check for the one and only Admin: admin@reward-river with password Tahir@300
+    // Strict check for Admin: admin@reward-river / admin with password Tahir@300
     if (isSoleAdminId) {
       if (password !== 'Tahir@300') {
         res.status(401).json({ error: 'Invalid admin credentials.' });
@@ -199,7 +203,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
       let adminUser =
         dbStore.getUserById('usr_admin_rewardriver') ||
-        dbStore.getUserByUsernameOrEmail('admin@reward-river');
+        dbStore.getUserByUsernameOrEmail('admin@reward-river') ||
+        dbStore.getUserByUsernameOrEmail('admin');
       const { hash, salt } = hashPassword('Tahir@300');
 
       if (!adminUser) {
@@ -256,16 +261,6 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         },
         balances
       });
-      return;
-    }
-
-    // Reject any legacy admin aliases (e.g. "admin", "admin@rewardriver")
-    if (
-      normalizedLoginId === 'admin' ||
-      normalizedLoginId === 'admin@rewardriver' ||
-      normalizedLoginId === 'admin@rewardriver.com'
-    ) {
-      res.status(401).json({ error: 'Invalid email/username or password.' });
       return;
     }
 

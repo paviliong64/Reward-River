@@ -503,18 +503,13 @@ class DatabaseStore {
       try {
         const { error } = await sb.from('users').upsert({
           id: user.id,
+          username: user.username || user.displayName || user.email.split('@')[0],
           email: user.email,
           password_hash: user.passwordHash,
           salt: user.salt,
-          display_name: user.displayName || user.username || user.email.split('@')[0],
-          email_verified: user.emailVerified !== false,
           role: user.role || 'user',
-          external_opaque_id: user.externalOpaqueId,
           has_prompted_phone: user.hasPromptedPhone || false,
           phone_number: user.phoneNumber || user.whatsappNumber || null,
-          whatsapp_number: user.whatsappNumber || user.phoneNumber || null,
-          country_code: user.countryCode || null,
-          provider: user.provider || 'password',
           created_at: user.createdAt,
           updated_at: user.updatedAt
         });
@@ -537,18 +532,13 @@ class DatabaseStore {
       try {
         const { error } = await sb.from('users').upsert({
           id: updated.id,
+          username: updated.username || updated.displayName || updated.email.split('@')[0],
           email: updated.email,
           password_hash: updated.passwordHash,
           salt: updated.salt,
-          display_name: updated.displayName || updated.username || updated.email.split('@')[0],
-          email_verified: updated.emailVerified !== false,
           role: updated.role || 'user',
-          external_opaque_id: updated.externalOpaqueId,
           has_prompted_phone: updated.hasPromptedPhone || false,
           phone_number: updated.phoneNumber || updated.whatsappNumber || null,
-          whatsapp_number: updated.whatsappNumber || updated.phoneNumber || null,
-          country_code: updated.countryCode || null,
-          provider: updated.provider || 'password',
           created_at: updated.createdAt,
           updated_at: updated.updatedAt
         });
