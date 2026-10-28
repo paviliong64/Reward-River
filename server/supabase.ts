@@ -7,14 +7,14 @@ const defaultSupabaseUrl =
   process.env.SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.VITE_SUPABASE_URL ||
-  '';
+  'https://vwoskusxfzmnoawbrpnr.supabase.co';
 
 const defaultSupabaseServiceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
-  '';
+  'sb_publishable_HVjFoLz84HMQ3ONultKhSA_rrnOtIpZ';
 
 export const isServerSupabaseConfigured = Boolean(defaultSupabaseUrl && defaultSupabaseServiceKey);
 

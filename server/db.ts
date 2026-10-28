@@ -500,8 +500,8 @@ class DatabaseStore {
     await this.persist();
     const sb = this.getSupabaseClient();
     if (sb) {
-      sb.from('users')
-        .upsert({
+      try {
+        const { error } = await sb.from('users').upsert({
           id: user.id,
           email: user.email,
           password_hash: user.passwordHash,
@@ -517,10 +517,11 @@ class DatabaseStore {
           provider: user.provider || 'password',
           created_at: user.createdAt,
           updated_at: user.updatedAt
-        })
-        .then(({ error }) => {
-          if (error) console.warn('[Supabase Auto Sync] User upsert note:', error.message);
         });
+        if (error) console.warn('[Supabase Auto Sync] User upsert note:', error.message);
+      } catch (err) {
+        console.warn('[Supabase Auto Sync] User upsert error:', err);
+      }
     }
     return user;
   }
@@ -533,8 +534,8 @@ class DatabaseStore {
     const updated = this.data.users[idx];
     const sb = this.getSupabaseClient();
     if (sb) {
-      sb.from('users')
-        .upsert({
+      try {
+        const { error } = await sb.from('users').upsert({
           id: updated.id,
           email: updated.email,
           password_hash: updated.passwordHash,
@@ -550,10 +551,11 @@ class DatabaseStore {
           provider: updated.provider || 'password',
           created_at: updated.createdAt,
           updated_at: updated.updatedAt
-        })
-        .then(({ error }) => {
-          if (error) console.warn('[Supabase Auto Sync] User update note:', error.message);
         });
+        if (error) console.warn('[Supabase Auto Sync] User update note:', error.message);
+      } catch (err) {
+        console.warn('[Supabase Auto Sync] User update error:', err);
+      }
     }
     return updated;
   }
@@ -568,9 +570,13 @@ class DatabaseStore {
     await this.persist();
     const sb = this.getSupabaseClient();
     if (sb) {
-      sb.from('reward_ledger').delete().eq('user_id', userId).then(() => {});
-      sb.from('withdrawal_requests').delete().eq('user_id', userId).then(() => {});
-      sb.from('users').delete().eq('id', userId).then(() => {});
+      try {
+        await sb.from('reward_ledger').delete().eq('user_id', userId);
+        await sb.from('withdrawal_requests').delete().eq('user_id', userId);
+        await sb.from('users').delete().eq('id', userId);
+      } catch (err) {
+        console.warn('[Supabase Auto Sync] Delete user error:', err);
+      }
     }
     return true;
   }
