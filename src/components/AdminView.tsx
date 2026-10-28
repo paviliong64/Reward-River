@@ -93,27 +93,27 @@ export const AdminView: React.FC<AdminViewProps> = ({
     feeCentsErc20: 250,
     userSharePercent: 40,
     pointsPerUsdt: 10000,
-    surveyDisplayMode: 'hybrid',
+    surveyDisplayMode: 'points_only',
     cpxAppId: '37699',
     cpxHashKey: '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
     cpxIntegrationMode: 'hybrid_api',
     cpxMaxSurveys: 12,
     cpxThemeColor: '10b981',
-    cpxEnableFallback: true,
+    cpxEnableFallback: false,
     cpxVerifySignature: true,
     aoyApiKey: '',
     aoySecretKey: '',
     aoyBearerToken: '',
     aoyExchangeRate: 10000,
-    aoyEnableFallback: true,
+    aoyEnableFallback: false,
     aoyVerifySignature: true,
     maintenanceMode: false,
     defaultNetwork: 'TRC20',
     googleAnalyticsId: 'G-REWARDRIVER1',
     googleAnalyticsEnabled: true,
     metaTitle: 'Reward River - Real Opinions. Real Value.',
-    metaDescription: 'Discover available research surveys, share verified opinions, and earn rewards paid directly to your TRC-20 or ERC-20 USDT crypto wallet.',
-    metaKeywords: 'surveys, earn usdt, crypto rewards, cpx research, paid surveys, tether rewards',
+    metaDescription: 'Discover available research surveys, share verified opinions, and earn Points.',
+    metaKeywords: 'surveys, cpx research, paid surveys, market research, reward points',
     ogImageUrl: '/favicon.svg',
     googleSearchConsoleKey: '',
     sitemapEnabled: true,
@@ -964,6 +964,136 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </div>
               </div>
 
+              {/* Row 2B: Real Registered Users & Live Points Summary */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-blue-600" />
+                      <h2 className="text-sm font-bold text-slate-900">
+                        Real Registered Users &amp; Live Points ({usersList.length})
+                      </h2>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Live database accounts, exact user Points balance, completed surveys count, and your {activeAdminProfitPercent}% profit per user.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection('users')}
+                    className="text-xs font-bold text-blue-600 hover:underline self-start sm:self-auto"
+                  >
+                    Manage All Users &rarr;
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
+                        <th className="py-2.5 px-3">User / Account ID</th>
+                        <th className="py-2.5 px-3">Completed Surveys</th>
+                        <th className="py-2.5 px-3">User Real Points</th>
+                        <th className="py-2.5 px-3">User Share ({activeSharePercent}%)</th>
+                        <th className="py-2.5 px-3">Our Profit ({activeAdminProfitPercent}%)</th>
+                        <th className="py-2.5 px-3 text-right">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {usersList.map((u) => (
+                        <tr key={u.id} className="hover:bg-slate-50/60">
+                          <td className="py-2.5 px-3">
+                            <div className="font-bold text-slate-900">{u.displayName}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 font-mono font-bold text-[11px]">
+                              {u.completedSurveysCount} {u.completedSurveysCount === 1 ? 'Survey' : 'Surveys'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
+                            {(u.balances.availablePoints || 0).toLocaleString('en-US')} Pts
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-semibold text-slate-700">
+                            ${((u.balances.availableCents || 0) / 100).toFixed(2)} USDT
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">
+                            +${((u.balances.totalAdminProfitCents || 0) / 100).toFixed(2)} USDT
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedUserDetail(u)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Inspect</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Row 2C: Recent Real Survey & Task Completions */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <FileCheck2 className="w-4 h-4 text-emerald-600" />
+                    <h2 className="text-sm font-bold text-slate-900">Recent Real Survey &amp; Task Completions</h2>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Live ledger entries showing user Points credited and platform profit earned
+                  </p>
+                </div>
+
+                {overview?.recentLedger && overview.recentLedger.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
+                          <th className="py-2.5 px-3">User</th>
+                          <th className="py-2.5 px-3">Survey / Description</th>
+                          <th className="py-2.5 px-3">User Points Credited</th>
+                          <th className="py-2.5 px-3">Gross (100%)</th>
+                          <th className="py-2.5 px-3">Our Profit ({activeAdminProfitPercent}%)</th>
+                          <th className="py-2.5 px-3 text-right">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {overview.recentLedger.map((entry: any) => (
+                          <tr key={entry.id} className="hover:bg-slate-50/60">
+                            <td className="py-2.5 px-3">
+                              <div className="font-bold text-slate-900">{entry.userDisplayName}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{entry.userEmail}</div>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-700 font-medium">{entry.description}</td>
+                            <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
+                              +{((entry.points || 0)).toLocaleString('en-US')} Pts
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-700">
+                              ${((entry.grossCents || 0) / 100).toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">
+                              +${((entry.adminProfitCents || 0) / 100).toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-[11px] text-slate-400 font-mono">
+                              {new Date(entry.createdAt).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="py-6 text-center text-xs text-slate-400">
+                    No survey completions recorded yet. When a user completes a survey, their Points and your profit appear here immediately.
+                  </div>
+                )}
+              </div>
+
               {/* Row 3: Quick Platform Actions */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                 <h2 className="text-sm font-bold text-slate-900 mb-4">Quick Platform Actions</h2>
@@ -1269,15 +1399,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         </span>
                         <button
                           type="button"
-                          onClick={() => (isCpx ? handleSimulateCpxPostback(100) : handleSimulateAoyPostback())}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors"
+                          onClick={() => setActiveSection(isCpx ? 'cpx_manager' : 'aoy_manager')}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
                         >
-                          <Zap className="w-3.5 h-3.5" />
-                          <span>
-                            {isCpx
-                              ? `Test +$1.00 CPX ($${(activeSharePercent / 100).toFixed(2)} User / $${(activeAdminProfitPercent / 100).toFixed(2)} Profit)`
-                              : `Test +$0.50 AoyTasks ($${(activeSharePercent / 200).toFixed(2)} User / $${(activeAdminProfitPercent / 200).toFixed(2)} Profit)`}
-                          </span>
+                          <Settings className="w-3.5 h-3.5" />
+                          <span>{isCpx ? 'CPX Live Settings' : 'AoyTasks Live Settings'}</span>
                         </button>
                       </div>
                     </div>
@@ -1388,7 +1514,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   if (filteredItems.length === 0) {
                     return (
                       <div className="py-10 text-center text-xs text-slate-400">
-                        No transactions recorded for this partner filter yet. Click a Test button above to simulate a live completion.
+                        No live transactions recorded for this partner filter yet. Real completed surveys and tasks will appear here automatically.
                       </div>
                     );
                   }
@@ -1779,66 +1905,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </form>
               )}
 
-              {/* Live CPX Postback Simulator */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    CPX Survey Postback Simulator
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Test how a gross CPX survey payout splits into {activeSharePercent}% User Points/USDT and {activeAdminProfitPercent}% Hidden Admin Profit.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Gross CPX Payout (Cents, 100 = $1.00)
-                    </label>
-                    <input
-                      type="number"
-                      value={testAmountCents}
-                      onChange={(e) => setTestAmountCents(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold"
-                    />
-                    <p className="text-[11px] text-emerald-700 font-semibold mt-1">
-                      User gets +{Math.round((testAmountCents / 100) * activePointsPerUsdt).toLocaleString('en-US')} Pts (${((testAmountCents * (activeSharePercent / 100)) / 100).toFixed(2)} USDT) • Admin Profit: ${((testAmountCents * (activeAdminProfitPercent / 100)) / 100).toFixed(2)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Offer ID</label>
-                    <input
-                      type="text"
-                      value={testOfferId}
-                      onChange={(e) => setTestOfferId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Postback Status</label>
-                    <select
-                      value={testStatus}
-                      onChange={(e) => setTestStatus(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
-                    >
-                      <option value={1}>Status 1 — Completed (Credit)</option>
-                      <option value={3}>Status 3 — Reversal / Chargeback</option>
-                    </select>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleSimulateCpxPostback()}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Trigger Simulated Postback</span>
-                </button>
-              </div>
-
               {/* Step-by-Step CPX Research Integration Guide */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
                 <div>
@@ -2059,78 +2125,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </form>
               )}
 
-              {/* Live AoyTasks S2S Postback Simulator */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    AoyTasks S2S Postback Simulator (White-Label Credit Test)
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Simulate a completed PTC or Shortlink callback. The user receives {activeSharePercent}% in Points &amp; USDT under <strong>Reward River</strong> branding while you keep {activeAdminProfitPercent}% hidden profit.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Gross Payout (Cents, 50 = $0.50)
-                    </label>
-                    <input
-                      type="number"
-                      value={aoyTestGrossCents}
-                      onChange={(e) => setAoyTestGrossCents(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold"
-                    />
-                    <p className="text-[11px] text-emerald-700 font-semibold mt-1">
-                      User: +{Math.round((aoyTestGrossCents / 100) * activePointsPerUsdt).toLocaleString('en-US')} Pts (${((aoyTestGrossCents * (activeSharePercent / 100)) / 100).toFixed(2)}) • Profit: ${((aoyTestGrossCents * (activeAdminProfitPercent / 100)) / 100).toFixed(2)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Task Title (White-Labeled)</label>
-                    <input
-                      type="text"
-                      value={aoyTestOfferName}
-                      onChange={(e) => setAoyTestOfferName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Offer Type</label>
-                    <select
-                      value={aoyTestOfferType}
-                      onChange={(e) => setAoyTestOfferType(e.target.value as 'ptc' | 'shortlink')}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
-                    >
-                      <option value="ptc">PTC (Sponsored Visit)</option>
-                      <option value="shortlink">Shortlink (Express Link)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Postback Status</label>
-                    <select
-                      value={aoyTestStatus}
-                      onChange={(e) => setAoyTestStatus(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
-                    >
-                      <option value={1}>Status 1 — Credit ("ok")</option>
-                      <option value={2}>Status 2 — Chargeback ("ok")</option>
-                    </select>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSimulateAoyPostback}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Simulate AoyTasks S2S Postback</span>
-                </button>
-              </div>
-
               {/* Step-by-Step AoyTasks (aoyco.in) White-Label Integration Guide */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
                 <div>
@@ -2324,7 +2318,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       <tr className="border-b border-slate-100 text-[11px] font-bold uppercase text-slate-400 bg-slate-50/50">
                         <th className="py-3.5 px-4">Member</th>
                         <th className="py-3.5 px-4">WhatsApp / Country</th>
-                        <th className="py-3.5 px-4">Available Points & USDT</th>
+                        <th className="py-3.5 px-4">Completed Surveys</th>
+                        <th className="py-3.5 px-4">Available Points &amp; USDT</th>
                         <th className="py-3.5 px-4">Your Hidden Profit</th>
                         <th className="py-3.5 px-4 text-right">Details</th>
                       </tr>
@@ -2337,6 +2332,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             <td className="py-3.5 px-4">
                               <div className="font-bold text-slate-900">{u.displayName}</div>
                               <div className="text-[11px] text-slate-400">{u.email}</div>
+                              {u.externalOpaqueId && (
+                                <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                  ID: {u.externalOpaqueId}
+                                </div>
+                              )}
                             </td>
                             <td className="py-3.5 px-4">
                               {cleanPhone ? (
@@ -2357,6 +2357,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                   {u.countryCode}
                                 </span>
                               )}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 font-mono font-bold text-xs">
+                                {u.completedSurveysCount} {u.completedSurveysCount === 1 ? 'Survey' : 'Surveys'}
+                              </span>
                             </td>
                             <td className="py-3.5 px-4 font-mono">
                               <div className="font-bold text-emerald-600">
@@ -2577,43 +2582,69 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                 </div>
 
-                {/* Device & Country Breakdown (4 cols) */}
+                {/* Account Breakdown & Country Breakdown (4 cols) */}
                 <div className="lg:col-span-4 space-y-6">
-                  {/* Device Analytics */}
+                  {/* Real Account Status Breakdown */}
                   <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
                     <div className="pb-3 border-b border-slate-100">
-                      <h2 className="text-base font-bold text-slate-900">Device Analytics</h2>
-                      <p className="text-xs text-slate-500 mt-0.5">Traffic &amp; completed survey channels</p>
+                      <h2 className="text-base font-bold text-slate-900">Account Verification Breakdown</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Live metrics from registered database accounts</p>
                     </div>
 
                     <div className="space-y-3">
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                          <span className="flex items-center gap-1.5"><Smartphone className="w-3.5 h-3.5 text-blue-600" /> Mobile Devices</span>
-                          <span>60%</span>
+                          <span className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Email Verified Accounts
+                          </span>
+                          <span className="font-mono">{userAnalytics?.emailVerifiedRate ?? 0}%</span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div className="bg-blue-600 h-2 rounded-full" style={{ width: '60%' }} />
+                          <div
+                            className="bg-emerald-600 h-2 rounded-full"
+                            style={{ width: `${userAnalytics?.emailVerifiedRate ?? 0}%` }}
+                          />
                         </div>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                          <span className="flex items-center gap-1.5"><Monitor className="w-3.5 h-3.5 text-emerald-600" /> Desktop &amp; Laptop</span>
-                          <span>35%</span>
+                          <span className="flex items-center gap-1.5">
+                            <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> Active Survey Earners
+                          </span>
+                          <span className="font-mono">
+                            {userAnalytics?.totalUsers
+                              ? Math.round(((userAnalytics.activeEarners || 0) / userAnalytics.totalUsers) * 100)
+                              : 0}
+                            %
+                          </span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div className="bg-emerald-600 h-2 rounded-full" style={{ width: '35%' }} />
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{
+                              width: `${
+                                userAnalytics?.totalUsers
+                                  ? Math.round(((userAnalytics.activeEarners || 0) / userAnalytics.totalUsers) * 100)
+                                  : 0
+                              }%`
+                            }}
+                          />
                         </div>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                          <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5 text-violet-600" /> Tablet &amp; Other</span>
-                          <span>5%</span>
+                          <span className="flex items-center gap-1.5">
+                            <Smartphone className="w-3.5 h-3.5 text-violet-600" /> Phone / WhatsApp Linked
+                          </span>
+                          <span className="font-mono">{userAnalytics?.phoneAttachedRate ?? 0}%</span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div className="bg-violet-600 h-2 rounded-full" style={{ width: '5%' }} />
+                          <div
+                            className="bg-violet-600 h-2 rounded-full"
+                            style={{ width: `${userAnalytics?.phoneAttachedRate ?? 0}%` }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -2623,25 +2654,25 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
                     <div className="pb-3 border-b border-slate-100">
                       <h2 className="text-base font-bold text-slate-900">Geographic Markets</h2>
-                      <p className="text-xs text-slate-500 mt-0.5">Top active member regions</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Top active member regions from real accounts</p>
                     </div>
 
-                    <div className="space-y-2.5">
-                      {(userAnalytics?.topCountries || [
-                        { code: 'US', name: 'United States', percentage: 38 },
-                        { code: 'PK', name: 'Pakistan', percentage: 24 },
-                        { code: 'IN', name: 'India', percentage: 16 },
-                        { code: 'GB', name: 'United Kingdom', percentage: 12 },
-                        { code: 'OTHER', name: 'Other Countries', percentage: 10 }
-                      ]).map((c: any) => (
-                        <div key={c.code} className="flex items-center justify-between text-xs">
-                          <span className="font-medium text-slate-700">{c.name}</span>
-                          <span className="font-mono font-bold text-slate-900 bg-slate-50 px-2 py-0.5 rounded border border-slate-200/70">
-                            {c.percentage}%
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    {userAnalytics?.topCountries && userAnalytics.topCountries.length > 0 ? (
+                      <div className="space-y-2.5">
+                        {userAnalytics.topCountries.map((c: any) => (
+                          <div key={c.code} className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-slate-700">{c.name} ({c.count})</span>
+                            <span className="font-mono font-bold text-slate-900 bg-slate-50 px-2 py-0.5 rounded border border-slate-200/70">
+                              {c.percentage}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-4 text-center text-xs text-slate-400">
+                        No country data recorded yet.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2875,32 +2906,39 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Real-time Traffic Simulator Card */}
+                  {/* Live Platform Telemetry Overview */}
                   <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3">
                     <div className="flex items-center justify-between text-xs">
                       <span className="flex items-center gap-2 font-bold uppercase tracking-wider text-blue-400">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        GA4 Real-Time Traffic Overview
+                        GA4 &amp; Live Database Metrics
                       </span>
-                      <span className="font-mono text-slate-400">Past 30 Minutes</span>
+                      <span className="font-mono text-slate-400">Real-Time Store</span>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
                       <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Active Visitors</div>
-                        <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">14</div>
+                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Registered Accounts</div>
+                        <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">
+                          {overview?.totalUsers ?? usersList.length ?? 0}
+                        </div>
                       </div>
                       <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Avg Engagement</div>
-                        <div className="text-xl font-bold font-mono text-white mt-0.5">4m 32s</div>
+                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Completed Surveys</div>
+                        <div className="text-xl font-bold font-mono text-white mt-0.5">
+                          {overview?.completedSurveysCount ?? 0}
+                        </div>
                       </div>
                       <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Top Source</div>
-                        <div className="text-xl font-bold text-sky-400 mt-0.5">Google</div>
+                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Points Credited</div>
+                        <div className="text-xl font-bold font-mono text-sky-400 mt-0.5">
+                          {((overview?.totalRewardsCreditedPoints || 0)).toLocaleString('en-US')}
+                        </div>
                       </div>
                       <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Visitor Conversion</div>
-                        <div className="text-xl font-bold font-mono text-violet-400 mt-0.5">18.4%</div>
+                        <div className="text-[10px] text-slate-400 uppercase font-semibold">GA4 Status</div>
+                        <div className="text-xl font-bold font-mono text-violet-400 mt-0.5">
+                          {settings.googleAnalyticsEnabled ? 'Active' : 'Paused'}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3348,6 +3386,38 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   {selectedUserDetail.externalOpaqueId}
                 </div>
               </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <div className="text-xs font-bold text-slate-800">
+                Completed Surveys &amp; Points History ({selectedUserDetail.recentEntries?.length || 0})
+              </div>
+              {selectedUserDetail.recentEntries && selectedUserDetail.recentEntries.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 divide-y divide-slate-100 text-xs">
+                  {selectedUserDetail.recentEntries.map((item) => (
+                    <div key={item.id} className="p-2.5 flex items-center justify-between gap-2 bg-slate-50/40">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-800 truncate">{item.description}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {new Date(item.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 font-mono">
+                        <div className="font-extrabold text-emerald-700">
+                          +{(item.points || 0).toLocaleString('en-US')} Pts
+                        </div>
+                        <div className="text-[10px] text-indigo-600 font-bold">
+                          Profit: +${((item.adminProfitCents || 0) / 100).toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70 text-center text-xs text-slate-400">
+                  No completed surveys recorded for this user yet.
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end pt-2">

@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { LedgerEntry, WithdrawalRecord, calculateUserBalances, isDuplicateTransaction } from '../src/utils/ledger';
-import { serverSupabase } from './supabase';
+import { usdCentsToPoints } from '../src/utils/usdt';
+import { getActiveServerSupabase } from './supabase';
 
 export interface UserAccount {
   id: string;
@@ -141,27 +142,27 @@ class DatabaseStore {
         feeCentsErc20: 250, // $2.50 USDT fee for ERC-20
         userSharePercent: 40, // Default 40% user share (60% hidden admin profit)
         pointsPerUsdt: 10000, // 10,000 Points = 1.00 USDT
-        surveyDisplayMode: 'hybrid',
+        surveyDisplayMode: 'points_only',
         cpxAppId: process.env.CPX_APP_ID || '37699',
         cpxHashKey: process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
         cpxIntegrationMode: 'hybrid_api',
         cpxMaxSurveys: 12,
         cpxThemeColor: '10b981',
-        cpxEnableFallback: true,
+        cpxEnableFallback: false,
         cpxVerifySignature: true,
         aoyApiKey: process.env.AOY_API_KEY || '',
         aoySecretKey: process.env.AOY_SECRET_KEY || '',
         aoyBearerToken: process.env.AOY_BEARER_TOKEN || '',
         aoyExchangeRate: 10000,
-        aoyEnableFallback: true,
+        aoyEnableFallback: false,
         aoyVerifySignature: true,
         maintenanceMode: false,
         defaultNetwork: 'TRC20',
         googleAnalyticsId: process.env.GOOGLE_ANALYTICS_ID || 'G-REWARDRIVER1',
         googleAnalyticsEnabled: true,
         metaTitle: 'Reward River - Real Opinions. Real Value.',
-        metaDescription: 'Discover available research surveys, share verified opinions, and earn rewards paid directly to your TRC-20 or ERC-20 USDT crypto wallet.',
-        metaKeywords: 'surveys, earn usdt, crypto rewards, cpx research, paid surveys, tether rewards',
+        metaDescription: 'Discover available research surveys, share verified opinions, and earn Points.',
+        metaKeywords: 'surveys, cpx research, paid surveys, market research, reward points',
         ogImageUrl: '/favicon.svg',
         googleSearchConsoleKey: '',
         sitemapEnabled: true,
@@ -194,18 +195,31 @@ class DatabaseStore {
 
       if (fileContent) {
         const parsed = JSON.parse(fileContent);
+        const rawCpxHash = String(parsed.systemSettings?.cpxHashKey || '').trim();
+        const validCpxHash =
+          rawCpxHash && !rawCpxHash.startsWith('eyJ')
+            ? rawCpxHash
+            : '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
+
+        const isUnverifiedSelfClaim = (txId?: string | null) => {
+          const clean = String(txId || '').trim().toLowerCase();
+          return clean.startsWith('cpx_survey_') || clean.startsWith('sim_cpx_');
+        };
+
         this.data = {
           ...this.getDefaultData(),
           ...parsed,
           users: parsed.users || this.getDefaultData().users,
-          rewardLedger: parsed.rewardLedger || [],
+          rewardLedger: (parsed.rewardLedger || []).filter(
+            (l: LedgerEntry) => !isUnverifiedSelfClaim(l?.providerTxId)
+          ),
           withdrawalRequests: parsed.withdrawalRequests || [],
           withdrawalEvents: parsed.withdrawalEvents || [],
           systemSettings: {
             ...this.getDefaultData().systemSettings,
             ...(parsed.systemSettings || {}),
             cpxAppId: parsed.systemSettings?.cpxAppId || '37699',
-            cpxHashKey: parsed.systemSettings?.cpxHashKey || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
+            cpxHashKey: validCpxHash,
             minWithdrawalCents:
               parsed.systemSettings?.minWithdrawalCents === 500
                 ? 2500
@@ -217,42 +231,173 @@ class DatabaseStore {
         await this.persist();
       }
 
-      if (serverSupabase) {
-        try {
-          const { data: suSettings } = await serverSupabase
-            .from('system_settings')
-            .select('*')
-            .eq('id', 1)
-            .single();
-
-          if (suSettings) {
-            this.data.systemSettings = {
-              ...this.data.systemSettings,
-              minWithdrawalCents: suSettings.min_withdrawal_cents ?? this.data.systemSettings.minWithdrawalCents,
-              maxWithdrawalCents: suSettings.max_withdrawal_cents ?? this.data.systemSettings.maxWithdrawalCents,
-              feeCentsTrc20: suSettings.fee_cents_trc20 ?? this.data.systemSettings.feeCentsTrc20,
-              feeCentsErc20: suSettings.fee_cents_erc20 ?? this.data.systemSettings.feeCentsErc20,
-              userSharePercent: suSettings.user_share_percent ?? this.data.systemSettings.userSharePercent,
-              pointsPerUsdt: suSettings.points_per_usdt ?? this.data.systemSettings.pointsPerUsdt,
-              surveyDisplayMode: suSettings.survey_display_mode ?? this.data.systemSettings.surveyDisplayMode,
-              cpxAppId: suSettings.cpx_app_id || this.data.systemSettings.cpxAppId,
-              cpxHashKey: suSettings.cpx_hash_key || this.data.systemSettings.cpxHashKey,
-              aoyApiKey: suSettings.aoy_api_key || this.data.systemSettings.aoyApiKey,
-              aoySecretKey: suSettings.aoy_secret_key || this.data.systemSettings.aoySecretKey,
-              aoyBearerToken: suSettings.aoy_bearer_token || this.data.systemSettings.aoyBearerToken,
-              metaTitle: suSettings.meta_title || this.data.systemSettings.metaTitle,
-              metaDescription: suSettings.meta_description || this.data.systemSettings.metaDescription
-            };
-          }
-        } catch {
-          // Supabase table optional / not ready yet
-        }
-      }
-
+      await this.syncFromSupabase();
       this.initialized = true;
     } catch (e) {
       console.error('Failed to initialize database:', e);
       this.initialized = true;
+    }
+  }
+
+  private getSupabaseClient() {
+    const s = this.data?.systemSettings;
+    return getActiveServerSupabase(s?.supabaseUrl, s?.supabaseServiceKey || s?.supabaseAnonKey);
+  }
+
+  async syncFromSupabase(): Promise<void> {
+    const sb = this.getSupabaseClient();
+    if (!sb) return;
+
+    try {
+      const [{ data: sbUsers }, { data: sbLedger }] = await Promise.all([
+        sb.from('users').select('*'),
+        sb.from('reward_ledger').select('*')
+      ]);
+
+      let changed = false;
+
+      if (Array.isArray(sbUsers)) {
+        for (const row of sbUsers) {
+          if (!row || !row.id || !row.email) continue;
+          const emailLower = String(row.email).trim().toLowerCase();
+          // Skip legacy admin aliases
+          if (emailLower === 'admin@rewardriver.com' || emailLower === 'admin@rewardriver') continue;
+
+          const isSoleAdmin =
+            row.id === 'usr_admin_rewardriver' || emailLower === 'admin@reward-river';
+          const effectiveRole: 'user' | 'admin' = isSoleAdmin ? 'admin' : 'user';
+          const display = String(row.display_name || emailLower.split('@')[0]).replace(/\s*\(Super Admin\)/i, '').trim();
+          const cleanExtId =
+            row.external_opaque_id && !String(row.external_opaque_id).includes('superadmin')
+              ? String(row.external_opaque_id)
+              : `rr_cpx_${String(row.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+
+          const existingIdx = this.data.users.findIndex(
+            u => u.id === row.id || u.email.toLowerCase() === emailLower
+          );
+
+          if (existingIdx === -1) {
+            this.data.users.push({
+              id: String(row.id),
+              username: display,
+              email: emailLower,
+              passwordHash: String(row.password_hash || ''),
+              salt: String(row.salt || ''),
+              displayName: display,
+              emailVerified: row.email_verified !== false,
+              role: effectiveRole,
+              externalOpaqueId: cleanExtId,
+              createdAt: row.created_at || new Date().toISOString(),
+              updatedAt: row.updated_at || new Date().toISOString(),
+              phoneNumber: row.phone_number || undefined,
+              whatsappNumber: row.whatsapp_number || row.phone_number || undefined,
+              countryCode: row.country_code || undefined,
+              provider: row.provider || 'password',
+              hasPromptedPhone: Boolean(row.has_prompted_phone)
+            });
+            changed = true;
+          } else {
+            const current = this.data.users[existingIdx];
+            if (current.role !== effectiveRole) {
+              this.data.users[existingIdx].role = effectiveRole;
+              changed = true;
+            }
+            if (!current.countryCode && row.country_code) {
+              this.data.users[existingIdx].countryCode = row.country_code;
+              changed = true;
+            }
+          }
+        }
+      }
+
+      const isUnverifiedSelfClaim = (txId?: string | null) => {
+        const clean = String(txId || '').trim().toLowerCase();
+        return clean.startsWith('cpx_survey_') || clean.startsWith('sim_cpx_');
+      };
+
+      const beforeLen = this.data.rewardLedger.length;
+      this.data.rewardLedger = this.data.rewardLedger.filter(
+        l => !isUnverifiedSelfClaim(l.providerTxId)
+      );
+      if (this.data.rewardLedger.length !== beforeLen) {
+        changed = true;
+      }
+
+      if (Array.isArray(sbLedger)) {
+        const share = this.data.systemSettings?.userSharePercent || 40;
+        const ptsRate = this.data.systemSettings?.pointsPerUsdt || 10000;
+        for (const row of sbLedger) {
+          if (!row || !row.id || !row.user_id) continue;
+          if (isUnverifiedSelfClaim(row.provider_tx_id)) {
+            await sb.from('reward_ledger').delete().eq('id', row.id);
+            changed = true;
+            continue;
+          }
+          const exists = this.data.rewardLedger.some(
+            l => l.id === row.id || (row.provider_tx_id && l.providerTxId === row.provider_tx_id)
+          );
+          if (!exists) {
+            const amountCents = Math.max(0, Number(row.amount_cents) || 0);
+            const desc = String(row.description || '');
+            // Parse exact points from description if present (e.g. "+3,200 Pts" or "(8,000 Points)")
+            const ptsMatch = desc.match(/\+?([\d,]+)\s*(?:Pts|Points)/i);
+            const parsedPts = ptsMatch ? Number(ptsMatch[1].replace(/,/g, '')) : NaN;
+            const points =
+              !isNaN(parsedPts) && parsedPts > 0
+                ? Math.round(parsedPts)
+                : usdCentsToPoints(amountCents, ptsRate, share);
+            const grossCents =
+              points > 0
+                ? Math.max(amountCents, Math.round((points / ptsRate) * 100))
+                : Math.round(amountCents / (share / 100));
+            const adminProfitCents = Math.max(0, grossCents - amountCents);
+
+            this.data.rewardLedger.push({
+              id: String(row.id),
+              userId: String(row.user_id),
+              providerTxId: String(row.provider_tx_id || row.id),
+              amountCents,
+              points,
+              grossCents,
+              adminProfitCents,
+              appliedSharePercent: share,
+              entryType: row.entry_type === 'reversal' ? 'reversal' : row.entry_type === 'debit' ? 'debit' : 'credit',
+              status: row.status === 'pending' ? 'pending' : row.status === 'reversed' ? 'reversed' : 'confirmed',
+              description: desc || `Survey Completion (+${points.toLocaleString('en-US')} Pts)`,
+              createdAt: row.created_at || new Date().toISOString(),
+              processedAt: row.created_at || new Date().toISOString()
+            });
+            changed = true;
+          }
+        }
+
+        for (const localEntry of this.data.rewardLedger) {
+          if (isUnverifiedSelfClaim(localEntry.providerTxId)) continue;
+          const inSb = sbLedger.some(
+            r => r.id === localEntry.id || (r.provider_tx_id && r.provider_tx_id === localEntry.providerTxId)
+          );
+          if (!inSb) {
+            await sb.from('reward_ledger').upsert({
+              id: localEntry.id,
+              user_id: localEntry.userId,
+              provider_tx_id: localEntry.providerTxId,
+              amount_cents: localEntry.amountCents,
+              entry_type: localEntry.entryType,
+              status: localEntry.status,
+              description:
+                localEntry.description ||
+                `Survey Completion (+${(localEntry.points || 0).toLocaleString('en-US')} Pts)`,
+              created_at: localEntry.createdAt
+            });
+          }
+        }
+      }
+
+      if (changed) {
+        await this.persist();
+      }
+    } catch (err) {
+      console.warn('[Supabase Sync Note]:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -294,7 +439,50 @@ class DatabaseStore {
   }
 
   getUserByExternalId(extId: string): UserAccount | undefined {
-    return this.data.users.find(u => u.externalOpaqueId === extId);
+    const raw = String(extId || '').trim();
+    if (!raw) return undefined;
+
+    // 1. Exact externalOpaqueId or id match
+    const exact = this.data.users.find(
+      u => u.externalOpaqueId === raw || u.id === raw
+    );
+    if (exact) return exact;
+
+    // 2. Strip rr_cpx_ or rr_ prefixes and check id / username / email
+    const stripped = raw.replace(/^rr_(cpx_)?/i, '');
+    const byStripped = this.data.users.find(
+      u =>
+        u.id === stripped ||
+        u.externalOpaqueId === `rr_cpx_${stripped}` ||
+        (u.username && u.username.toLowerCase() === raw.toLowerCase()) ||
+        (u.username && u.username.toLowerCase() === stripped.toLowerCase()) ||
+        u.email.toLowerCase() === raw.toLowerCase()
+    );
+    if (byStripped) return byStripped;
+
+    // 3. Alphanumeric normalized comparison
+    const cleanTarget = raw.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const cleanStripped = stripped.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const byClean = this.data.users.find(u => {
+      const cleanId = u.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const cleanExt = (u.externalOpaqueId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      return (
+        (cleanTarget && (cleanId === cleanTarget || cleanExt === cleanTarget)) ||
+        (cleanStripped && (cleanId === cleanStripped || cleanExt === cleanStripped))
+      );
+    });
+    if (byClean) return byClean;
+
+    // 4. Fallback if CPX sent generic guest/member placeholder: credit the most recently active non-admin user
+    if (raw === 'member' || raw === 'rr_member_1' || raw.startsWith('rr_guest')) {
+      const nonAdminUsers = this.data.users.filter(u => u.role !== 'admin');
+      if (nonAdminUsers.length > 0) {
+        return nonAdminUsers[nonAdminUsers.length - 1];
+      }
+      return this.data.users[0];
+    }
+
+    return undefined;
   }
 
   getUserByAoySubId(subId: string): UserAccount | undefined {
@@ -310,18 +498,23 @@ class DatabaseStore {
   async createUser(user: UserAccount): Promise<UserAccount> {
     this.data.users.push(user);
     await this.persist();
-    if (serverSupabase) {
-      serverSupabase
-        .from('users')
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      sb.from('users')
         .upsert({
           id: user.id,
-          username: user.username || user.email.split('@')[0],
           email: user.email,
           password_hash: user.passwordHash,
           salt: user.salt,
+          display_name: user.displayName || user.username || user.email.split('@')[0],
+          email_verified: user.emailVerified !== false,
           role: user.role || 'user',
+          external_opaque_id: user.externalOpaqueId,
           has_prompted_phone: user.hasPromptedPhone || false,
           phone_number: user.phoneNumber || user.whatsappNumber || null,
+          whatsapp_number: user.whatsappNumber || user.phoneNumber || null,
+          country_code: user.countryCode || null,
+          provider: user.provider || 'password',
           created_at: user.createdAt,
           updated_at: user.updatedAt
         })
@@ -337,7 +530,32 @@ class DatabaseStore {
     if (idx === -1) return null;
     this.data.users[idx] = { ...this.data.users[idx], ...updates, updatedAt: new Date().toISOString() };
     await this.persist();
-    return this.data.users[idx];
+    const updated = this.data.users[idx];
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      sb.from('users')
+        .upsert({
+          id: updated.id,
+          email: updated.email,
+          password_hash: updated.passwordHash,
+          salt: updated.salt,
+          display_name: updated.displayName || updated.username || updated.email.split('@')[0],
+          email_verified: updated.emailVerified !== false,
+          role: updated.role || 'user',
+          external_opaque_id: updated.externalOpaqueId,
+          has_prompted_phone: updated.hasPromptedPhone || false,
+          phone_number: updated.phoneNumber || updated.whatsappNumber || null,
+          whatsapp_number: updated.whatsappNumber || updated.phoneNumber || null,
+          country_code: updated.countryCode || null,
+          provider: updated.provider || 'password',
+          created_at: updated.createdAt,
+          updated_at: updated.updatedAt
+        })
+        .then(({ error }) => {
+          if (error) console.warn('[Supabase Auto Sync] User update note:', error.message);
+        });
+    }
+    return updated;
   }
 
   async deleteUser(userId: string): Promise<boolean> {
@@ -348,6 +566,12 @@ class DatabaseStore {
     this.data.rewardLedger = this.data.rewardLedger.filter(l => l.userId !== userId);
     this.data.withdrawalRequests = this.data.withdrawalRequests.filter(w => w.userId !== userId);
     await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      sb.from('reward_ledger').delete().eq('user_id', userId).then(() => {});
+      sb.from('withdrawal_requests').delete().eq('user_id', userId).then(() => {});
+      sb.from('users').delete().eq('id', userId).then(() => {});
+    }
     return true;
   }
 
@@ -358,15 +582,18 @@ class DatabaseStore {
   getAllUsersWithDetails() {
     return this.data.users.map(({ passwordHash, salt, ...user }) => {
       const balances = this.getUserBalances(user.id);
-      const userLedger = this.data.rewardLedger.filter(l => l.userId === user.id);
+      const userLedger = this.data.rewardLedger
+        .filter(l => l.userId === user.id)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const completedSurveysCount = userLedger.filter(l => l.entryType === 'credit' && l.status === 'confirmed').length;
       const userWithdrawals = this.data.withdrawalRequests.filter(w => w.userId === user.id);
-      
+
       return {
         ...user,
         balances,
         completedSurveysCount,
         totalTransactionsCount: userLedger.length + userWithdrawals.length,
+        recentEntries: userLedger.slice(0, 15),
         lastActiveAt: user.updatedAt || user.createdAt
       };
     });
@@ -400,6 +627,25 @@ class DatabaseStore {
 
     this.data.rewardLedger.push(entry);
     await this.persist();
+
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('reward_ledger').upsert({
+          id: entry.id,
+          user_id: entry.userId,
+          provider_tx_id: entry.providerTxId,
+          amount_cents: entry.amountCents,
+          entry_type: entry.entryType,
+          status: entry.status,
+          description: entry.description || `Survey Completion (+${(entry.points || 0).toLocaleString('en-US')} Pts)`,
+          created_at: entry.createdAt
+        });
+      } catch (e) {
+        console.warn('[Supabase Auto Sync] Ledger upsert note:', e);
+      }
+    }
+
     return { success: true, entry };
   }
 
@@ -496,25 +742,20 @@ class DatabaseStore {
     });
     await this.persist();
 
-    if (serverSupabase) {
-      serverSupabase
-        .from('system_settings')
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      sb.from('system_settings')
         .upsert({
-          id: 1,
+          id: 'global',
           min_withdrawal_cents: this.data.systemSettings.minWithdrawalCents,
           max_withdrawal_cents: this.data.systemSettings.maxWithdrawalCents,
           fee_cents_trc20: this.data.systemSettings.feeCentsTrc20,
           fee_cents_erc20: this.data.systemSettings.feeCentsErc20,
-          user_share_percent: this.data.systemSettings.userSharePercent,
-          points_per_usdt: this.data.systemSettings.pointsPerUsdt,
-          survey_display_mode: this.data.systemSettings.surveyDisplayMode || 'hybrid',
-          cpx_app_id: this.data.systemSettings.cpxAppId,
-          cpx_hash_key: this.data.systemSettings.cpxHashKey,
-          aoy_api_key: this.data.systemSettings.aoyApiKey,
-          aoy_secret_key: this.data.systemSettings.aoySecretKey,
-          aoy_bearer_token: this.data.systemSettings.aoyBearerToken,
-          meta_title: this.data.systemSettings.metaTitle,
-          meta_description: this.data.systemSettings.metaDescription,
+          points_rate_per_usd: this.data.systemSettings.pointsPerUsdt,
+          default_user_share_percent: this.data.systemSettings.userSharePercent,
+          default_platform_share_percent: Math.max(0, 100 - (this.data.systemSettings.userSharePercent || 40)),
+          maintenance_mode: this.data.systemSettings.maintenanceMode,
+          default_network: this.data.systemSettings.defaultNetwork,
           updated_at: this.data.systemSettings.updatedAt
         })
         .then(({ error }) => {

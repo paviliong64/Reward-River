@@ -225,7 +225,10 @@ export function buildPartnerAccountingReport(
       typeof entry.adminProfitCents === 'number'
         ? entry.adminProfitCents
         : Math.max(0, gross - entry.amountCents);
-    const points = Math.round((gross / 100) * safePointsPerUsdt);
+    const points =
+      typeof entry.points === 'number' && !isNaN(entry.points) && entry.points > 0
+        ? Math.round(entry.points)
+        : Math.round((gross / 100) * safePointsPerUsdt);
 
     const bucket = accumulators[classification.partnerId];
 

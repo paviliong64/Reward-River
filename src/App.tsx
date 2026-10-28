@@ -34,6 +34,33 @@ export default function App() {
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'signup'>('signin');
   const [activeArticle, setActiveArticle] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('rr_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch {
+      // ignore storage errors
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    try {
+      localStorage.setItem('rr_theme', theme);
+    } catch {
+      // ignore storage errors
+    }
+  }, [theme]);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   // Data states
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -81,9 +108,9 @@ export default function App() {
   }, []);
 
   // Fetch user data (profile & balance)
-  const fetchUserData = useCallback(async (token?: string) => {
+  const fetchUserData = useCallback(async (token?: string): Promise<User | null> => {
     const activeToken = token || getAuthToken();
-    if (!activeToken) return;
+    if (!activeToken) return null;
 
     try {
       const res = await fetch('/api/auth/me', {
@@ -95,35 +122,8 @@ export default function App() {
         setBalances(data.balances);
         if (data.pointsPerUsdt) setPointsPerUsdt(Number(data.pointsPerUsdt) || 10000);
         if (data.userSharePercent) setUserSharePercent(Number(data.userSharePercent) || 40);
+        return data.user;
       } else {
-        // Safe session recovery: decode session token locally before unsetting
-        try {
-          const payload = activeToken.split('.')[0];
-          const decoded = JSON.parse(atob(payload));
-          if (decoded && (decoded.email || decoded.userId)) {
-            const cleanEmail = decoded.email || 'user@rewardriver.com';
-            const isAdmin =
-              decoded.role === 'admin' ||
-              cleanEmail.includes('admin') ||
-              cleanEmail === 'paviliong64@gmail.com';
-            const name = cleanEmail.split('@')[0] || 'Member';
-
-            setUser((prev) => prev || {
-              id: decoded.userId || 'usr_session',
-              username: name,
-              email: cleanEmail,
-              displayName: name,
-              emailVerified: true,
-              role: isAdmin ? 'admin' : 'user',
-              externalOpaqueId: `rr_cpx_${decoded.userId || 'session'}`,
-              createdAt: new Date().toISOString(),
-              hasPromptedPhone: true
-            });
-            return;
-          }
-        } catch {
-          // Unparseable session token
-        }
         localStorage.removeItem('rr_auth_token');
         setUser(null);
         setBalances(null);
@@ -131,6 +131,7 @@ export default function App() {
     } catch (e) {
       console.warn('Failed to fetch user session:', e);
     }
+    return null;
   }, []);
 
   // Fetch surveys from CPX API (with direct live-api.cpx-research.com browser fallback)
@@ -147,6 +148,9 @@ export default function App() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json().catch(() => ({}));
+      if (data.balances) {
+        setBalances(data.balances);
+      }
       if (res.ok && Array.isArray(data.surveys) && data.surveys.length > 0) {
         setSurveys(data.surveys);
         if (data.surveyDisplayMode) {
@@ -252,8 +256,12 @@ export default function App() {
 
     const token = getAuthToken();
     if (token) {
-      fetchUserData(token).then(() => {
-        setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
+      fetchUserData(token).then((loadedUser) => {
+        if (loadedUser?.role === 'admin') {
+          setCurrentTab('admin');
+        } else {
+          setCurrentTab((prev) => (prev === 'landing' || prev === 'dashboard' ? 'surveys' : prev));
+        }
       });
     }
 
@@ -268,7 +276,7 @@ export default function App() {
             localStorage.setItem('rr_auth_token', session.access_token);
             setUser(data.user);
             setBalances(data.balances);
-            setCurrentTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
+            setCurrentTab(data.user?.role === 'admin' ? 'admin' : 'surveys');
           }
         } catch (e) {
           console.warn('Supabase state sync warning:', e);
@@ -281,22 +289,37 @@ export default function App() {
     };
   }, [fetchUsdtQuote, fetchCpxStatus, fetchUserData]);
 
-  // When tab changes, load specific tab data
+  // When tab changes or user logs in, load surveys + latest balances/completedSurveysCount
   useEffect(() => {
     if (user) {
-      if (currentTab === 'surveys') fetchSurveys();
-      if (['dashboard', 'withdraw', 'transactions', 'earnings'].includes(currentTab)) {
-        fetchLedgerAndWithdrawals();
-      }
+      fetchLedgerAndWithdrawals();
+      if (currentTab !== 'admin') fetchSurveys();
     }
   }, [currentTab, user, fetchSurveys, fetchLedgerAndWithdrawals]);
+
+  // Auto-sync user Points & Completed Surveys count when returning from a CPX survey tab
+  useEffect(() => {
+    if (!user) return;
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUserData();
+        fetchLedgerAndWithdrawals();
+      }
+    };
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+    return () => {
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+    };
+  }, [user, fetchUserData, fetchLedgerAndWithdrawals]);
 
   // Handle Authentication Success
   const handleAuthSuccess = (token: string, newUser: User, newBalances?: UserBalances) => {
     localStorage.setItem('rr_auth_token', token);
     setUser(newUser);
     if (newBalances) setBalances(newBalances);
-    setCurrentTab(newUser.role === 'admin' ? 'admin' : 'dashboard');
+    setCurrentTab(newUser.role === 'admin' ? 'admin' : 'surveys');
     handleRefreshAll();
   };
 
@@ -462,8 +485,86 @@ export default function App() {
     }
   };
 
+  // If user is not authenticated, render the full Homepage Landing Page (or legal article if opened)
+  if (!user) {
+    if (activeArticle) {
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#090d16] text-slate-800 dark:text-slate-100 antialiased transition-colors">
+          <Navbar
+            user={null}
+            balances={null}
+            usdtQuote={usdtQuote}
+            currentTab="landing"
+            onSelectTab={() => setActiveArticle(null)}
+            onOpenAuth={(mode) => {
+              setAuthInitialMode(mode);
+              setAuthModalOpen(true);
+            }}
+            onSignOut={() => {}}
+            onOpenLegal={(page) => setActiveArticle(page)}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+          />
+          <main className="flex-1 w-full">
+            <ArticleView page={activeArticle} onBack={() => setActiveArticle(null)} />
+          </main>
+          <Footer onOpenLegal={(page) => setActiveArticle(page)} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen flex flex-col bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 antialiased transition-colors">
+        <Navbar
+          user={null}
+          balances={null}
+          usdtQuote={usdtQuote}
+          currentTab="landing"
+          onSelectTab={() => {}}
+          onOpenAuth={(mode) => {
+            setAuthInitialMode(mode);
+            setAuthModalOpen(true);
+          }}
+          onSignOut={() => {}}
+          onOpenLegal={(page) => setActiveArticle(page)}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+        />
+
+        <main className="flex-1 w-full">
+          <LandingPage
+            usdtQuote={usdtQuote}
+            onGetStarted={() => {
+              setAuthInitialMode('signup');
+              setAuthModalOpen(true);
+            }}
+            onOpenLegal={(page) => setActiveArticle(page)}
+          />
+        </main>
+
+        <Footer onOpenLegal={(page) => setActiveArticle(page)} />
+
+        {authModalOpen && (
+          <AuthModal
+            isOpen={authModalOpen}
+            standalone={false}
+            initialMode={authInitialMode}
+            onClose={() => setAuthModalOpen(false)}
+            onSuccess={handleAuthSuccess}
+            onOpenLegal={(page) => {
+              setAuthModalOpen(false);
+              setActiveArticle(page);
+            }}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-sky-500 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#090d16] text-slate-800 dark:text-slate-100 antialiased selection:bg-sky-500 selection:text-white transition-colors">
       {/* Top Navigation */}
       <Navbar
         user={user}
@@ -480,6 +581,8 @@ export default function App() {
         }}
         onSignOut={handleSignOut}
         onOpenLegal={(page) => setActiveArticle(page)}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
       {/* Main Content Area */}
@@ -487,8 +590,6 @@ export default function App() {
         className={
           currentTab === 'admin' && user?.role === 'admin' && !activeArticle
             ? 'flex-1 w-full flex flex-col'
-            : currentTab === 'landing' && !activeArticle
-            ? 'flex-1 w-full'
             : activeArticle
             ? 'flex-1 w-full'
             : 'flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6'
@@ -500,40 +601,21 @@ export default function App() {
           <div key={currentTab} className="animate-fade-in-up">
             {currentTab === 'landing' && (
               <LandingPage
-                onGetStarted={() => {
-                  setAuthInitialMode('signup');
-                  setAuthModalOpen(true);
-                }}
+                usdtQuote={usdtQuote}
+                onGetStarted={() => setCurrentTab('surveys')}
                 onOpenLegal={(page) => setActiveArticle(page)}
-                usdtQuote={usdtQuote}
               />
             )}
 
-            {(currentTab === 'dashboard' || currentTab === 'earnings') && user && (
-              <UserDashboard
-                user={user}
-                balances={balances}
-                usdtQuote={usdtQuote}
-                pointsPerUsdt={pointsPerUsdt}
-                userSharePercent={userSharePercent}
-                surveys={surveys.slice(0, 4)}
-                surveysLoading={surveysLoading}
-                recentWithdrawals={withdrawals.slice(0, 3)}
-                recentLedger={ledgerEntries.slice(0, 5)}
-                onNavigateTab={setCurrentTab}
-                onStartSurvey={handleStartSurvey}
-                onVerifyEmail={handleVerifyEmail}
-              />
-            )}
-
-            {currentTab === 'surveys' && user && (
+            {(currentTab === 'surveys' || (currentTab !== 'landing' && currentTab !== 'admin')) && (
               <SurveysView
                 surveys={surveys}
                 loading={surveysLoading}
                 error={surveysError}
                 cpxStatus={cpxStatus}
                 usdtQuote={usdtQuote}
-                surveyDisplayMode={surveyDisplayMode}
+                balances={balances}
+                surveyDisplayMode="points_only"
                 pointsPerUsdt={pointsPerUsdt}
                 userSharePercent={userSharePercent}
                 onRefresh={fetchSurveys}
@@ -544,51 +626,12 @@ export default function App() {
               />
             )}
 
-            {currentTab === 'withdraw' && user && (
-              <WithdrawalView
-                user={user}
-                balances={balances}
-                usdtQuote={usdtQuote}
-                pointsPerUsdt={pointsPerUsdt}
-                userSharePercent={userSharePercent}
-                withdrawals={withdrawals}
-                onRefreshQuote={fetchUsdtQuote}
-                onSubmitWithdrawal={async (usdtAddress, network, amountCents) => {
-                  try {
-                    await handleSubmitWithdrawal(amountCents, usdtAddress, network);
-                    return { success: true };
-                  } catch (err) {
-                    return { success: false, error: err instanceof Error ? err.message : String(err) };
-                  }
-                }}
-                onVerifyEmail={handleVerifyEmail}
-              />
-            )}
-
-            {currentTab === 'transactions' && user && (
-              <TransactionsView
-                entries={ledgerEntries}
-                usdtQuote={usdtQuote}
-                pointsPerUsdt={pointsPerUsdt}
-                userSharePercent={userSharePercent}
-                onRefresh={fetchLedgerAndWithdrawals}
-              />
-            )}
-
-            {currentTab === 'settings' && user && (
-              <SettingsView
-                user={user}
-                onVerifyEmail={handleVerifyEmail}
-                onPasswordChange={handlePasswordChange}
-              />
-            )}
-
             {currentTab === 'admin' && user?.role === 'admin' && (
               <AdminView
                 adminUser={user}
                 cpxStatus={cpxStatus}
                 onDataChanged={handleRefreshAll}
-                onExitAdmin={() => setCurrentTab('dashboard')}
+                onExitAdmin={() => setCurrentTab('surveys')}
               />
             )}
           </div>
@@ -602,30 +645,16 @@ export default function App() {
         />
       )}
 
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        initialMode={authInitialMode}
-        onClose={() => setAuthModalOpen(false)}
-        onSuccess={handleAuthSuccess}
-        onOpenLegal={(page) => {
-          setAuthModalOpen(false);
-          setActiveArticle(page);
+      {/* Phone & WhatsApp Onboarding Modal */}
+      <PhoneOnboardingModal
+        isOpen={phoneModalOpen}
+        user={user}
+        onSave={handleSavePhone}
+        onClose={() => {
+          sessionStorage.setItem('phone_prompt_dismissed', 'true');
+          setPhoneModalOpen(false);
         }}
       />
-
-      {/* Phone & WhatsApp Onboarding Modal */}
-      {user && (
-        <PhoneOnboardingModal
-          isOpen={phoneModalOpen}
-          user={user}
-          onSave={handleSavePhone}
-          onClose={() => {
-            sessionStorage.setItem('phone_prompt_dismissed', 'true');
-            setPhoneModalOpen(false);
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -76,9 +76,7 @@ export function verifySessionToken(token: string): AuthSession | null {
       const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'));
       
       const isAdmin =
-        payload.email === 'paviliong64@gmail.com' ||
-        payload.email === 'admin@rewardriver' ||
-        payload.email === 'admin@rewardriver.com' ||
+        payload.email?.toLowerCase() === 'admin@reward-river' &&
         payload.role === 'admin';
 
       return {
@@ -111,52 +109,11 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
         user = dbStore.getUserByEmail(session.email);
       }
 
-      // If user came via valid session token and isn't in local memory yet (e.g. Vercel cold start), instantiate immediately
-      if (!user && session.userId) {
-        const isAdmin =
-          session.role === 'admin' ||
-          session.userId === 'usr_admin_rewardriver' ||
-          session.userId.includes('admin') ||
-          session.email === 'admin@rewardriver' ||
-          session.email === 'admin@rewardriver.com' ||
-          session.email === 'paviliong64@gmail.com' ||
-          (session.email ? session.email.toLowerCase().includes('admin') : false);
-
-        const effectiveEmail = session.email || (isAdmin ? 'admin@rewardriver' : 'user@rewardriver.com');
-        const effectiveName = effectiveEmail.split('@')[0] || (isAdmin ? 'Admin' : 'Member');
-
-        user = {
-          id: session.userId,
-          username: effectiveName,
-          email: effectiveEmail,
-          passwordHash: '',
-          salt: '',
-          displayName: effectiveName,
-          emailVerified: true,
-          role: isAdmin ? 'admin' : (session.role || 'user'),
-          externalOpaqueId: `rr_cpx_${session.userId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          provider: 'password',
-          hasPromptedPhone: true
-        };
-        await dbStore.createUser(user);
-      }
-
       if (user) {
-        const shouldBeAdmin =
-          session.role === 'admin' ||
-          session.userId === 'usr_admin_rewardriver' ||
-          user.id === 'usr_admin_rewardriver' ||
-          user.email.toLowerCase() === 'admin@rewardriver' ||
-          user.email.toLowerCase() === 'admin@rewardriver.com' ||
-          user.email.toLowerCase() === 'paviliong64@gmail.com' ||
-          user.username?.toLowerCase() === 'admin' ||
-          user.role === 'admin';
-
-        if (shouldBeAdmin) {
-          user.role = 'admin';
-        }
+        const isSoleAdmin =
+          user.id === 'usr_admin_rewardriver' &&
+          user.email.toLowerCase() === 'admin@reward-river';
+        user.role = isSoleAdmin ? 'admin' : 'user';
         req.user = user;
       }
     }
@@ -175,13 +132,9 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 export function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const u = req.user;
   const isAuthorizedAdmin =
-    u &&
-    (u.role === 'admin' ||
-      u.email.toLowerCase() === 'admin@rewardriver' ||
-      u.email.toLowerCase() === 'admin@rewardriver.com' ||
-      u.email.toLowerCase() === 'paviliong64@gmail.com' ||
-      u.username?.toLowerCase() === 'admin' ||
-      u.id === 'usr_admin_rewardriver');
+    Boolean(u) &&
+    u!.role === 'admin' &&
+    u!.email.toLowerCase() === 'admin@reward-river';
 
   if (!isAuthorizedAdmin) {
     res.status(403).json({ error: 'Access forbidden. Administrator privileges required.' });

@@ -351,7 +351,7 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ page, onBack }) => {
               <section className="space-y-3">
                 <h2 className="text-lg font-bold text-slate-900">3. Reward Points Nature &amp; Conversion</h2>
                 <p>
-                  Points credited to your account represent internal platform reward credits. Points do not constitute fiat money, bank deposits, or securities until a valid withdrawal request is processed into Tether USD (USDT) at the official conversion rate of <strong>10,000 Points = $0.40 USDT</strong> (or applicable platform rate).
+                  Points credited to your account represent internal platform reward credits. Points do not constitute fiat money, bank deposits, or securities until a valid withdrawal request is processed at the official platform points conversion rate.
                 </p>
               </section>
 

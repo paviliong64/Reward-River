@@ -3,23 +3,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const supabaseUrl =
+const defaultSupabaseUrl =
   process.env.SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.VITE_SUPABASE_URL ||
   '';
 
-const supabaseServiceKey =
+const defaultSupabaseServiceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
   '';
 
-export const isServerSupabaseConfigured = Boolean(supabaseUrl && supabaseServiceKey);
+export const isServerSupabaseConfigured = Boolean(defaultSupabaseUrl && defaultSupabaseServiceKey);
 
 export const serverSupabase: SupabaseClient | null = isServerSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseServiceKey, {
+  ? createClient(defaultSupabaseUrl, defaultSupabaseServiceKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false
@@ -27,13 +27,35 @@ export const serverSupabase: SupabaseClient | null = isServerSupabaseConfigured
     })
   : null;
 
-export async function pingServerSupabase(): Promise<{ ok: boolean; details: string }> {
-  if (!serverSupabase) {
-    return { ok: false, details: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables not set on server.' };
+let cachedDynamicClient: { url: string; key: string; client: SupabaseClient } | null = null;
+
+export function getActiveServerSupabase(customUrl?: string, customKey?: string): SupabaseClient | null {
+  const url = (customUrl || defaultSupabaseUrl || '').trim();
+  const key = (customKey || defaultSupabaseServiceKey || '').trim();
+  if (!url || !key || !url.startsWith('https://')) {
+    return serverSupabase;
+  }
+  if (cachedDynamicClient && cachedDynamicClient.url === url && cachedDynamicClient.key === key) {
+    return cachedDynamicClient.client;
+  }
+  const client = createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  });
+  cachedDynamicClient = { url, key, client };
+  return client;
+}
+
+export async function pingServerSupabase(customUrl?: string, customKey?: string): Promise<{ ok: boolean; details: string }> {
+  const sb = getActiveServerSupabase(customUrl, customKey);
+  if (!sb) {
+    return { ok: false, details: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured.' };
   }
 
   try {
-    const { data, error } = await serverSupabase.from('system_settings').select('*').limit(1);
+    const { error } = await sb.from('users').select('id').limit(1);
     if (error) {
       return { ok: false, details: error.message };
     }
@@ -42,3 +64,4 @@ export async function pingServerSupabase(): Promise<{ ok: boolean; details: stri
     return { ok: false, details: err instanceof Error ? err.message : String(err) };
   }
 }
+

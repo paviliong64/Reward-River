@@ -81,97 +81,6 @@ export class AoyTasksService {
     );
   }
 
-  private getCuratedWhiteLabelTasks(
-    userSharePercent: number,
-    pointsPerUsdt: number
-  ): WhiteLabelTask[] {
-    const rawPtc = [
-      {
-        id: 101,
-        title: 'Cloud Infrastructure & Web3 Security Showcase',
-        description: 'Explore our partner cloud security overview for 15 seconds to earn instant Points & USDT.',
-        duration: 15,
-        reward: '2500.00',
-        payout: '0.25',
-        url: '/?task_preview=ptc_101',
-        ad_type: 'Iframe'
-      },
-      {
-        id: 102,
-        title: 'Digital Commerce & SaaS Analytics Review',
-        description: 'Visit the featured SaaS analytics landing page and remain active until the timer completes.',
-        duration: 20,
-        reward: '4000.00',
-        payout: '0.40',
-        url: '/?task_preview=ptc_102',
-        ad_type: 'Iframe'
-      },
-      {
-        id: 103,
-        title: 'Fintech Payment Gateway Partner Spotlight',
-        description: 'Preview the multi-currency settlement portal for 10 seconds for instant account credit.',
-        duration: 10,
-        reward: '1500.00',
-        payout: '0.15',
-        url: '/?task_preview=ptc_103',
-        ad_type: 'Iframe'
-      },
-      {
-        id: 104,
-        title: 'Global Consumer Brand Discovery Page',
-        description: 'View our sponsored consumer electronics showcase to unlock your instant reward.',
-        duration: 30,
-        reward: '5000.00',
-        payout: '0.50',
-        url: '/?task_preview=ptc_104',
-        ad_type: 'Window'
-      }
-    ];
-
-    const rawShortlinks = [
-      {
-        id: 201,
-        title: 'Reward River Express Verification Link #1',
-        reward: '3500.00',
-        payout: '0.35',
-        available: '3',
-        limit: '3',
-        url: '/?task_preview=sl_201'
-      },
-      {
-        id: 202,
-        title: 'Reward River Priority Sponsor Gate #2',
-        reward: '6000.00',
-        payout: '0.60',
-        available: '2',
-        limit: '2',
-        url: '/?task_preview=sl_202'
-      },
-      {
-        id: 203,
-        title: 'Reward River Daily Partner Link #3',
-        reward: '2000.00',
-        payout: '0.20',
-        available: '5',
-        limit: '5',
-        url: '/?task_preview=sl_203'
-      }
-    ];
-
-    return [
-      ...normalizeAoyPtcList(rawPtc, {
-        userSharePercent,
-        pointsPerUsdt,
-        exchangeRatePerUsd: this.exchangeRate
-      }),
-      ...normalizeAoyShortlinkList(rawShortlinks, {
-        userSharePercent,
-        pointsPerUsdt,
-        exchangeRatePerUsd: this.exchangeRate
-      })
-    ];
-  }
-
   async fetchWhiteLabelTasks(params: {
     rawUserId: string;
     ipAddress: string;
@@ -250,32 +159,26 @@ export class AoyTasksService {
         });
 
         const combined = [...normalizedPtc, ...normalizedSl];
-        if (combined.length > 0 || !this.enableFallback) {
-          const entry: CacheEntry = {
-            expiresAt: Date.now() + 60_000,
-            tasks: combined,
-            livePtcCount: normalizedPtc.length,
-            liveShortlinkCount: normalizedSl.length,
-            source: 'live_api'
-          };
-          this.cache.set(cacheKey, entry);
-          return entry;
-        }
+        const entry: CacheEntry = {
+          expiresAt: Date.now() + 60_000,
+          tasks: combined,
+          livePtcCount: normalizedPtc.length,
+          liveShortlinkCount: normalizedSl.length,
+          source: 'live_api'
+        };
+        this.cache.set(cacheKey, entry);
+        return entry;
       } catch (err) {
-        console.warn('AoyTasks live API fetch fallback:', err);
+        console.warn('AoyTasks live API fetch error:', err);
       }
     }
 
-    const fallbackTasks = this.enableFallback
-      ? this.getCuratedWhiteLabelTasks(userSharePercent, pointsPerUsdt)
-      : [];
-
     const entry: CacheEntry = {
       expiresAt: Date.now() + 30_000,
-      tasks: fallbackTasks,
+      tasks: [],
       livePtcCount: 0,
       liveShortlinkCount: 0,
-      source: 'white_label_catalog'
+      source: 'live_api'
     };
     this.cache.set(cacheKey, entry);
     return entry;

@@ -4,17 +4,19 @@ const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
   import.meta.env.SUPABASE_URL ||
-  'https://your-supabase-project.supabase.co';
+  'https://vwoskusxfzmnoawbrpnr.supabase.co';
 
 const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   import.meta.env.SUPABASE_ANON_KEY ||
-  'your-supabase-anon-key';
+  'sb_publishable_HVjFoLz84HMQ3ONultKhSA_rrnOtIpZ';
 
 export const isSupabaseConfigured = Boolean(
-  (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.SUPABASE_URL) &&
-  (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY)
+  supabaseUrl &&
+  !supabaseUrl.includes('your-supabase-project') &&
+  supabaseAnonKey &&
+  supabaseAnonKey !== 'your-supabase-anon-key'
 );
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);

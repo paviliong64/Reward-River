@@ -20,6 +20,7 @@ export interface AdminUserDetail extends User {
   balances: UserBalances;
   completedSurveysCount: number;
   totalTransactionsCount: number;
+  recentEntries?: LedgerEntry[];
   lastActiveAt?: string;
 }
 
@@ -35,6 +36,7 @@ export interface UserBalances {
   totalWithdrawnPoints: number;
   totalAdminProfitCents?: number;
   totalGrossRevenueCents?: number;
+  completedSurveysCount?: number;
 }
 
 export interface UsdtQuote {

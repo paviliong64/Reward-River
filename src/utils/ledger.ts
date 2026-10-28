@@ -41,6 +41,7 @@ export interface UserBalanceSummary {
   totalWithdrawnPoints: number;
   totalAdminProfitCents: number;
   totalGrossRevenueCents: number;
+  completedSurveysCount: number;
 }
 
 /**
@@ -60,35 +61,51 @@ export function calculateUserBalances(
   let totalDebitsAndReversals = 0;
   let pendingCents = 0;
   let totalEarnedCents = 0;
+  let totalConfirmedPoints = 0;
+  let totalDebitReversalPoints = 0;
+  let pendingPointsAccum = 0;
   let totalAdminProfitCents = 0;
   let totalGrossRevenueCents = 0;
+  let completedSurveysCount = 0;
 
   const safePointsRate = pointsPerUsdt > 0 ? pointsPerUsdt : 10000;
   const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 40)));
   const centsToPts = (c: number) => Math.round((Math.max(0, c) / safeShare) * safePointsRate);
 
-
   for (const entry of entries) {
     if (entry.userId !== userId) continue;
 
-    if (entry.status === 'confirmed') {
-      if (entry.entryType === 'credit') {
-        totalConfirmedCredits += entry.amountCents;
-        totalEarnedCents += entry.amountCents;
-        const gross = entry.grossCents ?? Math.round(entry.amountCents / 0.4);
-        const profit = entry.adminProfitCents ?? Math.max(0, gross - entry.amountCents);
-        totalGrossRevenueCents += gross;
-        totalAdminProfitCents += profit;
-      } else if (entry.entryType === 'reversal' || entry.entryType === 'debit') {
-        const absAmount = Math.abs(entry.amountCents);
-        totalDebitsAndReversals += absAmount;
-        const grossRev = entry.grossCents ?? Math.round(absAmount / 0.4);
-        const profitRev = entry.adminProfitCents ?? Math.max(0, grossRev - absAmount);
-        totalGrossRevenueCents = Math.max(0, totalGrossRevenueCents - grossRev);
-        totalAdminProfitCents = Math.max(0, totalAdminProfitCents - profitRev);
+    const entryPts =
+      typeof entry.points === 'number' && !isNaN(entry.points) && entry.points !== 0
+        ? Math.abs(Math.round(entry.points))
+        : centsToPts(Math.abs(entry.amountCents));
+
+    if (entry.status === 'confirmed' && entry.entryType === 'credit') {
+      totalConfirmedCredits += entry.amountCents;
+      totalEarnedCents += entry.amountCents;
+      totalConfirmedPoints += entryPts;
+      completedSurveysCount += 1;
+      const gross = entry.grossCents ?? Math.round(entry.amountCents / 0.4);
+      const profit = entry.adminProfitCents ?? Math.max(0, gross - entry.amountCents);
+      totalGrossRevenueCents += gross;
+      totalAdminProfitCents += profit;
+    } else if (
+      (entry.status === 'confirmed' || entry.status === 'reversed') &&
+      (entry.entryType === 'reversal' || entry.entryType === 'debit')
+    ) {
+      const absAmount = Math.abs(entry.amountCents);
+      totalDebitsAndReversals += absAmount;
+      totalDebitReversalPoints += entryPts;
+      if (entry.entryType === 'reversal') {
+        completedSurveysCount = Math.max(0, completedSurveysCount - 1);
       }
+      const grossRev = entry.grossCents ?? Math.round(absAmount / 0.4);
+      const profitRev = entry.adminProfitCents ?? Math.max(0, grossRev - absAmount);
+      totalGrossRevenueCents = Math.max(0, totalGrossRevenueCents - grossRev);
+      totalAdminProfitCents = Math.max(0, totalAdminProfitCents - profitRev);
     } else if (entry.status === 'pending' && entry.entryType === 'credit') {
       pendingCents += entry.amountCents;
+      pendingPointsAccum += entryPts;
     }
   }
 
@@ -110,6 +127,9 @@ export function calculateUserBalances(
 
   const netConfirmedEarnings = totalConfirmedCredits - totalDebitsAndReversals;
   const availableCents = Math.max(0, netConfirmedEarnings - reservedWithdrawalCents);
+  const reservedWithdrawalPoints = centsToPts(reservedWithdrawalCents);
+  const netConfirmedPoints = Math.max(0, totalConfirmedPoints - totalDebitReversalPoints);
+  const availablePoints = Math.max(0, netConfirmedPoints - reservedWithdrawalPoints);
 
   return {
     availableCents,
@@ -117,12 +137,13 @@ export function calculateUserBalances(
     totalEarnedCents,
     totalWithdrawnCents,
     reservedWithdrawalCents,
-    availablePoints: centsToPts(availableCents),
-    pendingPoints: centsToPts(pendingCents),
-    totalEarnedPoints: centsToPts(totalEarnedCents),
+    availablePoints,
+    pendingPoints: pendingPointsAccum,
+    totalEarnedPoints: totalConfirmedPoints,
     totalWithdrawnPoints: centsToPts(totalWithdrawnCents),
     totalAdminProfitCents,
-    totalGrossRevenueCents
+    totalGrossRevenueCents,
+    completedSurveysCount
   };
 }
 

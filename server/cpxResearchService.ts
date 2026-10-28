@@ -26,6 +26,7 @@ export interface CpxConfigStatus {
 export interface FetchSurveysResult {
   success: boolean;
   surveys: NormalizedSurvey[];
+  transactions?: unknown[];
   totalAvailable: number;
   message?: string;
   source: 'cpx_api' | 'none';
@@ -48,12 +49,18 @@ export class CpxResearchService {
 
   get hashKey(): string {
     const settingsHash = dbStore.getSettings()?.cpxHashKey?.trim();
-    return settingsHash || process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
+    if (settingsHash && !settingsHash.startsWith('eyJ')) {
+      return settingsHash;
+    }
+    return process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
   }
 
   get postbackSecret(): string {
     const settingsHash = dbStore.getSettings()?.cpxHashKey?.trim();
-    return settingsHash || process.env.CPX_POSTBACK_SECRET || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
+    if (settingsHash && !settingsHash.startsWith('eyJ')) {
+      return settingsHash;
+    }
+    return process.env.CPX_POSTBACK_SECRET || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
   }
 
   /**
@@ -150,7 +157,7 @@ export class CpxResearchService {
         url.searchParams.set('ext_user_id', externalUserId);
         url.searchParams.set('subid_1', subid1);
         url.searchParams.set('subid_2', subid2);
-        url.searchParams.set('output_method', 'api');
+        url.searchParams.set('output_method', 'jsscriptv1');
         url.searchParams.set('ip_user', targetIp);
         url.searchParams.set('limit', String(maxSurveys));
         url.searchParams.set('secure_hash', secureHash);
@@ -210,10 +217,17 @@ export class CpxResearchService {
         };
       }
 
+      const txList = Array.isArray(json.transactions)
+        ? json.transactions
+        : json.transactions && typeof json.transactions === 'object'
+        ? Object.values(json.transactions)
+        : [];
+
       if (json.status === 'success') {
         return {
           success: true,
           surveys: normalized.slice(0, maxSurveys),
+          transactions: txList,
           totalAvailable: json.count_available_surveys || normalized.length,
           message: normalized.length === 0 ? 'At this moment no surveys available for your profile' : undefined,
           source: 'cpx_api'
@@ -222,6 +236,7 @@ export class CpxResearchService {
         return {
           success: true,
           surveys: [],
+          transactions: txList,
           totalAvailable: 0,
           message: 'At this moment no surveys available for your profile',
           source: 'cpx_api'
