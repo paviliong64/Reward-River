@@ -154,7 +154,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Right side: Actions, Theme Toggle, Login & Sign Up */}
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-              {/* Theme Toggle Button (Compact on mobile) */}
+              {/* Theme Toggle Button (Desktop & Tablet) */}
               {onToggleTheme && (
                 <button
                   type="button"
@@ -162,9 +162,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   data-testid="theme-toggle"
                   aria-label="Toggle dark and light theme"
                   title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-                  className="p-1.5 sm:p-2.5 rounded-xl text-[#52697A] dark:text-slate-300 hover:text-[#079B55] hover:bg-[#F0FBF5] dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                  className="hidden sm:flex p-2.5 rounded-xl text-[#52697A] dark:text-slate-300 hover:text-[#079B55] hover:bg-[#F0FBF5] dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                 >
-                  {theme === 'dark' ? <Sun className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {theme === 'dark' ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
                 </button>
               )}
 
