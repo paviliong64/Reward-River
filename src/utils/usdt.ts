@@ -109,8 +109,8 @@ export function calculateUsdtPayout(
   };
 }
 
-export const DEFAULT_POINTS_PER_USDT = 10000; // Real ("Asl") Gross Base: 10,000 Points = $1.00 Gross USD from CPX (Hidden from User)
-export const DEFAULT_USER_SHARE_PERCENT = 40; // User gets & sees 40% ($0.40 USDT per 10,000 Points); 60% ($0.60 USDT) is Hidden Admin Profit
+export const DEFAULT_POINTS_PER_USDT = 5000; // Real Gross Base: 5,000 Points = $1.00 USD (Matches CPX Currency Factor 5000)
+export const DEFAULT_USER_SHARE_PERCENT = 40; // User gets 40% ($0.40 USDT per 5,000 Points); 60% is Admin Profit
 
 /**
  * Converts User's Net USD cents into Points based on the user's share percentage.

@@ -16,17 +16,17 @@ export const Logo: React.FC<LogoProps> = ({
   variant = 'full'
 }) => {
   const iconHeightClasses = {
-    sm: 'h-8',
-    md: 'h-10',
-    lg: 'h-12',
-    xl: 'h-16'
+    sm: 'h-7 sm:h-8',
+    md: 'h-8 sm:h-10',
+    lg: 'h-10 sm:h-12',
+    xl: 'h-12 sm:h-16'
   };
 
   const titleSizes = {
-    sm: 'text-lg',
-    md: 'text-2xl',
-    lg: 'text-3xl',
-    xl: 'text-4xl'
+    sm: 'text-base sm:text-lg',
+    md: 'text-lg sm:text-2xl',
+    lg: 'text-xl sm:text-3xl',
+    xl: 'text-2xl sm:text-4xl'
   };
 
   const taglineSizes = {
@@ -63,7 +63,7 @@ export const Logo: React.FC<LogoProps> = ({
 
       {/* Wordmark and Tagline */}
       <div className="flex flex-col justify-center min-w-0">
-        <div className={`font-black tracking-tight leading-none text-xl sm:text-2xl ${titleSizes[size]}`}>
+        <div className={`font-black tracking-tight leading-none ${titleSizes[size]}`}>
           <span className={inverted ? 'text-white' : 'text-[#192F40] dark:text-white'}>Reward</span>
           <span className="text-[#079B55] ml-1">River</span>
         </div>

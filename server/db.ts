@@ -141,7 +141,7 @@ class DatabaseStore {
         feeCentsTrc20: 100, // $1.00 USDT fee for TRC-20
         feeCentsErc20: 250, // $2.50 USDT fee for ERC-20
         userSharePercent: 40, // Default 40% user share (60% hidden admin profit)
-        pointsPerUsdt: 10000, // 10,000 Points = 1.00 USDT
+        pointsPerUsdt: 5000, // 5,000 Points = 1.00 USDT (Matches CPX Factor 5000)
         surveyDisplayMode: 'points_only',
         cpxAppId: process.env.CPX_APP_ID || '37699',
         cpxHashKey: process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
@@ -150,8 +150,8 @@ class DatabaseStore {
         cpxThemeColor: '10b981',
         cpxEnableFallback: false,
         cpxVerifySignature: true,
-        aoyApiKey: process.env.AOY_API_KEY || '',
-        aoySecretKey: process.env.AOY_SECRET_KEY || '',
+        aoyApiKey: process.env.AOY_API_KEY || '223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa',
+        aoySecretKey: process.env.AOY_SECRET_KEY || '8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92',
         aoyBearerToken: process.env.AOY_BEARER_TOKEN || '',
         aoyExchangeRate: 10000,
         aoyEnableFallback: false,
@@ -220,6 +220,8 @@ class DatabaseStore {
             ...(parsed.systemSettings || {}),
             cpxAppId: parsed.systemSettings?.cpxAppId || '37699',
             cpxHashKey: validCpxHash,
+            aoyApiKey: parsed.systemSettings?.aoyApiKey || process.env.AOY_API_KEY || '223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa',
+            aoySecretKey: parsed.systemSettings?.aoySecretKey || process.env.AOY_SECRET_KEY || '8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92',
             minWithdrawalCents:
               parsed.systemSettings?.minWithdrawalCents === 500
                 ? 2500
@@ -239,7 +241,7 @@ class DatabaseStore {
     }
   }
 
-  private getSupabaseClient() {
+  getSupabaseClient() {
     const s = this.data?.systemSettings;
     return getActiveServerSupabase(s?.supabaseUrl, s?.supabaseServiceKey || s?.supabaseAnonKey);
   }
@@ -708,6 +710,15 @@ class DatabaseStore {
             created_at: entry.createdAt
           });
         }
+
+        // Keep Supabase users table points and balance in real-time sync
+        const updatedBalances = this.getUserBalances(entry.userId);
+        await sb.from('users').update({
+          points: updatedBalances.availablePoints,
+          balance_cents: updatedBalances.availableCents,
+          total_earned_points: updatedBalances.totalEarnedPoints,
+          updated_at: new Date().toISOString()
+        }).eq('id', entry.userId);
       } catch (e) {
         console.warn('[Supabase Auto Sync] Ledger upsert note:', e);
       }

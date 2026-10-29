@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserBalances } from '../types';
 import { Logo } from './Logo';
+import { supabase, isSupabaseConfigured } from '../supabase';
 import {
   X,
   Lock,
@@ -9,7 +10,8 @@ import {
   Eye,
   EyeOff,
   Sun,
-  Moon
+  Moon,
+  RefreshCw
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -33,16 +35,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onToggleTheme
 }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Human Math Verification state (Anti-bot)
+  const [num1, setNum1] = useState(3);
+  const [num2, setNum2] = useState(4);
+  const [mathAnswer, setMathAnswer] = useState('');
+  const [mathError, setMathError] = useState<string | null>(null);
+
+  const generateNewMathQuestion = () => {
+    const n1 = Math.floor(Math.random() * 8) + 2;
+    const n2 = Math.floor(Math.random() * 8) + 2;
+    setNum1(n1);
+    setNum2(n2);
+    setMathAnswer('');
+    setMathError(null);
+  };
+
   useEffect(() => {
     setMode(initialMode);
     setError(null);
+    generateNewMathQuestion();
   }, [initialMode, isOpen]);
 
   if (!isOpen && !standalone) return null;
@@ -108,9 +125,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       ? lowerId
       : `${lowerId.replace(/[^a-z0-9._-]/g, '') || 'member'}@gmail.com`;
     const display = rawUsername.trim() || effectiveEmail.split('@')[0];
-    const cleanSlug = effectiveEmail.replace(/[^a-z0-9]/g, '').slice(0, 18) || 'member';
-    const userId = `usr_${cleanSlug}`;
-    const extId = `rr_cpx_${cleanSlug}`;
+    const secureHex = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+    const userId = `usr_${secureHex}`;
+    const extId = `rr_cpx_${secureHex.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
 
     const normalUser: User = {
       id: userId,
@@ -155,19 +174,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   // Execute instant registration
   const executeInstantSignup = async (
-    targetUsername: string,
     targetEmail: string,
     targetPassword: string
   ) => {
     setError(null);
+    setMathError(null);
+
+    // Human Math Verification Check
+    const parsedAns = parseInt(mathAnswer.trim(), 10);
+    if (isNaN(parsedAns) || parsedAns !== num1 + num2) {
+      setMathError('Incorrect answer, please try again.');
+      generateNewMathQuestion();
+      return;
+    }
+
     setLoading(true);
+
+    // Step 1: Call Supabase auth.signUp directly
+    try {
+      if (isSupabaseConfigured) {
+        const { error: supaErr } = await supabase.auth.signUp({
+          email: targetEmail.trim(),
+          password: targetPassword
+        });
+        if (supaErr) {
+          console.warn('Supabase auth.signUp note:', supaErr.message);
+          // If Supabase returned an explicit user-facing error like email already registered:
+          if (supaErr.message.toLowerCase().includes('already registered')) {
+            setError('This email is already registered. Please sign in instead.');
+            setLoading(false);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Direct Supabase signup call caught:', e);
+    }
+
+    // Step 2: Register user in app backend & session store
+    const derivedUsername = targetEmail.trim().split('@')[0];
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: targetUsername.trim() || targetEmail.split('@')[0],
-          displayName: targetUsername.trim() || targetEmail.split('@')[0],
+          username: derivedUsername,
+          displayName: derivedUsername,
           email: targetEmail.trim(),
           password: targetPassword
         })
@@ -176,14 +228,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        // If backend returned a structured validation error (400/401/403), show it
         if (data && typeof data.error === 'string') {
           setError(data.error);
           setLoading(false);
           return;
         }
-        // Otherwise if backend route returned 404/500/502 HTML on static deployment, use client fallback
-        const fallback = buildFallbackAuthSession(targetEmail, targetUsername, targetPassword);
+        const fallback = buildFallbackAuthSession(targetEmail, derivedUsername, targetPassword);
         if ('error' in fallback) {
           setError(fallback.error);
           setLoading(false);
@@ -198,7 +248,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onSuccess(data.token, data.user, data.balances);
         onClose?.();
       } else {
-        const fallback = buildFallbackAuthSession(targetEmail, targetUsername, targetPassword);
+        const fallback = buildFallbackAuthSession(targetEmail, derivedUsername, targetPassword);
         if ('error' in fallback) {
           setError(fallback.error);
           return;
@@ -207,7 +257,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose?.();
       }
     } catch {
-      const fallback = buildFallbackAuthSession(targetEmail, targetUsername, targetPassword);
+      const fallback = buildFallbackAuthSession(targetEmail, derivedUsername, targetPassword);
       if ('error' in fallback) {
         setError(fallback.error);
       } else {
@@ -283,17 +333,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setError(null);
 
     if (mode === 'signup') {
-      if (!username.trim() && !email.trim()) {
-        setError('Please enter your username and email address.');
+      if (!email.trim()) {
+        setError('Please enter your email address.');
         return;
       }
       if (password.length < 4) {
         setError('Password must be at least 4 characters.');
         return;
       }
-      await executeInstantSignup(username, email, password);
+      await executeInstantSignup(email, password);
     } else {
-      const loginIdentifier = email.trim() || username.trim();
+      const loginIdentifier = email.trim();
       if (!loginIdentifier || !password) {
         setError('Please enter your email or username and password.');
         return;
@@ -390,34 +440,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Minimal Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'signup' && (
-            <div>
-              <label htmlFor="auth-username" className="block text-xs font-bold text-[#192F40] dark:text-slate-200 mb-1.5">
-                Username
-              </label>
-              <input
-                id="auth-username"
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Username"
-                className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-[#F0FBF5]/80 dark:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-[#D9EFE3] dark:border-slate-700 focus:border-[#079B55] focus:ring-3 focus:ring-[#079B55]/15 focus:outline-none text-[#192F40] dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-all font-medium"
-              />
-            </div>
-          )}
-
           <div>
             <label htmlFor="auth-identifier" className="block text-xs font-bold text-[#192F40] dark:text-slate-200 mb-1.5">
-              {mode === 'signin' ? 'Email or Username' : 'Email'}
+              {mode === 'signin' ? 'Email or Username' : 'Email Address'}
             </label>
             <input
               id="auth-identifier"
-              type="text"
+              type={mode === 'signup' ? 'email' : 'text'}
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={mode === 'signin' ? 'Email or username' : 'you@example.com'}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError(null);
+              }}
+              placeholder={mode === 'signin' ? 'Email or username' : 'name@example.com'}
               className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-[#F0FBF5]/80 dark:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-[#D9EFE3] dark:border-slate-700 focus:border-[#079B55] focus:ring-3 focus:ring-[#079B55]/15 focus:outline-none text-[#192F40] dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-all font-medium"
             />
           </div>
@@ -447,6 +483,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Human Math Verification (Bot protection - lightweight & fast) */}
+          {mode === 'signup' && (
+            <div className="p-3 bg-[#F0FBF5]/90 dark:bg-slate-800/80 rounded-xl border border-[#D9EFE3] dark:border-slate-700">
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="auth-math"
+                  className="block text-xs font-bold text-[#192F40] dark:text-slate-200"
+                >
+                  Verification: Solve Math
+                </label>
+                <button
+                  type="button"
+                  onClick={generateNewMathQuestion}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#079B55] dark:text-[#4CC65A] hover:underline cursor-pointer"
+                  title="Generate new question"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>New</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="px-3.5 py-2 rounded-lg bg-white dark:bg-slate-900 border border-[#D9EFE3] dark:border-slate-700 text-sm font-black text-[#192F40] dark:text-white tracking-widest select-none">
+                  {num1} + {num2} =
+                </div>
+                <input
+                  id="auth-math"
+                  type="number"
+                  required
+                  value={mathAnswer}
+                  onChange={(e) => {
+                    setMathAnswer(e.target.value);
+                    setMathError(null);
+                  }}
+                  placeholder="?"
+                  className="w-20 px-3 py-2 text-sm rounded-lg bg-white dark:bg-slate-900 border border-[#D9EFE3] dark:border-slate-700 focus:border-[#079B55] focus:ring-2 focus:ring-[#079B55]/15 focus:outline-none text-[#192F40] dark:text-white font-bold text-center"
+                />
+              </div>
+
+              {mathError && (
+                <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 mt-1.5">
+                  {mathError}
+                </p>
+              )}
+            </div>
+          )}
 
           <button
             type="submit"

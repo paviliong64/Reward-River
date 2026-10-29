@@ -317,9 +317,17 @@ export default function App() {
     }
   }, [currentTab, user, fetchSurveys, fetchLedgerAndWithdrawals]);
 
-  // Auto-sync user Points & Completed Surveys count when returning from a CPX survey tab
+  // Real-time auto-sync user Points & Balance: Polling (15s) + Focus + Supabase Realtime
   useEffect(() => {
     if (!user) return;
+
+    // 1. Polling interval (every 15s) while user is logged in
+    const interval = setInterval(() => {
+      fetchUserData();
+      fetchLedgerAndWithdrawals();
+    }, 15000);
+
+    // 2. Window focus or tab switch
     const handleFocusOrVisibility = () => {
       if (document.visibilityState === 'visible') {
         fetchUserData();
@@ -328,9 +336,37 @@ export default function App() {
     };
     window.addEventListener('focus', handleFocusOrVisibility);
     document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    // 3. Supabase Realtime Channel: Listen for new rewards inserted for this user
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel(`user-points-sync-${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'reward_ledger',
+            filter: `user_id=eq.${user.id}`
+          },
+          () => {
+            fetchUserData();
+            fetchLedgerAndWithdrawals();
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('[Realtime Sync Note]:', e);
+    }
+
     return () => {
+      clearInterval(interval);
       window.removeEventListener('focus', handleFocusOrVisibility);
       document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [user, fetchUserData, fetchLedgerAndWithdrawals]);
 

@@ -48,19 +48,19 @@ export class AoyTasksService {
     const hasSecretKey = Boolean(this.secretKey && this.secretKey.trim().length > 0);
     const hasBearerToken = Boolean(this.bearerToken && this.bearerToken.trim().length > 0);
     return {
-      isConfigured: hasApiKey && hasBearerToken,
+      isConfigured: hasApiKey && hasSecretKey,
       apiKeyConfigured: hasApiKey,
       secretKeyConfigured: hasSecretKey,
       bearerTokenConfigured: hasBearerToken,
       exchangeRate: this.exchangeRate,
       enableFallback: this.enableFallback,
-      mode: hasApiKey && hasBearerToken ? ('live' as const) : ('white_label_catalog' as const)
+      mode: hasApiKey ? ('live' as const) : ('white_label_catalog' as const)
     };
   }
 
   generateOfferwallUrl(rawUserId: string): string {
     const subId = sanitizeAoySubId(rawUserId);
-    const key = this.apiKey || 'YOUR_API_KEY';
+    const key = this.apiKey || '223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa';
     return `https://aoyco.in/offerwall/${encodeURIComponent(key)}/${encodeURIComponent(subId)}`;
   }
 

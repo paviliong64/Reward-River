@@ -392,8 +392,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 });
 
 // GET /api/auth/me
-app.get('/api/auth/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+app.get('/api/auth/me', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
+  try {
+    await dbStore.syncFromSupabase();
+  } catch (e) {
+    console.warn('[auth/me] Supabase sync note:', e);
+  }
   const settings = dbStore.getSettings();
   const rawBalances = dbStore.getUserBalances(user.id);
   const { totalAdminProfitCents: _a, totalGrossRevenueCents: _g, ...userSafeBalances } = rawBalances;
@@ -1218,119 +1223,290 @@ app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest,
 });
 
 // -----------------------------------------------------------------------------
-// CPX Server-to-Server Postback
-// Supports: /api/cpx/postback, /api/cpx-postback, /api/postback
+// Universal Server-to-Server (S2S) Postback Webhook Handler
+// Supports: CPALead, AdGate Media, BitLabs, Wannads, AyeT, CPX Research, etc.
+// Endpoints: /api/postback, /api/postback/:provider, /api/cpx/postback, /api/cpx-postback, /api/offerwall/postback
 // -----------------------------------------------------------------------------
-app.all(['/api/cpx/postback', '/api/cpx-postback', '/api/postback'], async (req: Request, res: Response) => {
-  const params = req.method === 'POST' ? { ...req.query, ...req.body } : req.query;
-  const {
-    status,
-    trans_id,
-    ext_user_id,
-    user_id,
-    amount_local,
-    amount_usd,
-    offer_id,
-    secure_hash,
-    hash
-  } = params;
+app.all(
+  [
+    '/api/postback',
+    '/api/postback/:provider',
+    '/api/cpx/postback',
+    '/api/cpx-postback',
+    '/api/offerwall/postback'
+  ],
+  async (req: Request, res: Response) => {
+    const params = req.method === 'POST' ? { ...req.query, ...req.body } : req.query;
+    const providerParam = String(req.params.provider || params.network || params.provider || '').toLowerCase();
 
-  const effectiveUserId = String(ext_user_id || user_id || params.sub_id || params.subid || params.subid_1 || '').trim();
-  const transId = String(trans_id || '').trim();
-  const receivedHash = String(secure_hash || hash || '').trim();
-  const statusCode = Number(status || 1);
+    // 1. Capture User Identifier across all provider naming conventions
+    const effectiveUserId = String(
+      params.subid ||
+      params.subId ||
+      params.sub_id ||
+      params.ext_user_id ||
+      params.user_id ||
+      params.userId ||
+      params.uid ||
+      params.sid ||
+      params.s1 ||
+      params.user ||
+      params.member_id ||
+      ''
+    ).trim();
 
-  console.log(`[CPX Postback] Received: trans_id=${transId}, user=${effectiveUserId}, status=${statusCode}, amount_usd=${amount_usd}, amount_local=${amount_local}`);
+    // 2. Capture Transaction ID
+    const transId = String(
+      params.trans_id ||
+      params.transId ||
+      params.tx_id ||
+      params.tx ||
+      params.transaction_id ||
+      params.lead_id ||
+      params.id ||
+      params.order_id ||
+      ''
+    ).trim();
 
-  if (!transId || !effectiveUserId) {
-    res.status(400).send('Missing required parameters');
-    return;
-  }
+    // 3. Capture Payout / Reward in Dollars or Points
+    const rawPayout =
+      params.payout ??
+      params.amount_usd ??
+      params.amount ??
+      params.val ??
+      params.reward ??
+      params.currency ??
+      params.amount_local ??
+      params.points;
 
-  const isMacroOrTest =
-    transId === '1' ||
-    transId.includes('{') ||
-    transId.toLowerCase().includes('test') ||
-    effectiveUserId.toLowerCase().includes('test') ||
-    effectiveUserId === '12345' ||
-    effectiveUserId === '1' ||
-    effectiveUserId.includes('{') ||
-    receivedHash.includes('{');
+    // 4. Status Check (1 / complete / bonus / out = credit; 2 = canceled / reversal)
+    const rawStatus = String(params.status || '1').toLowerCase();
+    const eventType = String(params.type || '').toLowerCase();
+    const isScreenOut = eventType === 'out' || eventType === 'screenout';
+    const isReversal =
+      !isScreenOut && (
+        rawStatus === '2' ||
+        rawStatus === '3' ||
+        rawStatus === '0' ||
+        rawStatus === 'reversal' ||
+        rawStatus === 'chargeback' ||
+        rawStatus === 'canceled' ||
+        rawStatus === 'cancelled'
+      );
 
-  const config = cpxResearchService.getConfigStatus();
-  if (config.isConfigured && receivedHash && !isMacroOrTest) {
-    const isValidSig = cpxResearchService.verifyPostback(transId, effectiveUserId, receivedHash);
-    if (!isValidSig) {
-      console.warn(`[CPX Postback] Signature mismatch note for trans_id=${transId}, continuing user lookup`);
+    const receivedHash = String(params.secure_hash || params.hash || params.signature || '').trim();
+    const offerId = String(params.offer_id || params.campaign_id || params.campaign || params.survey_id || transId || 'Offer');
+    const offerTitle = isScreenOut
+      ? 'CPX Screenout Compensation'
+      : eventType === 'bonus'
+      ? 'CPX Profile Bonus'
+      : String(params.offer_name || params.campaign_name || params.title || providerParam || 'Survey/Task');
+
+    console.log(
+      `[Universal Postback] Network: ${providerParam || 'universal'}, user=${effectiveUserId}, tx=${transId}, payout=${rawPayout}, isReversal=${isReversal}`
+    );
+
+    if (!transId || !effectiveUserId) {
+      res.status(400).send('Missing required parameters: subId and transId are required.');
+      return;
     }
-  }
 
-  const targetUser =
-    dbStore.getUserByExternalId(effectiveUserId) ||
-    dbStore.getUserById(effectiveUserId) ||
-    dbStore.getUserByAoySubId(effectiveUserId);
-  if (!targetUser) {
-    console.warn(`[CPX Postback] User not found for external id ${effectiveUserId}, acknowledging receipt`);
-    res.status(200).send('1');
-    return;
-  }
+    // Ignore macro test pings (e.g. {subid} or {lead_id})
+    const isMacroOrTest =
+      transId === '1' ||
+      transId.includes('{') ||
+      transId.toLowerCase().includes('test') ||
+      effectiveUserId.toLowerCase().includes('test') ||
+      effectiveUserId === '12345' ||
+      effectiveUserId === '1' ||
+      effectiveUserId.includes('{') ||
+      receivedHash.includes('{');
 
-  const settings = dbStore.getSettings();
-  const userSharePercent = settings.userSharePercent || 40;
-  const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    // CPX signature validation if CPX hash configured and signature provided
+    const config = cpxResearchService.getConfigStatus();
+    if (config.isConfigured && receivedHash && !isMacroOrTest && (providerParam === 'cpx' || !providerParam)) {
+      const isValidSig = cpxResearchService.verifyPostback(transId, effectiveUserId, receivedHash);
+      if (!isValidSig) {
+        console.warn(`[Universal Postback] Signature mismatch note for tx=${transId}, proceeding with user lookup`);
+      }
+    }
 
-  // Normalize amount_usd / amount_local into 100% gross USD cents (prevents 10,000x inflation when amount_local is in Points)
-  const grossCents = normalizeCpxPostbackGrossCents(amount_usd, amount_local, pointsPerUsdt);
-  const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
+    // Look up target user in memory; if not found, sync latest from Supabase and retry!
+    let targetUser =
+      dbStore.getUserByExternalId(effectiveUserId) ||
+      dbStore.getUserById(effectiveUserId) ||
+      dbStore.getUserByAoySubId(effectiveUserId) ||
+      dbStore.getUserByUsernameOrEmail(effectiveUserId);
 
-  if (statusCode === 1) {
-    const ledgerEntry = {
-      id: `ledg_${crypto.randomUUID()}`,
-      userId: targetUser.id,
-      providerTxId: transId,
-      amountCents: split.userRewardCents,
-      points: split.userRewardPoints,
-      grossCents: split.grossCents,
-      adminProfitCents: split.adminProfitCents,
-      appliedSharePercent: split.userSharePercent,
-      entryType: 'credit' as const,
-      status: 'confirmed' as const,
-      description: `Survey Completion (+${split.userRewardPointsFormatted} Pts • Offer #${offer_id || 'CPX'})`,
-      cpxOfferId: String(offer_id || ''),
-      createdAt: new Date().toISOString(),
-      processedAt: new Date().toISOString()
-    };
+    if (!targetUser) {
+      await dbStore.syncFromSupabase();
+      targetUser =
+        dbStore.getUserByExternalId(effectiveUserId) ||
+        dbStore.getUserById(effectiveUserId) ||
+        dbStore.getUserByAoySubId(effectiveUserId) ||
+        dbStore.getUserByUsernameOrEmail(effectiveUserId);
+    }
 
-    await dbStore.addLedgerEntry(ledgerEntry);
-    res.status(200).send('1');
-    return;
-  }
+    if (!targetUser) {
+      console.warn(`[Universal Postback] User not found for ID '${effectiveUserId}'. Acknowledging receipt to provider.`);
+      res.status(200).send('1');
+      return;
+    }
 
-  if (statusCode === 2 || statusCode === 3) {
+    const settings = dbStore.getSettings();
+    const userSharePercent = settings.userSharePercent || 40;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000; // 5,000 Points per 1 USD
+    const bonusFactor = 7500; // 7,500 Points per 1 USD for Bonus / Screenouts
+
+    // 1. Amount USD: Publisher Payout in real USD (e.g. 0.35 -> 35 cents gross revenue)
+    let grossCents = 0;
+    const rawUsdVal = params.amount_usd ?? params.payout ?? params.val;
+    const parsedUsd = typeof rawUsdVal === 'number'
+      ? rawUsdVal
+      : parseFloat(String(rawUsdVal || '0').replace(/[^0-9.-]/g, ''));
+
+    if (!isNaN(parsedUsd) && parsedUsd > 0) {
+      if (parsedUsd > 50) {
+        // If points were accidentally passed in amount_usd (> 50), normalize via pointsPerUsdt
+        grossCents = Math.round((parsedUsd / pointsPerUsdt) * 100);
+      } else {
+        grossCents = Math.round(parsedUsd * 100);
+      }
+    }
+
+    // 2. Amount Local: Points that must be credited to user (CPX sends precalculated points based on factor 5000 or 7500)
+    let userPoints = 0;
+    const rawLocalVal = params.amount_local ?? params.points ?? params.reward;
+    const parsedLocal = typeof rawLocalVal === 'number'
+      ? rawLocalVal
+      : parseFloat(String(rawLocalVal || '0').replace(/[^0-9.-]/g, ''));
+
+    if (!isNaN(parsedLocal) && parsedLocal > 0) {
+      if (parsedLocal > 1) {
+        // Directly the Points value from CPX (e.g. 5000, 2500, or 75 points)
+        userPoints = Math.round(parsedLocal);
+      } else {
+        // If CPX sent decimal USD in amount_local, convert to Points
+        const factorToUse = isScreenOut || eventType === 'bonus' ? bonusFactor : pointsPerUsdt;
+        userPoints = Math.round(parsedLocal * factorToUse);
+      }
+    }
+
+    // If one was missing, correlate accurately
+    if (grossCents <= 0 && userPoints > 0) {
+      const factorToUse = isScreenOut || eventType === 'bonus' ? bonusFactor : pointsPerUsdt;
+      grossCents = Math.max(1, Math.round((userPoints / factorToUse) * 100));
+    }
+    if (userPoints <= 0 && grossCents > 0) {
+      const factorToUse = isScreenOut || eventType === 'bonus' ? bonusFactor : pointsPerUsdt;
+      userPoints = Math.max(10, Math.round((grossCents / 100) * factorToUse));
+    }
+
+    // Safety bounds
+    if (userPoints <= 0) userPoints = 50;
+    if (grossCents <= 0) grossCents = 1;
+
+    // User share in USD cents (withdrawable) & Admin profit cents
+    const userAmountCents = Math.max(1, Math.round((userPoints / pointsPerUsdt) * (userSharePercent / 100) * 100));
+    const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+
+    const sb = dbStore.getSupabaseClient();
+
+    if (!isReversal) {
+      // -------------------------------------------------------------
+      // Status = 1: CREDIT TRANSACTION
+      // -------------------------------------------------------------
+      const ledgerEntry = {
+        id: `ledg_${crypto.randomUUID()}`,
+        userId: targetUser.id,
+        providerTxId: transId,
+        amountCents: userAmountCents,
+        points: userPoints,
+        grossCents,
+        adminProfitCents,
+        appliedSharePercent: userSharePercent,
+        entryType: 'credit' as const,
+        status: 'confirmed' as const,
+        description: `${offerTitle} Completed (+${userPoints.toLocaleString('en-US')} Pts • #${offerId})`,
+        cpxOfferId: String(offerId || ''),
+        createdAt: new Date().toISOString(),
+        processedAt: new Date().toISOString()
+      };
+
+      const added = await dbStore.addLedgerEntry(ledgerEntry);
+      if (!added.success) {
+        // Idempotency: Already processed, return 200 OK '1'
+        console.log(`[Universal Postback] Duplicate transaction ${transId} acknowledged.`);
+        res.status(200).send('1');
+        return;
+      }
+
+      // Record in platform_treasury table if available in Supabase
+      if (sb) {
+        try {
+          await sb.from('platform_treasury').upsert({
+            id: `tr_${transId}`,
+            trans_id: transId,
+            provider: providerParam || 'cpx',
+            user_id: targetUser.id,
+            gross_usd: Number((grossCents / 100).toFixed(4)),
+            admin_profit_usd: Number((adminProfitCents / 100).toFixed(4)),
+            user_points_awarded: userPoints,
+            status: 'completed',
+            created_at: new Date().toISOString()
+          });
+        } catch {
+          // Ignore if table not provisioned
+        }
+      }
+
+      res.status(200).send('1');
+      return;
+    }
+
+    // -----------------------------------------------------------------
+    // Status = 2 / 3: CHARGEBACK & FRAUD REVERSAL
+    // -----------------------------------------------------------------
     const reversalEntry = {
       id: `ledg_${crypto.randomUUID()}`,
       userId: targetUser.id,
       providerTxId: `${transId}_rev`,
-      amountCents: split.userRewardCents,
-      points: split.userRewardPoints,
-      grossCents: split.grossCents,
-      adminProfitCents: split.adminProfitCents,
-      appliedSharePercent: split.userSharePercent,
+      amountCents: userAmountCents,
+      points: userPoints,
+      grossCents,
+      adminProfitCents,
+      appliedSharePercent: userSharePercent,
       entryType: 'reversal' as const,
       status: 'confirmed' as const,
-      description: `Survey Reversal / Chargeback (-${split.userRewardPointsFormatted} Pts • Offer #${offer_id || 'CPX'})`,
+      description: `${offerTitle} Reversal (-${userPoints.toLocaleString('en-US')} Pts • #${offerId})`,
       reversalRef: transId,
       createdAt: new Date().toISOString(),
       processedAt: new Date().toISOString()
     };
 
     await dbStore.addLedgerEntry(reversalEntry);
-    res.status(200).send('1');
-    return;
-  }
 
-  res.status(200).send('1');
-});
+    if (sb) {
+      try {
+        await sb.from('platform_treasury').upsert({
+          id: `tr_${transId}_rev`,
+          trans_id: transId,
+          provider: providerParam || 'cpx',
+          user_id: targetUser.id,
+          gross_usd: -Number((grossCents / 100).toFixed(4)),
+          admin_profit_usd: -Number((adminProfitCents / 100).toFixed(4)),
+          user_points_awarded: -userPoints,
+          status: 'reversed',
+          created_at: new Date().toISOString()
+        });
+      } catch {
+        // Ignore if table not provisioned
+      }
+    }
+
+    res.status(200).send('1');
+  }
+);
 
 // -----------------------------------------------------------------------------
 // White-Label Instant Tasks & PTC Endpoints (Powered by AoyTasks behind the scenes)
@@ -1353,8 +1529,11 @@ app.get('/api/tasks', requireAuth, async (req: AuthenticatedRequest, res: Respon
       forceRefresh: req.query.refresh === '1'
     });
 
+    const offerwallUrl = aoyTasksService.generateOfferwallUrl(user.externalOpaqueId || user.id);
+
     res.json({
       tasks: result.tasks,
+      offerwallUrl,
       pointsPerUsdt: settings.pointsPerUsdt || 10000,
       userSharePercent: settings.userSharePercent || 40,
       surveyDisplayMode: settings.surveyDisplayMode || 'hybrid'

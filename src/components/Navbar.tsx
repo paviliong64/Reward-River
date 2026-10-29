@@ -98,10 +98,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-[#D9EFE3] dark:border-slate-800 shadow-sm transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 sm:h-20">
             {/* Left side: Reward River logo with tagline */}
-            <div className="flex items-center">
+            <div className="flex items-center min-w-0 shrink">
               <button
                 onClick={() => scrollToSection('hero')}
                 className="text-left focus:outline-none rounded-xl p-1 transition-transform hover:scale-[1.01] cursor-pointer"
@@ -200,7 +200,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenAuth('signin')}
-                    className="px-2.5 py-1.5 sm:px-5 sm:py-2.5 text-xs font-extrabold text-[#079B55] dark:text-[#4CC65A] border border-[#079B55] sm:border-2 dark:border-[#4CC65A] hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg sm:rounded-xl transition-all duration-200 cursor-pointer shrink-0"
+                    className="px-2 py-1 sm:px-5 sm:py-2.5 text-xs font-extrabold text-[#079B55] dark:text-[#4CC65A] border border-[#079B55] sm:border-2 dark:border-[#4CC65A] hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg sm:rounded-xl transition-all duration-200 cursor-pointer shrink-0"
                   >
                     Login
                   </button>
@@ -209,7 +209,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenAuth('signup')}
-                    className="px-3 py-1.5 sm:px-6 sm:py-2.5 text-xs font-extrabold text-white bg-[#079B55] hover:bg-[#047A43] rounded-lg sm:rounded-xl shadow-xs sm:shadow-md hover:shadow-lg transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+                    className="px-2.5 py-1 sm:px-6 sm:py-2.5 text-xs font-extrabold text-white bg-[#079B55] hover:bg-[#047A43] rounded-lg sm:rounded-xl shadow-xs sm:shadow-md hover:shadow-lg transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
                   >
                     Sign Up
                   </button>

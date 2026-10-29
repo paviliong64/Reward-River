@@ -170,7 +170,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [copiedSitemap, setCopiedSitemap] = useState(false);
 
   const postbackWebhookUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/cpx/postback?status={status}&trans_id={trans_id}&ext_user_id={user_id}&amount_usd={amount_usd}&amount_local={amount_local}&offer_id={offer_id}&secure_hash={secure_hash}`;
-  const aoyPostbackWebhookUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/wh/aoytasks`;
+  const aoyPostbackWebhookUrl = typeof window !== 'undefined' && window.location.hostname === 'rewardriver.online'
+    ? 'https://rewardriver.online/wh/aoytasks'
+    : `${typeof window !== 'undefined' ? window.location.origin : 'https://rewardriver.online'}/wh/aoytasks`;
+  const aoyProductionPostbackUrl = 'https://rewardriver.online/wh/aoytasks';
 
   const handleCopyPostbackUrl = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -2088,8 +2091,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         <span>{copiedAoyPostback ? 'Copied!' : 'Copy Postback URL'}</span>
                       </button>
                     </div>
-                    <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-400 font-mono text-[11px] break-all select-all">
-                      {aoyPostbackWebhookUrl}
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-bold text-slate-600">
+                        Production Domain Postback (For Vercel / rewardriver.online):
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-400 font-mono text-[11px] break-all select-all flex items-center justify-between">
+                        <span>{aoyProductionPostbackUrl}</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Target</span>
+                      </div>
+                      {typeof window !== 'undefined' && window.location.hostname !== 'rewardriver.online' && (
+                        <>
+                          <div className="text-[10px] text-slate-500 font-medium">
+                            Current Preview Sandbox Webhook:
+                          </div>
+                          <div className="p-2 rounded-lg bg-slate-100 text-slate-700 font-mono text-[10px] break-all select-all">
+                            {aoyPostbackWebhookUrl}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 

@@ -61,6 +61,8 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
 
   const [tasks, setTasks] = useState<WhiteLabelTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [offerwallUrl, setOfferwallUrl] = useState<string>('');
+  const [showOfferwallModal, setShowOfferwallModal] = useState<boolean>(false);
   const [activeTaskModal, setActiveTaskModal] = useState<WhiteLabelTask | null>(null);
   const [taskSecondsLeft, setTaskSecondsLeft] = useState(0);
   const [taskClaiming, setTaskClaiming] = useState(false);
@@ -138,19 +140,26 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [syncCpxTransactionsToServer]);
 
-  // Build isolated Step 1 + Step 2 + Step 3 HTML for Official CPX Research Script Tag v2.0
+  // Secure user identifier generation: strictly use Supabase UUID or opaque ID, NEVER pass user email or PII
   const effectiveAppId = Number(cpxConfig?.appId || '37699') || 37699;
   const effectiveUserId =
     cpxConfig?.extUserId ||
-    (user ? user.externalOpaqueId || `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}` : 'rr_member_1');
+    (user?.id && !user.id.includes('@') ? user.id : null) ||
+    (user?.externalOpaqueId && !user.externalOpaqueId.includes('@') ? user.externalOpaqueId : null) ||
+    'rr_member_1';
   const effectiveHash = cpxConfig?.secureHash || '';
+  const effectiveAoySubId =
+    user?.externalOpaqueId && !user.externalOpaqueId.includes('@')
+      ? user.externalOpaqueId
+      : (user?.id ? user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24) : 'member');
+  const effectiveOfferwallUrl =
+    offerwallUrl ||
+    `https://aoyco.in/offerwall/223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa/${encodeURIComponent(effectiveAoySubId)}`;
 
   const cpxScriptWidgetSrcDoc = React.useMemo(() => {
     const safeUserId = JSON.stringify(effectiveUserId);
-    const safeEmail = JSON.stringify(user?.email || '');
-    const safeUsername = JSON.stringify(user?.username || '');
     const safeHash = JSON.stringify(effectiveHash);
-    const safeSubId1 = JSON.stringify(user?.id || 'rewardriver');
+    const safeSubId1 = JSON.stringify(effectiveUserId);
 
     return `<!doctype html>
 <html lang="en">
@@ -205,8 +214,8 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
       general_config: {
         app_id: ${effectiveAppId},
         ext_user_id: ${safeUserId},
-        email: ${safeEmail},
-        username: ${safeUsername},
+        email: "",
+        username: "Member",
         secure_hash: ${safeHash},
         subid_1: ${safeSubId1},
         subid_2: ""
@@ -257,6 +266,9 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
       if (res.ok) {
         const data = await res.json();
         setTasks(data.tasks || []);
+        if (data.offerwallUrl) {
+          setOfferwallUrl(data.offerwallUrl);
+        }
       }
     } catch {
       // ignore
@@ -523,15 +535,49 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Top Survey Marketplace Header */}
+      {/* Top Marketplace Navigation Tabs (Surveys vs Instant Tasks & Offerwall) */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#D9EFE3] dark:border-slate-800 shadow-sm max-w-md">
+        <button
+          type="button"
+          onClick={() => setMarketplaceSection('surveys')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            marketplaceSection === 'surveys'
+              ? 'bg-[#079B55] text-white shadow-xs font-black'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span>Research Surveys</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMarketplaceSection('tasks');
+            if (tasks.length === 0) fetchWhiteLabelTasks();
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            marketplaceSection === 'tasks'
+              ? 'bg-[#079B55] text-white shadow-xs font-black'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Zap className="w-4 h-4 text-amber-400" />
+          <span>Instant Tasks &amp; Offerwall</span>
+          <span className="hidden sm:inline-block text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-400 text-slate-950 uppercase">
+            LIVE
+          </span>
+        </button>
+      </div>
+
+      {/* Marketplace Header */}
       <div className="bg-gradient-to-r from-white via-[#F0FBF5]/60 to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-900/90 rounded-2xl p-6 border border-[#D9EFE3] dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 animate-fade-in-up transition-all duration-300 hover:shadow-md hover:border-[#079B55]/30">
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#079B55]/10 text-[#079B55] dark:text-[#4CC65A] flex items-center justify-center shrink-0">
-              <ClipboardList className="w-5 h-5" />
+              {marketplaceSection === 'surveys' ? <ClipboardList className="w-5 h-5" /> : <Zap className="w-5 h-5 text-[#079B55]" />}
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-[#192F40] dark:text-white tracking-tight">
-              Choose a survey
+              {marketplaceSection === 'surveys' ? 'Choose a survey' : 'Instant Tasks & Offerwall'}
             </h2>
             <span className="inline-flex items-center gap-1.5 text-xs font-extrabold px-3 py-1 rounded-full bg-[#079B55]/10 text-[#079B55] dark:text-[#4CC65A] border border-[#079B55]/20 shadow-2xs">
               <CheckCircle2 className="w-3.5 h-3.5 text-[#079B55] dark:text-[#4CC65A]" />
@@ -539,7 +585,9 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
             </span>
           </div>
           <p className="text-xs sm:text-sm text-[#52697A] dark:text-slate-400 font-medium pl-0.5">
-            Complete any market research survey below to earn instant Points.
+            {marketplaceSection === 'surveys'
+              ? 'Complete any market research survey below to earn instant Points.'
+              : 'Launch the Partner Offerwall or complete instant sponsored web tasks to earn verified Points.'}
           </p>
         </div>
 
@@ -924,6 +972,230 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
             )
           )}
         </>
+      )}
+
+      {/* =====================================================================
+          VIEW B: INSTANT TASKS & AOYCO OFFERWALL
+         ===================================================================== */}
+      {marketplaceSection === 'tasks' && (
+        <div className="space-y-6">
+          {/* Offerwall Launch Banner Card */}
+          <div className="bg-gradient-to-br from-[#079B55] via-[#047A43] to-[#192F40] text-white rounded-3xl p-6 sm:p-8 shadow-md relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-xs text-white text-xs font-bold font-mono">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>PARTNER OFFERWALL &bull; 100% POSTBACK VERIFIED</span>
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-black tracking-tight">
+                Reward River Partner Offerwall
+              </h3>
+              <p className="text-xs sm:text-sm text-emerald-100 leading-relaxed">
+                Explore hundreds of mobile apps, games, free trials, and web tasks. Completed offers send an instant verified postback to credit Points straight into your account!
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+              <a
+                href={effectiveOfferwallUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-6 py-3.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 text-xs font-black shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>Open Full Offerwall (New Tab)</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setShowOfferwallModal(true)}
+                className="px-5 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/30 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Embed View</span>
+              </button>
+            </div>
+          </div>
+
+          {/* White-Label Tasks Grid */}
+          {tasksLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 animate-pulse space-y-4 shadow-sm">
+                  <div className="h-6 w-28 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                  <div className="h-4 w-full bg-slate-100 dark:bg-slate-800/70 rounded"></div>
+                  <div className="h-8 w-full bg-slate-100 dark:bg-slate-800/70 rounded-lg"></div>
+                </div>
+              ))}
+            </div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-10 text-center border border-slate-200 dark:border-slate-800 max-w-md mx-auto space-y-3 shadow-sm">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-slate-800 text-emerald-600 flex items-center justify-center mx-auto">
+                <Zap className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">All Daily Tasks Claimed</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                You have claimed the available fast-credit tasks for today! New daily tasks refresh regularly, or you can launch the Partner Offerwall above for unlimited offers.
+              </p>
+              <a
+                href={effectiveOfferwallUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Explore Partner Offerwall</span>
+              </a>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredTasks.map((t) => {
+                const pointsFormatted = t.rewardPoints.toLocaleString('en-US');
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => handleOpenTask(t)}
+                    className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer flex flex-col justify-between space-y-4"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 uppercase tracking-wider font-mono">
+                          {t.taskType === 'ptc' ? 'Sponsored Visit' : 'Express Task'}
+                        </span>
+                        <span className="text-slate-400 flex items-center gap-1 font-mono">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{t.durationSeconds || 10}s</span>
+                        </span>
+                      </div>
+                      <h4 className="font-extrabold text-sm text-slate-900 dark:text-white line-clamp-1">
+                        {t.title}
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                        {t.description || 'View sponsor webpage for required duration to earn Points reward.'}
+                      </p>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <div className="text-emerald-600 dark:text-emerald-400 font-mono font-black text-lg">
+                        +{pointsFormatted} <span className="text-xs font-sans text-slate-500">Pts</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                      >
+                        <span>Start</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Fullscreen Embedded Offerwall Modal */}
+          {showOfferwallModal && (
+            <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-bold text-sm">Reward River Partner Offerwall</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={effectiveOfferwallUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Open in New Tab</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowOfferwallModal(false)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+                <iframe
+                  src={effectiveOfferwallUrl}
+                  title="Reward River Partner Offerwall"
+                  className="w-full flex-1 border-0"
+                  allow="clipboard-write; fullscreen"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Active Task Claim Modal */}
+          {activeTaskModal && (
+            <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-slate-800 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                  <Zap className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                    {activeTaskModal.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {activeTaskModal.description || 'Sponsored task verification in progress.'}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                    Reward value upon completion:
+                  </div>
+                  <div className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                    +{activeTaskModal.rewardPoints.toLocaleString('en-US')} Points
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {taskSecondsLeft > 0 ? (
+                    <div className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1.5">
+                      <Clock className="w-4 h-4 animate-spin" />
+                      <span>Please keep sponsor window open: {taskSecondsLeft}s remaining...</span>
+                    </div>
+                  ) : (
+                    <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Task timer complete! Ready to claim.</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTaskModal(null)}
+                      className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClaimTaskReward}
+                      disabled={taskSecondsLeft > 0 || taskClaiming}
+                      className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {taskClaiming ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Crediting...</span>
+                        </>
+                      ) : (
+                        <span>Claim Points</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Footer Disclaimer */}
