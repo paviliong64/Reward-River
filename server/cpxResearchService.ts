@@ -317,11 +317,11 @@ export class CpxResearchService {
       startStr = d.toISOString().slice(0, 10);
     }
 
-    // Check difference in days
+    // Check difference in days and clamp to max 350 days for CPX Publisher API safety
     const diffMs = new Date(endStr).getTime() - new Date(startStr).getTime();
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays > 365) {
-      const clamped = new Date(new Date(endStr).getTime() - 365 * 24 * 60 * 60 * 1000);
+    if (diffDays > 350) {
+      const clamped = new Date(new Date(endStr).getTime() - 350 * 24 * 60 * 60 * 1000);
       startStr = clamped.toISOString().slice(0, 10);
     }
 

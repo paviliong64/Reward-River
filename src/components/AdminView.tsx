@@ -483,7 +483,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       if (datePreset === '7d') days = 7;
       else if (datePreset === '30d') days = 30;
       else if (datePreset === '90d') days = 90;
-      else if (datePreset === '365d') days = 365;
+      else if (datePreset === '365d') days = 350;
 
       const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
       const startStr = startDate.toISOString().slice(0, 10);
@@ -538,9 +538,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
         }
       });
       const data = await res.json().catch(() => null);
-      if (data && data.success) {
+      if (data && (data.success || res.ok)) {
+        const synced = data.syncedCount || 0;
+        const msg = synced > 0
+          ? `CPX Real Points Sync Complete: ${synced} new completes credited (${(data.totalPointsCredited || 0).toLocaleString()} Points awarded to member profiles). Total completes in CPX: ${data.totalCompletes || 0}.`
+          : `CPX Real Points Sync: All ${data.totalCompletes || 0} completed surveys are up to date and credited to member profiles (${(data.totalPointsCredited || 0).toLocaleString()} Points total).`;
         setActionMessage({
-          text: `CPX Real Points Sync Complete: ${data.syncedCount || 0} new completes credited (${(data.totalPointsCredited || 0).toLocaleString()} Points awarded to member profiles). Total completes in CPX: ${data.totalCompletes || 0}.`,
+          text: msg,
           type: 'success'
         });
         fetchAdminData();
@@ -548,13 +552,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
         triggerRefresh();
       } else {
         setActionMessage({
-          text: (data && data.error) ? data.error : 'Sync processed. Live CPX stats are now updated.',
+          text: (data && data.error) ? data.error : 'Failed to synchronize live CPX completes.',
           type: 'error'
         });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setActionMessage({ text: 'Sync notice: ' + msg, type: 'error' });
+      setActionMessage({ text: 'Sync error: ' + msg, type: 'error' });
     } finally {
       setSyncingCpxCompletes(false);
     }
