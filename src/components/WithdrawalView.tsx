@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserBalances, UsdtQuote, Withdrawal } from '../types';
 import {
-  validateUsdtAddress,
   calculateUsdtPayout,
-  usdCentsToUsdt,
   UsdtNetwork
 } from '../utils/usdt';
 import {
@@ -13,8 +11,10 @@ import {
   Clock,
   CheckCircle2,
   ExternalLink,
-  Info,
-  RefreshCw
+  RefreshCw,
+  Coins,
+  Wallet,
+  ArrowLeft
 } from 'lucide-react';
 
 interface WithdrawalViewProps {
@@ -24,20 +24,20 @@ interface WithdrawalViewProps {
   pointsPerUsdt?: number;
   userSharePercent?: number;
   withdrawals: Withdrawal[];
-  onRefreshQuote: () => void;
+  onRefresh?: () => void;
+  onRefreshQuote?: () => void;
+  onBackToSurveys?: () => void;
   onSubmitWithdrawal: (usdtAddress: string, network: UsdtNetwork, amountCents: number) => Promise<{ success: boolean; error?: string }>;
-  onVerifyEmail: () => void;
+  onVerifyEmail?: () => void;
 }
 
 export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
-  user,
   balances,
-  pointsPerUsdt = 10000,
-  userSharePercent = 40,
   withdrawals,
+  onRefresh,
   onRefreshQuote,
-  onSubmitWithdrawal,
-  onVerifyEmail
+  onBackToSurveys,
+  onSubmitWithdrawal
 }) => {
   const [usdtAddress, setUsdtAddress] = useState('');
   const [network, setNetwork] = useState<UsdtNetwork>('TRC20');
@@ -46,27 +46,33 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const safeShare = Math.max(1, userSharePercent);
-  const centsToPts = (c: number) => Math.round((Math.max(0, c) / safeShare) * pointsPerUsdt);
-  const userUsdtPer10k = (safeShare / 100).toFixed(2);
-  const minWithdrawPoints = centsToPts(2500);
-  const maxWithdrawPoints = centsToPts(50000);
+  // Plan Economics:
+  // 10,000 Points = $1.00 USD (100 Points = $0.01 = 1 cent)
+  // Minimum Withdrawal = $25.00 USD = 250,000 Points
+  const minWithdrawPoints = 250000;
+  const maxWithdrawPoints = 5000000;
 
-  const availableCents = balances?.availableCents ?? 0;
-  const availablePoints = balances?.availablePoints ?? centsToPts(availableCents);
-  const availableUsdt = usdCentsToUsdt(availableCents).toFixed(2);
+  const availablePoints = balances?.availablePoints ?? (balances?.availableCents ? balances.availableCents * 100 : 0);
+  const availableCents = Math.floor(availablePoints / 100);
+  const availableUsd = (availablePoints / 10000).toFixed(2);
+  const totalEarnedPoints = balances?.totalEarnedPoints ?? availablePoints;
+  const totalWithdrawnPoints = balances?.totalWithdrawnPoints ?? 0;
+
+  const progressPercent = Math.min(100, Math.round((availablePoints / minWithdrawPoints) * 100));
+  const pointsRemainingForMin = Math.max(0, minWithdrawPoints - availablePoints);
 
   // Fee: $1.00 for TRC20, $2.50 for ERC20
   const feeCents = network === 'TRC20' ? 100 : 250;
   const amountCents = Math.round((parseFloat(amountUsd) || 0) * 100);
-  const requestedPoints = centsToPts(amountCents);
-
-  const addressValidation = validateUsdtAddress(usdtAddress, network);
+  const requestedPoints = Math.max(0, amountCents * 100); // 100 Points = 1 cent ($1 = 10,000 Points)
   const payoutCalc = calculateUsdtPayout(amountCents, network, feeCents);
 
   const handleSetMax = () => {
-    const maxDollars = (availableCents / 100).toFixed(2);
-    setAmountUsd(maxDollars);
+    if (availableCents >= 2500) {
+      setAmountUsd((availableCents / 100).toFixed(2));
+    } else {
+      setAmountUsd('25.00');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,23 +80,21 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
     setFormError(null);
     setSuccessMessage(null);
 
-    if (!usdtAddress) {
-      setFormError('Please enter a valid USDT destination address.');
-      return;
-    }
-
-    if (!addressValidation.isValid) {
-      setFormError(addressValidation.error || 'Invalid USDT address format.');
+    const cleanAddr = usdtAddress.trim();
+    if (!cleanAddr || cleanAddr.length < 6) {
+      setFormError('Please enter your valid USDT wallet address (TRC-20 or ERC-20).');
       return;
     }
 
     if (amountCents < 2500) {
-      setFormError(`Minimum withdrawal amount is ${minWithdrawPoints.toLocaleString('en-US')} Points ($25.00 USDT).`);
+      setFormError('Minimum withdrawal is $25.00 USD (250,000 Points).');
       return;
     }
 
     if (amountCents > availableCents) {
-      setFormError(`Insufficient balance. Available: ${availablePoints.toLocaleString('en-US')} Pts ($${availableUsdt} USDT).`);
+      setFormError(
+        `Insufficient balance. You currently have ${availablePoints.toLocaleString('en-US')} Points ($${availableUsd} USD), and minimum withdrawal is 250,000 Points ($25.00 USD).`
+      );
       return;
     }
 
@@ -101,11 +105,13 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
 
     setSubmitting(true);
     try {
-      const result = await onSubmitWithdrawal(usdtAddress.trim(), network, amountCents);
+      const result = await onSubmitWithdrawal(cleanAddr, network, amountCents);
       if (!result.success) {
         setFormError(result.error || 'Failed to submit withdrawal request.');
       } else {
-        setSuccessMessage('USDT withdrawal request submitted successfully! Your funds are reserved and queued for review.');
+        setSuccessMessage(
+          `Your withdrawal request for $${(amountCents / 100).toFixed(2)} USD (${requestedPoints.toLocaleString('en-US')} Points) has been sent to the Admin Portal for payout!`
+        );
         setUsdtAddress('');
         setAmountUsd('25.00');
       }
@@ -117,56 +123,78 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 animate-fadeIn">
-      {/* Page Title */}
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
-          <span>Withdraw Tether (USDT)</span>
-          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-            USDT Only • TRC-20 &amp; ERC-20
-          </span>
-          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 font-mono">
-            {pointsPerUsdt.toLocaleString('en-US')} Pts = ${userUsdtPer10k} USDT
-          </span>
-        </h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Redeem your Points into on-chain USDT payouts directly to your self-custody wallet or exchange account.
-        </p>
+    <div className="space-y-6 animate-fadeIn">
+      {/* Summary Balance Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D9EFE3] dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+            <span>Available Points</span>
+            <Coins className="w-4 h-4 text-[#079B55]" />
+          </div>
+          <div className="text-2xl font-black text-[#192F40] dark:text-white font-mono mt-1">
+            {availablePoints.toLocaleString('en-US')} <span className="text-sm font-sans text-slate-400">Pts</span>
+          </div>
+          <div className="text-xs font-bold text-[#079B55] dark:text-emerald-400 mt-1">
+            Cash Value: ${availableUsd} USD
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D9EFE3] dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+            <span>Minimum Withdrawal</span>
+            <Wallet className="w-4 h-4 text-sky-600" />
+          </div>
+          <div className="text-2xl font-black text-[#192F40] dark:text-white font-mono mt-1">
+            $25.00 <span className="text-sm font-sans text-slate-400">USD</span>
+          </div>
+          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">
+            Requires 250,000 Points
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D9EFE3] dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+            <span>Goal Progress ($25.00)</span>
+            <span className="text-xs font-black text-[#079B55] font-mono">{progressPercent}%</span>
+          </div>
+          <div className="w-full h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden mt-3">
+            <div
+              className="h-full bg-[#079B55] rounded-full transition-all duration-500"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-2">
+            {pointsRemainingForMin > 0
+              ? `${pointsRemainingForMin.toLocaleString('en-US')} more Points needed to unlock $25.00 withdrawal`
+              : 'Minimum reached! You can submit a withdrawal request now.'}
+          </div>
+        </div>
       </div>
 
       {/* Main Withdrawal Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Withdrawal Form Card */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl p-6 border border-[#D9EFE3] dark:border-slate-800 shadow-sm space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
-              <span className="text-xs text-slate-500 font-medium">Available Withdrawable Balance:</span>
-              <div className="text-2xl font-extrabold text-slate-900 font-mono">
-                {availablePoints.toLocaleString('en-US')} <span className="text-sm font-sans text-slate-500">Pts</span>{' '}
-                <span className="text-sm text-emerald-700 font-bold font-mono ml-1">
-                  (≈ ${availableUsdt} USDT)
-                </span>
-              </div>
+              <h3 className="text-base font-extrabold text-[#192F40] dark:text-white">
+                Request Withdrawal
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                When you submit this request, it goes directly to the Admin Portal for fast verification and payout.
+              </p>
             </div>
-
-            <button
-              onClick={onRefreshQuote}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs text-slate-600 font-medium transition-colors"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
-              <span>10k Pts = ${userUsdtPer10k} USDT</span>
-            </button>
           </div>
 
           {formError && (
-            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2.5">
+            <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 font-semibold flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
               <span>{formError}</span>
             </div>
           )}
 
           {successMessage && (
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-start gap-2.5">
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 font-semibold flex items-start gap-2.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <span>{successMessage}</span>
             </div>
@@ -175,47 +203,47 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Network Selector */}
             <div>
-              <label className="text-xs font-bold text-slate-700 mb-1.5 block">
-                Select USDT Transfer Network
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 block">
+                1. Choose Payout Network
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setNetwork('TRC20')}
-                  className={`p-3 rounded-xl border text-left transition-all ${
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                     network === 'TRC20'
-                      ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 ring-1 ring-emerald-600'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                      ? 'border-[#079B55] bg-[#F0FBF5] dark:bg-emerald-950/40 text-slate-900 dark:text-white ring-1 ring-[#079B55]'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-xs">TRON (TRC-20)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                      Low Fee
+                    <span className="font-extrabold text-xs">USDT (TRC-20)</span>
+                    <span className="text-[10px] uppercase font-bold text-[#079B55] bg-emerald-100 dark:bg-emerald-900/60 dark:text-emerald-300 px-1.5 py-0.5 rounded">
+                      Recommended
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-500 block">
-                    Fee: $1.00 USDT • Starts with T
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                    TRON Network • $1.00 Fee
                   </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setNetwork('ERC20')}
-                  className={`p-3 rounded-xl border text-left transition-all ${
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                     network === 'ERC20'
-                      ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 ring-1 ring-emerald-600'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                      ? 'border-[#079B55] bg-[#F0FBF5] dark:bg-emerald-950/40 text-slate-900 dark:text-white ring-1 ring-[#079B55]'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-xs">Ethereum (ERC-20)</span>
-                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                      EVM
+                    <span className="font-extrabold text-xs">USDT (ERC-20)</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                      Ethereum
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-500 block">
-                    Fee: $2.50 USDT • Starts with 0x
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                    ERC-20 Network • $2.50 Fee
                   </span>
                 </button>
               </div>
@@ -223,24 +251,9 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
 
             {/* USDT Destination Address */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  USDT Payout Address ({network})
-                </label>
-                {usdtAddress && (
-                  <span
-                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                      addressValidation.isValid
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-red-50 text-red-700 border border-red-200'
-                    }`}
-                  >
-                    {addressValidation.isValid
-                      ? `Valid ${addressValidation.network}`
-                      : 'Invalid Format'}
-                  </span>
-                )}
-              </div>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 block">
+                2. Your {network} Wallet Address
+              </label>
               <input
                 type="text"
                 required
@@ -248,34 +261,29 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
                 onChange={e => setUsdtAddress(e.target.value)}
                 placeholder={
                   network === 'TRC20'
-                    ? 'TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7...'
-                    : '0xdAC17F958D2ee523a2206206994597C13D831ec7...'
+                    ? 'Enter your TRC-20 USDT Wallet Address (starts with T...)'
+                    : 'Enter your ERC-20 USDT Wallet Address (starts with 0x...)'
                 }
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-xs sm:text-sm text-slate-900"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#079B55] font-mono text-xs sm:text-sm text-slate-900 dark:text-white"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                {network === 'TRC20'
-                  ? 'TRC-20 addresses begin with T and are 34 characters long.'
-                  : 'ERC-20 addresses begin with 0x and are 42 characters long.'}
-              </p>
             </div>
 
             {/* Withdrawal Amount (USD / USDT) */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  Withdrawal Amount in USDT ({requestedPoints.toLocaleString('en-US')} Points)
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  3. Amount to Withdraw in USD ({requestedPoints.toLocaleString('en-US')} Points)
                 </label>
                 <button
                   type="button"
                   onClick={handleSetMax}
-                  className="text-[11px] font-bold text-sky-600 hover:text-sky-800"
+                  className="text-[11px] font-extrabold text-[#079B55] hover:underline cursor-pointer"
                 >
-                  Use Max ({availablePoints.toLocaleString('en-US')} Pts / ${availableUsdt})
+                  Withdraw Full Balance (${availableUsd})
                 </button>
               </div>
               <div className="relative">
-                <span className="absolute left-3.5 top-2.5 text-slate-400 font-bold text-sm">₮</span>
+                <span className="absolute left-3.5 top-2.5 text-slate-400 font-bold text-sm">$</span>
                 <input
                   type="number"
                   step="0.01"
@@ -284,62 +292,57 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
                   required
                   value={amountUsd}
                   onChange={e => setAmountUsd(e.target.value)}
-                  className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-bold text-slate-900 font-mono"
+                  className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#079B55] text-sm font-bold text-slate-900 dark:text-white font-mono"
                 />
               </div>
-              <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                <span>Minimum: {minWithdrawPoints.toLocaleString('en-US')} Pts ($25.00 USDT)</span>
-                <span>Maximum: {maxWithdrawPoints.toLocaleString('en-US')} Pts ($500.00 USDT)</span>
+              <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                <span>Minimum: $25.00 USD ({minWithdrawPoints.toLocaleString('en-US')} Points)</span>
+                <span>Maximum: $500.00 USD ({maxWithdrawPoints.toLocaleString('en-US')} Points)</span>
               </div>
             </div>
 
             {/* Payout Breakdown */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80 space-y-2 text-xs">
-              <div className="flex justify-between text-slate-600">
-                <span>Points Redeemed:</span>
-                <span className="font-mono font-bold text-slate-900">
+            <div className="bg-[#F0FBF5]/70 dark:bg-slate-800/70 rounded-xl p-4 border border-[#D9EFE3] dark:border-slate-700 space-y-2 text-xs">
+              <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                <span>Points to Redeem (10,000 Pts = $1.00):</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white">
                   {requestedPoints.toLocaleString('en-US')} Pts
                 </span>
               </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Gross USDT Equivalent:</span>
-                <span className="font-mono font-semibold text-slate-800">
-                  {payoutCalc.grossUsdt} USDT
+              <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                <span>Withdrawal Amount:</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white">
+                  ${payoutCalc.grossUsdt} USD
                 </span>
               </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Network Transfer Fee ({network}):</span>
+              <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                <span>Network Fee ({network}):</span>
                 <span className="font-mono font-semibold text-amber-600">
-                  - {payoutCalc.feeUsdt} USDT
+                  - ${payoutCalc.feeUsdt} USD
                 </span>
               </div>
-              <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
-                <span className="text-sm">Estimated Net Payout:</span>
-                <div className="text-right">
-                  <span className="text-sm text-emerald-700 font-mono block">
-                    {payoutCalc.netUsdt} USDT
-                  </span>
-                  <span className="text-[11px] font-mono text-slate-500 font-normal">
-                    ≈ ${payoutCalc.netUsdt} USD
-                  </span>
-                </div>
+              <div className="pt-2 border-t border-[#D9EFE3] dark:border-slate-700 flex justify-between font-extrabold text-slate-900 dark:text-white">
+                <span className="text-sm">You Receive (Net Payout):</span>
+                <span className="text-sm text-[#079B55] dark:text-emerald-400 font-mono">
+                  ${payoutCalc.netUsdt} USDT
+                </span>
               </div>
             </div>
 
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={submitting || availableCents < 2500}
-              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm shadow-sm hover:shadow-md active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
+              disabled={submitting}
+              className="w-full py-3.5 rounded-xl bg-[#079B55] hover:bg-[#058246] disabled:opacity-50 text-white font-extrabold text-sm shadow-sm hover:shadow-md active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               {submitting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Submitting Request...</span>
+                  <span>Sending Request to Admin...</span>
                 </>
               ) : (
                 <>
-                  <span>Submit USDT Withdrawal Request</span>
+                  <span>Withdrawal Request</span>
                   <ArrowUpRight className="w-4 h-4" />
                 </>
               )}
@@ -347,82 +350,85 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
           </form>
         </div>
 
-        {/* Security & Withdrawal Policy Sidebar */}
+        {/* Simple How It Works Sidebar */}
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>USDT Withdrawal Policies</span>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-[#D9EFE3] dark:border-slate-800 shadow-sm space-y-3">
+            <h3 className="text-sm font-extrabold text-[#192F40] dark:text-white flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#079B55]" />
+              <span>How Withdrawals Work</span>
             </h3>
 
-            <ul className="space-y-2.5 text-xs text-slate-600">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+            <ul className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
+              <li className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-[#079B55] shrink-0 mt-0.5" />
                 <span>
-                  <strong>Strict Stablecoin USDT:</strong> Withdrawals are processed exclusively in Tether USD (USDT).
+                  <strong>100% Full Survey Points:</strong> Every survey you complete adds full Points to your account (e.g., 2,000 Pts survey = +2,000 Pts).
                 </span>
               </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+              <li className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-[#079B55] shrink-0 mt-0.5" />
                 <span>
-                  <strong>Network Match Verification:</strong> Double-check that your wallet supports the chosen network (TRC-20 or ERC-20).
+                  <strong>Fixed Redemption Rate:</strong> <strong>10,000 Points = $1.00 USD</strong> (2,000 Points = $0.20 USD).
                 </span>
               </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+              <li className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-[#079B55] shrink-0 mt-0.5" />
                 <span>
-                  <strong>Atomic Balance Reservation:</strong> Requested amounts are held securely in reserved status to prevent double-spending.
+                  <strong>$25.00 Minimum Withdrawal:</strong> Once your balance reaches <strong>250,000 Points ($25.00 USD)</strong>, submit your wallet address here.
                 </span>
               </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+              <li className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-[#079B55] shrink-0 mt-0.5" />
                 <span>
-                  <strong>No Volatility Risk:</strong> 1 USDT = $1.00 USD. Your rewards never decrease due to crypto market drops.
+                  <strong>Direct Admin Payout:</strong> Your request appears immediately in the Admin Portal and is paid directly to your wallet.
                 </span>
               </li>
             </ul>
-          </div>
 
-          <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 text-xs text-emerald-800 space-y-1">
-            <div className="flex items-center gap-1.5 font-bold">
-              <Info className="w-3.5 h-3.5 text-emerald-600" />
-              <span>TRC-20 Recommended</span>
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
+              <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                <span>Total Earned Points:</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{totalEarnedPoints.toLocaleString('en-US')} Pts</span>
+              </div>
+              <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                <span>Total Withdrawn Points:</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{totalWithdrawnPoints.toLocaleString('en-US')} Pts</span>
+              </div>
             </div>
-            <p className="text-slate-600 leading-relaxed text-[11px]">
-              TRC-20 (TRON) transactions confirm within minutes and carry a low $1.00 flat fee.
-            </p>
           </div>
         </div>
       </div>
 
       {/* Withdrawal History Table */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-900 mb-4">Your USDT Withdrawal History</h3>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-[#D9EFE3] dark:border-slate-800 shadow-sm">
+        <h3 className="text-base font-extrabold text-[#192F40] dark:text-white mb-4">
+          Your Withdrawal Requests ({withdrawals.length})
+        </h3>
 
         {withdrawals.length === 0 ? (
           <div className="py-8 text-center text-slate-400 text-xs">
-            <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-            <span>No withdrawal requests yet. Your requested USDT payouts will appear here.</span>
+            <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+            <span>No withdrawal requests yet. Once you submit a request, its live status will appear here.</span>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="py-3 px-3">Date</th>
-                  <th className="py-3 px-3">Network</th>
-                  <th className="py-3 px-3">Destination Address</th>
-                  <th className="py-3 px-3">Gross Amount</th>
+                  <th className="py-3 px-3">Points Redeemed</th>
+                  <th className="py-3 px-3">USD Amount</th>
                   <th className="py-3 px-3">Net Payout</th>
+                  <th className="py-3 px-3">Network &amp; Wallet</th>
                   <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Transaction / Notes</th>
+                  <th className="py-3 px-3">Admin Notes / TxHash</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {withdrawals.map(w => {
                   const statusColors: Record<string, string> = {
                     requested: 'bg-amber-50 text-amber-700 border-amber-200',
-                    under_review: 'bg-sky-50 text-sky-700 border-sky-200',
+                    under_review: 'bg-amber-50 text-amber-700 border-amber-200',
                     approved: 'bg-blue-50 text-blue-700 border-blue-200',
                     processing: 'bg-indigo-50 text-indigo-700 border-indigo-200',
                     paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -431,52 +437,54 @@ export const WithdrawalView: React.FC<WithdrawalViewProps> = ({
                     cancelled: 'bg-slate-100 text-slate-700 border-slate-200'
                   };
 
+                  const ptsRedeemed = Math.round(w.amountCents * 100);
                   const explorerBase = w.network === 'TRC20'
                     ? 'https://tronscan.org/#/transaction/'
                     : 'https://etherscan.io/tx/';
 
                   return (
-                    <tr key={w.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3 px-3 text-slate-600">
-                        {new Date(w.createdAt).toLocaleDateString()}
+                    <tr key={w.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-3 text-slate-600 dark:text-slate-300">
+                        {new Date(w.createdAt).toLocaleString()}
                       </td>
-                      <td className="py-3 px-3 font-bold text-slate-800">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px]">
-                          {w.network}
-                        </span>
+                      <td className="py-3 px-3 font-mono font-bold text-[#079B55] dark:text-emerald-400">
+                        {ptsRedeemed.toLocaleString('en-US')} Pts
                       </td>
-                      <td className="py-3 px-3 font-mono text-slate-800">
-                        {w.usdtAddress.slice(0, 10)}...{w.usdtAddress.slice(-6)}
-                      </td>
-                      <td className="py-3 px-3 font-bold text-slate-900">
+                      <td className="py-3 px-3 font-bold font-mono text-slate-900 dark:text-white">
                         ${(w.amountCents / 100).toFixed(2)}
                       </td>
-                      <td className="py-3 px-3 font-mono text-emerald-700 font-bold">
-                        {w.netUsdt} USDT
+                      <td className="py-3 px-3 font-mono text-emerald-700 dark:text-emerald-400 font-bold">
+                        ${w.netUsdt} USDT
+                      </td>
+                      <td className="py-3 px-3 font-mono text-slate-800 dark:text-slate-200">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold mr-1.5">
+                          {w.network}
+                        </span>
+                        {w.usdtAddress}
                       </td>
                       <td className="py-3 px-3">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
                             statusColors[w.status] || 'bg-slate-100 text-slate-700'
                           }`}
                         >
-                          {w.status.replace('_', ' ')}
+                          {w.status === 'under_review' ? 'Pending Admin Review' : w.status.replace('_', ' ')}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-slate-500">
+                      <td className="py-3 px-3 text-slate-500 dark:text-slate-400">
                         {w.txHash ? (
                           <a
                             href={`${explorerBase}${w.txHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-emerald-700 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                            className="text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
                           >
-                            <span>{w.txHash.slice(0, 8)}...</span>
+                            <span>{w.txHash}</span>
                             <ExternalLink className="w-3 h-3" />
                           </a>
                         ) : (
                           <span className="text-[11px] text-slate-400">
-                            {w.reviewNotes || 'Pending settlement review'}
+                            {w.reviewNotes || 'Sent to Admin Portal'}
                           </span>
                         )}
                       </td>

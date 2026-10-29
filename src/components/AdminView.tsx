@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { User, Withdrawal, SystemSettings, AdminUserDetail } from '../types';
 import { fetchLiveCpxSurveysBrowser } from '../utils/cpxClient';
 import {
+  CpxTimeStatisticsResponse,
+  CpxCountrySale,
+  CpxCompleteRecord,
+  CpxScreenoutRecord,
+  CpxTransactionCheckResult
+} from '../utils/cpx';
+import {
   LayoutGrid,
   BarChart3,
   FilePlus2,
@@ -57,8 +64,6 @@ interface AdminViewProps {
 
 type AdminSection =
   | 'overview'
-  | 'partner_revenue'
-  | 'points_split'
   | 'cpx_manager'
   | 'aoy_manager'
   | 'withdrawals'
@@ -92,10 +97,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
     feeCentsTrc20: 100,
     feeCentsErc20: 250,
     userSharePercent: 40,
-    pointsPerUsdt: 10000,
+    pointsPerUsdt: 5000,
     surveyDisplayMode: 'points_only',
     cpxAppId: '37699',
     cpxHashKey: '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
+    cpxApiKey: '2578500163e1998b3c8929e261a3e095',
     cpxIntegrationMode: 'hybrid_api',
     cpxMaxSurveys: 12,
     cpxThemeColor: '10b981',
@@ -148,7 +154,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [aoyTestOfferName, setAoyTestOfferName] = useState('Sponsored Cloud Visit #41');
   const [aoyTestOfferType, setAoyTestOfferType] = useState<'ptc' | 'shortlink'>('ptc');
   const [aoyTestStatus, setAoyTestStatus] = useState<number>(1);
-  const [partnerLedgerFilter, setPartnerLedgerFilter] = useState<'all' | 'cpx_research' | 'aoytasks'>('all');
   const [integrationDiagResult, setIntegrationDiagResult] = useState<any>(null);
   const [runningIntegrationCheck, setRunningIntegrationCheck] = useState(false);
 
@@ -163,6 +168,20 @@ export const AdminView: React.FC<AdminViewProps> = ({
   // System Health state
   const [systemHealth, setSystemHealth] = useState<any>(null);
   const [loadingSystemHealth, setLoadingSystemHealth] = useState(false);
+
+  // Official CPX Research Statistics API state
+  const [cpxStatsTime, setCpxStatsTime] = useState<CpxTimeStatisticsResponse | null>(null);
+  const [cpxStatsCountries, setCpxStatsCountries] = useState<CpxCountrySale[]>([]);
+  const [cpxCompletes, setCpxCompletes] = useState<CpxCompleteRecord[]>([]);
+  const [cpxScreenouts, setCpxScreenouts] = useState<CpxScreenoutRecord[]>([]);
+  const [loadingCpxStats, setLoadingCpxStats] = useState(false);
+  const [syncingCpxCompletes, setSyncingCpxCompletes] = useState(false);
+  const [cpxDateRangePreset, setCpxDateRangePreset] = useState<'7d' | '30d' | '60d' | '90d' | '365d'>('60d');
+  const [cpxGroupBy, setCpxGroupBy] = useState<'day' | 'week' | 'month'>('day');
+  const [cpxTxSearchId, setCpxTxSearchId] = useState('');
+  const [cpxTxSearchResult, setCpxTxSearchResult] = useState<CpxTransactionCheckResult | null>(null);
+  const [verifyingCpxTx, setVerifyingCpxTx] = useState(false);
+  const [cpxActiveSubTab, setCpxActiveSubTab] = useState<'statistics' | 'completes' | 'countries' | 'screenouts' | 'verify' | 'settings'>('statistics');
 
   // SEO & Google Analytics state
   const [savingSeoSettings, setSavingSeoSettings] = useState(false);
@@ -317,7 +336,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setIntegrationDiagResult(data);
       if (data.allPassed) {
         setActionMessage({
-          text: `All 6 Integration & Postback Checks Passed (${data.latencyMs}ms): CPX Research, AoyTasks White-Label, S2S MD5 Signatures, 40%/60% Split, and Partner Settlement Accounting are 100% operational!`,
+          text: `All Integration & Postback Checks Passed (${data.latencyMs}ms): CPX Research, S2S MD5 Signatures, Real Points Ledger, and Partner Settlement Accounting are 100% operational!`,
           type: 'success'
         });
       }
@@ -453,10 +472,119 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
+  const fetchCpxStatistics = async (datePreset = cpxDateRangePreset, groupBy = cpxGroupBy) => {
+    setLoadingCpxStats(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const now = new Date();
+      // Add +1 day UTC buffer so CPX Research CET (UTC+1) completions on the current day are never cut off
+      const endStr = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      let days = 60;
+      if (datePreset === '7d') days = 7;
+      else if (datePreset === '30d') days = 30;
+      else if (datePreset === '90d') days = 90;
+      else if (datePreset === '365d') days = 365;
+
+      const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      const startStr = startDate.toISOString().slice(0, 10);
+
+      const [timeRes, countryRes, compRes, outRes] = await Promise.all([
+        fetch(`/api/admin/cpx/stats/time?start_time=${startStr}&end_time=${endStr}&group_by=${groupBy}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`/api/admin/cpx/stats/countries?start_time=${startStr}&end_time=${endStr}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`/api/admin/cpx/stats/completes?start_time=${startStr}&end_time=${endStr}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`/api/admin/cpx/stats/screenouts?start_time=${startStr}&end_time=${endStr}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      if (timeRes.ok) {
+        const timeData = await timeRes.json();
+        setCpxStatsTime(timeData);
+      }
+      if (countryRes.ok) {
+        const countryData = await countryRes.json();
+        setCpxStatsCountries(countryData.countries || []);
+      }
+      if (compRes.ok) {
+        const compData = await compRes.json();
+        setCpxCompletes(compData.completes || []);
+      }
+      if (outRes.ok) {
+        const outData = await outRes.json();
+        setCpxScreenouts(outData.screenouts || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load CPX statistics:', err);
+    } finally {
+      setLoadingCpxStats(false);
+    }
+  };
+
+  const handleSyncCpxCompletes = async () => {
+    setSyncingCpxCompletes(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/cpx/sync-real-points', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionMessage({
+          text: `CPX Real Points Sync Complete: ${data.syncedCount} new completes credited (${data.totalPointsCredited?.toLocaleString()} Points awarded to member profiles). Total completes in CPX: ${data.totalCompletes}.`,
+          type: 'success'
+        });
+        fetchAdminData();
+        fetchCpxStatistics();
+        triggerRefresh();
+      } else {
+        setActionMessage({
+          text: data.error || 'Failed to sync CPX completes',
+          type: 'error'
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setActionMessage({ text: 'Sync error: ' + msg, type: 'error' });
+    } finally {
+      setSyncingCpxCompletes(false);
+    }
+  };
+
+  const handleVerifyCpxTransaction = async (txIdToTest?: string) => {
+    const id = (txIdToTest || cpxTxSearchId).trim();
+    if (!id) return;
+    setVerifyingCpxTx(true);
+    setCpxTxSearchResult(null);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/cpx/stats/check-transaction/${encodeURIComponent(id)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setCpxTxSearchResult(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCpxTxSearchResult({ type: 'error', error: msg || 'Validation request failed' });
+    } finally {
+      setVerifyingCpxTx(false);
+    }
+  };
+
   useEffect(() => {
     fetchAdminData();
     fetchUserAnalytics();
     fetchSystemHealth();
+    fetchCpxStatistics();
   }, []);
 
   const handleReviewAction = async (id: string, action: string, notes?: string, txHash?: string) => {
@@ -572,9 +700,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
     );
   });
 
-  const activeSharePercent = settings?.userSharePercent ?? overview?.userSharePercent ?? 40;
-  const activeAdminProfitPercent = Math.max(0, 100 - activeSharePercent);
-  const activePointsPerUsdt = settings?.pointsPerUsdt ?? overview?.pointsPerUsdt ?? 10000;
   const pendingCount = overview?.pendingWithdrawalCount ?? withdrawals.filter((w) => ['requested', 'under_review'].includes(w.status)).length;
 
   const sidebarItems: {
@@ -584,16 +709,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
     badge?: string | number;
   }[] = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutGrid },
-    {
-      id: 'partner_revenue',
-      label: 'Partner Accounting',
-      icon: DollarSign
-    },
-    { id: 'points_split', label: 'Points & Profit Split', icon: BarChart3 },
+    { id: 'users', label: 'Users & Earnings', icon: Users },
     { id: 'cpx_manager', label: 'CPX Research Manager', icon: Megaphone },
-    { id: 'aoy_manager', label: 'AoyTasks Manager', icon: Zap },
     { id: 'withdrawals', label: 'USDT Withdrawals', icon: FilePlus2, badge: pendingCount > 0 ? pendingCount : undefined },
-    { id: 'users', label: 'Users', icon: Users },
+    { id: 'aoy_manager', label: 'AoyTasks Manager', icon: Zap },
     { id: 'user_analytics', label: 'User Analytics', icon: LineChart },
     { id: 'system_health', label: 'System Health', icon: Cpu },
     { id: 'seo_analytics', label: 'SEO & Analytics', icon: SearchCheck },
@@ -741,188 +860,177 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </button>
               </div>
 
-              {/* Row 1: 3 Clean White KPI Cards with Tinted Top-Right Icons */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {/* KPI Card 1 */}
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between min-h-[152px]">
+              {/* Row 1: 4 Clean White KPI Cards showing Completes, CPX Gross, User 50% Value, and Admin 50% Profit */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* KPI Card 1: Completed Surveys & Points */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-1">
-                      COMPLETED SURVEYS & OFFERS
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      COMPLETED SURVEYS
                     </span>
-                    <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600 shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600 shrink-0">
                       <FileCheck2 className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="mt-4 flex items-baseline justify-between">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                        {overview?.completedSurveysCount ?? 0}
-                      </span>
-                      <span className="w-2 h-1 rounded-full bg-emerald-100 inline-block" />
+                  <div className="mt-3">
+                    <div className="text-2xl font-extrabold text-slate-900 font-mono">
+                      {overview?.completedSurveysCount ?? 0}
                     </div>
-                    <span className="text-[11px] font-semibold text-slate-400">
-                      {((overview?.totalRewardsCreditedPoints || 0)).toLocaleString('en-US')} Pts Credited
-                    </span>
+                    <div className="text-[11px] font-bold text-emerald-700 mt-1 font-mono">
+                      {((overview?.totalRewardsCreditedPoints || 0)).toLocaleString('en-US')} Total Points
+                    </div>
                   </div>
                 </div>
 
-                {/* KPI Card 2 */}
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between min-h-[152px]">
+                {/* KPI Card 2: CPX Gross Revenue (100% @ 5,000 Pts = $1) */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-1">
-                      HIDDEN ADMIN PROFIT ({activeAdminProfitPercent}%)
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      CPX GROSS REVENUE (100%)
                     </span>
-                    <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-600 shrink-0">
-                      <BookOpen className="w-5 h-5" />
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-600 shrink-0">
+                      <DollarSign className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="mt-4 flex items-baseline justify-between">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                        ${((overview?.totalAdminProfitCents || 0) / 100).toFixed(2)}
-                      </span>
-                      <span className="w-2 h-1 rounded-full bg-emerald-100 inline-block" />
+                  <div className="mt-3">
+                    <div className="text-2xl font-extrabold text-slate-900 font-mono">
+                      ${((overview?.totalGrossRevenueCents || 0) / 100).toFixed(2)}
                     </div>
-                    <span className="text-[11px] font-semibold text-slate-400">
-                      Gross: ${((overview?.totalGrossRevenueCents || 0) / 100).toFixed(2)}
-                    </span>
+                    <div className="text-[11px] font-semibold text-slate-500 mt-1">
+                      CPX Factor: 5,000 Pts = $1.00
+                    </div>
                   </div>
                 </div>
 
-                {/* KPI Card 3 */}
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between min-h-[152px]">
+                {/* KPI Card 3: User Payout Value (50% @ 10,000 Pts = $1) */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-1">
-                      REALTIME ACTIVE MEMBERS
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      USER PAYOUT VALUE (50%)
                     </span>
-                    <div className="w-11 h-11 rounded-xl bg-rose-50 border border-rose-200/80 flex items-center justify-center text-rose-500 shrink-0">
-                      <Activity className="w-5 h-5" />
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-600 shrink-0">
+                      <Users className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                        {overview?.totalUsers ?? usersList.length ?? 0}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-600 text-[11px] font-bold">
-                        Active Now
-                      </span>
+                  <div className="mt-3">
+                    <div className="text-2xl font-extrabold text-amber-700 font-mono">
+                      ${((overview?.totalRewardsCreditedCents || 0) / 100).toFixed(2)}
                     </div>
-                    {pendingCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveSection('withdrawals')}
-                        className="text-[11px] font-bold text-amber-600 hover:underline"
-                      >
-                        {pendingCount} Pending Payouts
-                      </button>
-                    )}
+                    <div className="text-[11px] font-semibold text-slate-500 mt-1">
+                      User Rate: 10,000 Pts = $1.00 ($25 Min)
+                    </div>
+                  </div>
+                </div>
+
+                {/* KPI Card 4: Admin 50% Net Profit Margin */}
+                <div className="bg-emerald-950 text-white border border-emerald-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+                      YOUR 50% NET PROFIT
+                    </span>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-800/80 border border-emerald-700 flex items-center justify-center text-emerald-300 shrink-0">
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-extrabold text-emerald-400 font-mono">
+                      +${((overview?.totalAdminProfitCents || 0) / 100).toFixed(2)}
+                    </div>
+                    <div className="text-[11px] font-semibold text-emerald-200/90 mt-1">
+                      50% Margin • {overview?.totalUsers ?? usersList.length} Members
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Row 1B: Integrated Partners Revenue & Settlement Overview */}
+              {/* Row 1B: 50% Profit Plan & CPX Research Live Status */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
                   <div>
                     <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                      <Megaphone className="w-4 h-4 text-emerald-600" />
                       <h2 className="text-base font-extrabold text-slate-900">
-                        Integrated Partners Revenue &amp; Settlement Overview
+                        Active 50% Profit Margin Plan &amp; CPX Research Live Status
                       </h2>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Live accounting of what each integrated partner pays us (100% Gross), what users receive ({activeSharePercent}% Share), and platform net margin ({activeAdminProfitPercent}% Net Profit).
+                      Users receive 100% of survey Points (e.g. 2,000 Pts). CPX pays you $1 per 5,000 Pts; Users redeem at 10,000 Pts = $1.00 (Min Withdraw $25.00 = 250,000 Pts).
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveSection('partner_revenue')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+                    onClick={() => setActiveSection('cpx_manager')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
                   >
-                    <BarChart3 className="w-3.5 h-3.5" />
-                    <span>View Full Accounting</span>
+                    <span>CPX Manager &amp; Logs &rarr;</span>
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(overview?.partnerAccounting?.partners || [
-                    {
-                      partnerId: 'cpx_research',
-                      partnerName: 'CPX Research',
-                      userFacingBrand: 'Reward River Research Surveys',
-                      completedCount: 0,
-                      grossRevenueUsdFormatted: '$0.00',
-                      userPayoutUsdFormatted: '$0.00',
-                      userPayoutPoints: 0,
-                      adminProfitUsdFormatted: '$0.00'
-                    },
-                    {
-                      partnerId: 'aoytasks',
-                      partnerName: 'AoyTasks (aoyco.in)',
-                      userFacingBrand: 'Reward River Instant Tasks & PTC',
-                      completedCount: 0,
-                      grossRevenueUsdFormatted: '$0.00',
-                      userPayoutUsdFormatted: '$0.00',
-                      userPayoutPoints: 0,
-                      adminProfitUsdFormatted: '$0.00'
-                    }
-                  ]).map((p: any) => (
-                    <div
-                      key={p.partnerId}
-                      className="rounded-xl border border-slate-200/90 bg-[#f8fafc] p-4 space-y-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-extrabold text-slate-900">{p.partnerName}</div>
-                          <div className="text-[11px] text-slate-500">
-                            User Sees: <strong className="text-slate-700">{p.userFacingBrand}</strong> • {p.completedCount} Completed
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setActiveSection(p.partnerId === 'cpx_research' ? 'cpx_manager' : 'aoy_manager')}
-                          className="text-[11px] font-bold text-blue-600 hover:underline shrink-0"
-                        >
-                          Manage &rarr;
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 pt-1">
-                        <div className="bg-white border border-slate-200/80 rounded-lg p-2.5">
-                          <div className="text-[10px] font-bold uppercase text-slate-400">Partner Pays (100%)</div>
-                          <div className="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
-                            {p.grossRevenueUsdFormatted}
-                          </div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">$1.00 / 10k Pts</div>
-                        </div>
-
-                        <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-lg p-2.5">
-                          <div className="text-[10px] font-bold uppercase text-emerald-700">
-                            User Gets ({activeSharePercent}%)
-                          </div>
-                          <div className="text-sm font-extrabold text-emerald-800 font-mono mt-0.5">
-                            {p.userPayoutUsdFormatted}
-                          </div>
-                          <div className="text-[10px] text-emerald-700 font-mono mt-0.5">
-                            {(p.userPayoutPoints || 0).toLocaleString('en-US')} Pts
-                          </div>
-                        </div>
-
-                        <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-lg p-2.5">
-                          <div className="text-[10px] font-bold uppercase text-indigo-700">
-                            Our Profit ({activeAdminProfitPercent}%)
-                          </div>
-                          <div className="text-sm font-extrabold text-indigo-900 font-mono mt-0.5">
-                            +{p.adminProfitUsdFormatted}
-                          </div>
-                          <div className="text-[10px] text-indigo-700 mt-0.5">
-                            ${(activeAdminProfitPercent / 100).toFixed(2)} / 10k Pts
-                          </div>
-                        </div>
-                      </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  <div className="bg-[#f8fafc] border border-slate-200/80 rounded-xl p-3.5 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      CPX FACTOR (PUBLISHER)
+                    </span>
+                    <div className="text-base font-mono font-extrabold text-slate-900">
+                      5,000 Pts = $1.00
                     </div>
-                  ))}
+                    <p className="text-[11px] text-slate-500">App #{settings?.cpxAppId || '37699'} (2,000 Pts = $0.40)</p>
+                  </div>
+
+                  <div className="bg-[#f8fafc] border border-slate-200/80 rounded-xl p-3.5 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      USER REDEMPTION RATE
+                    </span>
+                    <div className="text-base font-mono font-extrabold text-emerald-700">
+                      10,000 Pts = $1.00
+                    </div>
+                    <p className="text-[11px] text-slate-500">2,000 Pts = $0.20 User / $0.20 Profit</p>
+                  </div>
+
+                  <div className="bg-[#f8fafc] border border-slate-200/80 rounded-xl p-3.5 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      MINIMUM WITHDRAWAL
+                    </span>
+                    <div className="text-base font-mono font-extrabold text-blue-700">
+                      $25.00 (250,000 Pts)
+                    </div>
+                    <p className="text-[11px] text-slate-500">CPX Gross = $50 • Your Profit = $25</p>
+                  </div>
+
+                  <div className="bg-[#f8fafc] border border-slate-200/80 rounded-xl p-3.5 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      WITHDRAWAL REQUESTS
+                    </span>
+                    <div className="text-base font-mono font-extrabold text-amber-700">
+                      {withdrawals.length} Total ({pendingCount} Pending)
+                    </div>
+                    <p className="text-[11px] text-slate-500">Direct member payout queue</p>
+                  </div>
+                </div>
+
+                {/* Main Postback URL Preview Box */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                      Main Postback URL (Configured in CPX Publisher Console)
+                    </span>
+                    <code className="text-[11px] font-mono text-slate-800 break-all select-all">
+                      https://reward-river.vercel.app/api/cpx/postback?status=&#123;status&#125;&amp;trans_id=&#123;trans_id&#125;&amp;ext_user_id=&#123;user_id&#125;&amp;amount_usd=&#123;amount_usd&#125;&amp;amount_local=&#123;amount_local&#125;&amp;offer_id=&#123;offer_id&#125;&amp;secure_hash=&#123;secure_hash&#125;
+                    </code>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        'https://reward-river.vercel.app/api/cpx/postback?status={status}&trans_id={trans_id}&ext_user_id={user_id}&amount_usd={amount_usd}&amount_local={amount_local}&offer_id={offer_id}&secure_hash={secure_hash}'
+                      );
+                      setActionMessage({ text: 'CPX Main Postback URL copied to clipboard!', type: 'success' });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold shrink-0 transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy URL</span>
+                  </button>
                 </div>
               </div>
 
@@ -967,6 +1075,133 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </div>
               </div>
 
+              {/* Row 2A: User Withdrawal Requests Queue (Direct on Dashboard) */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FilePlus2 className="w-4 h-4 text-emerald-600" />
+                      <h2 className="text-sm font-bold text-slate-900">
+                        User Withdrawal Requests ({withdrawals.length})
+                      </h2>
+                      {pendingCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-extrabold">
+                          {pendingCount} Pending Action
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      When any user requests a withdrawal ($25.00 Min = 250,000 Points), it appears right here for 1-click approval or payment.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection('withdrawals')}
+                    className="text-xs font-bold text-emerald-700 hover:underline self-start sm:self-auto cursor-pointer"
+                  >
+                    Open Full Withdrawals Queue &rarr;
+                  </button>
+                </div>
+
+                {withdrawals.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400 bg-slate-50/60 rounded-xl border border-slate-100">
+                    No withdrawal requests submitted yet. Once a user reaches 250,000 Points ($25.00 USD) and submits a request, it will appear here immediately.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
+                          <th className="py-2.5 px-3">User</th>
+                          <th className="py-2.5 px-3">Points Redeemed</th>
+                          <th className="py-2.5 px-3">Gross / Net USDT</th>
+                          <th className="py-2.5 px-3">Network &amp; Wallet Address</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3 text-right">Quick Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {withdrawals.slice(0, 10).map((w: any) => {
+                          const ptsRedeemed = w.pointsRedeemed || Math.round(w.amountCents * 100);
+                          return (
+                            <tr key={w.id} className="hover:bg-slate-50/60">
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900">{w.userDisplayName || w.userEmail?.split('@')[0] || 'Member'}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{w.userEmail}</div>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
+                                {ptsRedeemed.toLocaleString('en-US')} Pts
+                              </td>
+                              <td className="py-2.5 px-3 font-mono">
+                                <div className="font-bold text-slate-900">${(w.amountCents / 100).toFixed(2)} USD</div>
+                                <div className="text-[10px] text-emerald-700 font-bold">Net: ${w.netUsdt} USDT</div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-bold mr-1.5">
+                                  {w.network}
+                                </span>
+                                <span className="font-mono text-[11px] text-slate-700 select-all">{w.usdtAddress}</span>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span
+                                  className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                                    w.status === 'paid'
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : w.status === 'approved'
+                                      ? 'bg-blue-50 text-blue-700'
+                                      : w.status === 'rejected' || w.status === 'cancelled'
+                                      ? 'bg-red-50 text-red-700'
+                                      : 'bg-amber-50 text-amber-700'
+                                  }`}
+                                >
+                                  {w.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-right space-x-1.5">
+                                {['requested', 'under_review'].includes(w.status) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReviewAction(w.id, 'approve', 'Approved by Admin')}
+                                      className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] cursor-pointer"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReviewAction(w.id, 'mark_paid', 'Paid by Admin')}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer"
+                                    >
+                                      Mark Paid
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReviewAction(w.id, 'reject', 'Rejected by Admin')}
+                                      className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px] cursor-pointer"
+                                    >
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+                                {w.status === 'approved' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReviewAction(w.id, 'mark_paid', 'Paid by Admin')}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer"
+                                  >
+                                    Mark Paid
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               {/* Row 2B: Real Registered Users & Live Points Summary */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -978,7 +1213,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       </h2>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Live database accounts, exact user Points balance, completed surveys count, and your {activeAdminProfitPercent}% profit per user.
+                      Live database accounts, exact user Points balance, completed surveys count, and User Cash Value (10,000 Pts = $1.00 USD).
                     </p>
                   </div>
                   <button
@@ -994,11 +1229,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
-                        <th className="py-2.5 px-3">User / Account ID</th>
+                        <th className="py-2.5 px-3">User / Account</th>
+                        <th className="py-2.5 px-3">CPX User ID (UUID)</th>
                         <th className="py-2.5 px-3">Completed Surveys</th>
-                        <th className="py-2.5 px-3">User Real Points</th>
-                        <th className="py-2.5 px-3">User Share ({activeSharePercent}%)</th>
-                        <th className="py-2.5 px-3">Our Profit ({activeAdminProfitPercent}%)</th>
+                        <th className="py-2.5 px-3">Full Survey Points</th>
+                        <th className="py-2.5 px-3">User Value (10k Pts = $1)</th>
                         <th className="py-2.5 px-3 text-right">Details</th>
                       </tr>
                     </thead>
@@ -1009,6 +1244,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             <div className="font-bold text-slate-900">{u.displayName}</div>
                             <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
                           </td>
+                          <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                            <span className="truncate max-w-[140px] inline-block" title={u.id}>
+                              {u.id}
+                            </span>
+                          </td>
                           <td className="py-2.5 px-3">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 font-mono font-bold text-[11px]">
                               {u.completedSurveysCount} {u.completedSurveysCount === 1 ? 'Survey' : 'Surveys'}
@@ -1017,11 +1257,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
                             {(u.balances.availablePoints || 0).toLocaleString('en-US')} Pts
                           </td>
-                          <td className="py-2.5 px-3 font-mono font-semibold text-slate-700">
-                            ${((u.balances.availableCents || 0) / 100).toFixed(2)} USDT
-                          </td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">
-                            +${((u.balances.totalAdminProfitCents || 0) / 100).toFixed(2)} USDT
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                            ${(((u.balances.availablePoints || 0) / 10000)).toFixed(2)} USD
                           </td>
                           <td className="py-2.5 px-3 text-right">
                             <button
@@ -1045,10 +1282,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <div className="pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <FileCheck2 className="w-4 h-4 text-emerald-600" />
-                    <h2 className="text-sm font-bold text-slate-900">Recent Real Survey &amp; Task Completions</h2>
+                    <h2 className="text-sm font-bold text-slate-900">Recent Real Survey Completions (50% Margin Breakdown)</h2>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Live ledger entries showing user Points credited and platform profit earned
+                    Live ledger entries showing CPX Gross Revenue (100%), Full User Points, User Payout Value (50%), and Admin Net Profit (50%).
                   </p>
                 </div>
 
@@ -1058,41 +1295,56 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       <thead>
                         <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
                           <th className="py-2.5 px-3">User</th>
-                          <th className="py-2.5 px-3">Survey / Description</th>
-                          <th className="py-2.5 px-3">User Points Credited</th>
-                          <th className="py-2.5 px-3">Gross (100%)</th>
-                          <th className="py-2.5 px-3">Our Profit ({activeAdminProfitPercent}%)</th>
+                          <th className="py-2.5 px-3">Survey / TxID</th>
+                          <th className="py-2.5 px-3">CPX Gross (100%)</th>
+                          <th className="py-2.5 px-3">User Points</th>
+                          <th className="py-2.5 px-3">User Value (50%)</th>
+                          <th className="py-2.5 px-3">Your Profit (50%)</th>
                           <th className="py-2.5 px-3 text-right">Time</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {overview.recentLedger.map((entry: any) => (
-                          <tr key={entry.id} className="hover:bg-slate-50/60">
-                            <td className="py-2.5 px-3">
-                              <div className="font-bold text-slate-900">{entry.userDisplayName}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">{entry.userEmail}</div>
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-700 font-medium">{entry.description}</td>
-                            <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
-                              +{((entry.points || 0)).toLocaleString('en-US')} Pts
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-slate-700">
-                              ${((entry.grossCents || 0) / 100).toFixed(2)}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">
-                              +${((entry.adminProfitCents || 0) / 100).toFixed(2)}
-                            </td>
-                            <td className="py-2.5 px-3 text-right text-[11px] text-slate-400 font-mono">
-                              {new Date(entry.createdAt).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
+                        {overview.recentLedger.map((entry: any) => {
+                          const pts = entry.points || 0;
+                          const grossCents = entry.grossCents || Math.round((pts / 5000) * 100);
+                          const userCents = entry.amountCents || Math.round(pts / 100);
+                          const profitCents = Math.max(0, grossCents - userCents);
+                          return (
+                            <tr key={entry.id} className="hover:bg-slate-50/60">
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900">{entry.userDisplayName}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{entry.userEmail}</div>
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-700 font-medium">
+                                <span className="font-semibold text-slate-900 block">{entry.description}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  TxID: {entry.externalTransactionId || entry.id?.substring(0, 12)}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                                ${(grossCents / 100).toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
+                                +{pts.toLocaleString('en-US')} Pts
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-amber-700">
+                                ${(userCents / 100).toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
+                                +${(profitCents / 100).toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-[11px] text-slate-400 font-mono">
+                                {new Date(entry.createdAt).toLocaleString()}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
                 ) : (
                   <div className="py-6 text-center text-xs text-slate-400">
-                    No survey completions recorded yet. When a user completes a survey, their Points and your profit appear here immediately.
+                    No survey completions recorded yet. When a user completes a survey, their Points appear here immediately.
                   </div>
                 )}
               </div>
@@ -1103,12 +1355,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                   <button
                     type="button"
-                    onClick={() => setActiveSection('points_split')}
+                    onClick={() => setActiveSection('users')}
                     className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50/70 text-left transition-all"
                   >
-                    <FilePlus2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <Users className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="text-xs font-bold text-slate-800 truncate">
-                      Set {activeSharePercent}%/{activeAdminProfitPercent}% Points Split
+                      Manage All Users &amp; Balances
                     </span>
                   </button>
 
@@ -1150,805 +1402,827 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           )}
 
-          {/* =====================================================================
-              SECTION 1B: PARTNER REVENUE & SETTLEMENT ACCOUNTING
-             ===================================================================== */}
-          {activeSection === 'partner_revenue' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
-                    Partner Revenue &amp; Settlement Accounting
-                  </h1>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Complete breakdown of every integrated provider — gross revenue received (100%), user payouts ({activeSharePercent}%), and platform net profit ({activeAdminProfitPercent}%).
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={handleRunFullIntegrationCheck}
-                    disabled={runningIntegrationCheck}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
-                  >
-                    <ShieldCheck className={`w-4 h-4 ${runningIntegrationCheck ? 'animate-pulse' : ''}`} />
-                    <span>
-                      {runningIntegrationCheck ? 'Testing Integrations...' : 'Verify All Integrations & Postbacks'}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={fetchAdminData}
-                    disabled={loading}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-700 shadow-xs transition-colors"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                    <span>Refresh Accounting</span>
-                  </button>
-                </div>
-              </div>
 
-              {/* 6-Point Live Integration & Postback Verification Results */}
-              {integrationDiagResult && integrationDiagResult.checks && (
-                <div className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                      <div>
-                        <h2 className="text-sm font-extrabold text-slate-900">
-                          End-to-End Integration &amp; Postback Verification Report ({integrationDiagResult.latencyMs}ms)
-                        </h2>
-                        <p className="text-xs text-slate-500">
-                          All 6 subsystems tested live: CPX Research, AoyTasks White-Label, MD5 Signatures, 40%/60% Split, and Partner Settlement Accounting.
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-extrabold text-emerald-700 font-mono">
-                      6 / 6 CHECKS PASSED
-                    </span>
-                  </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {integrationDiagResult.checks.map((chk: any) => (
-                      <div
-                        key={chk.id}
-                        className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200/80 space-y-1"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                            {chk.partner}
-                          </span>
-                          <span className="text-[10px] font-extrabold text-emerald-700 font-mono">
-                            {chk.passed ? 'VERIFIED' : 'CHECK'}
-                          </span>
-                        </div>
-                        <div className="text-xs font-extrabold text-slate-900">{chk.title}</div>
-                        <div className="text-[11px] text-slate-600 leading-relaxed">{chk.detail}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Top 4 Combined Accounting KPI Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    TOTAL PARTNER GROSS (100%)
-                  </div>
-                  <div className="text-2xl font-extrabold text-slate-900 font-mono mt-2">
-                    {overview?.partnerAccounting?.totals?.grossRevenueUsdFormatted ||
-                      `$${((overview?.totalGrossRevenueCents || 0) / 100).toFixed(2)}`}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Gross Provider Settlement ($1.00 / {activePointsPerUsdt.toLocaleString('en-US')} Pts)
-                  </div>
-                </div>
-
-                <div className="bg-white border border-emerald-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-                    USER SHARE CREDITED ({activeSharePercent}%)
-                  </div>
-                  <div className="text-2xl font-extrabold text-emerald-700 font-mono mt-2">
-                    {overview?.partnerAccounting?.totals?.userPayoutUsdFormatted ||
-                      `$${((overview?.totalRewardsCreditedCents || 0) / 100).toFixed(2)}`}
-                  </div>
-                  <div className="text-xs text-emerald-700 font-medium mt-1">
-                    Distributed to Users ({((overview?.partnerAccounting?.totals?.userPayoutPoints ?? overview?.totalRewardsCreditedPoints) || 0).toLocaleString('en-US')} Pts)
-                  </div>
-                </div>
-
-                <div className="bg-white border border-indigo-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
-                    OUR NET HIDDEN PROFIT ({activeAdminProfitPercent}%)
-                  </div>
-                  <div className="text-2xl font-extrabold text-indigo-700 font-mono mt-2">
-                    +{overview?.partnerAccounting?.totals?.adminProfitUsdFormatted ||
-                      `$${((overview?.totalAdminProfitCents || 0) / 100).toFixed(2)}`}
-                  </div>
-                  <div className="text-xs text-indigo-700 font-medium mt-1">
-                    Platform Net Margin (${(activeAdminProfitPercent / 100).toFixed(2)} / {activePointsPerUsdt.toLocaleString('en-US')} Pts)
-                  </div>
-                </div>
-
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    COMPLETED TASKS &amp; SURVEYS
-                  </div>
-                  <div className="text-2xl font-extrabold text-slate-900 font-mono mt-2">
-                    {overview?.partnerAccounting?.totals?.completedCount ?? overview?.completedSurveysCount ?? 0}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Across CPX Research &amp; AoyTasks
-                  </div>
-                </div>
-              </div>
-
-              {/* Detailed Partner-by-Partner Settlement Cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {(overview?.partnerAccounting?.partners || []).map((partner: any) => {
-                  const isCpx = partner.partnerId === 'cpx_research';
-                  return (
-                    <div
-                      key={partner.partnerId}
-                      className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between space-y-5"
-                    >
-                      <div className="space-y-4">
-                        <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
-                          <div>
-                            <div className="text-xs font-bold uppercase tracking-wider text-blue-600">
-                              {isCpx ? 'PRIMARY SURVEY PROVIDER' : '100% WHITE-LABEL PTC & SHORTLINK PROVIDER'}
-                            </div>
-                            <h2 className="text-lg font-extrabold text-slate-900 mt-0.5">
-                              {partner.partnerName}
-                            </h2>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              User Sees Brand: <strong className="text-slate-800">{partner.userFacingBrand}</strong>
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setActiveSection(isCpx ? 'cpx_manager' : 'aoy_manager')}
-                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition-colors shrink-0"
-                          >
-                            Configure
-                          </button>
-                        </div>
-
-                        {/* 3-Box Settlement Breakdown */}
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                            <div className="text-[10px] font-bold uppercase text-slate-500">
-                              1. Partner Gross (100%)
-                            </div>
-                            <div className="text-lg font-extrabold text-slate-900 font-mono mt-1">
-                              {partner.grossRevenueUsdFormatted}
-                            </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              Gross Provider Credit
-                            </div>
-                          </div>
-
-                          <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80">
-                            <div className="text-[10px] font-bold uppercase text-emerald-700">
-                              2. User Share ({activeSharePercent}%)
-                            </div>
-                            <div className="text-lg font-extrabold text-emerald-800 font-mono mt-1">
-                              {partner.userPayoutUsdFormatted}
-                            </div>
-                            <div className="text-[11px] text-emerald-700 font-mono mt-0.5">
-                              {(partner.userPayoutPoints || 0).toLocaleString('en-US')} Pts Credited
-                            </div>
-                          </div>
-
-                          <div className="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200/80">
-                            <div className="text-[10px] font-bold uppercase text-indigo-700">
-                              3. Our Profit ({activeAdminProfitPercent}%)
-                            </div>
-                            <div className="text-lg font-extrabold text-indigo-900 font-mono mt-1">
-                              +{partner.adminProfitUsdFormatted}
-                            </div>
-                            <div className="text-[11px] text-indigo-700 mt-0.5">
-                              Platform Net Margin
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Operational Metrics */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                          <div className="p-2.5 rounded-lg bg-[#f8fafc] border border-slate-200/60">
-                            <div className="text-[10px] font-semibold text-slate-400">Completed</div>
-                            <div className="font-extrabold text-slate-800 font-mono mt-0.5">
-                              {partner.completedCount} {isCpx ? 'Surveys' : 'Tasks'}
-                            </div>
-                          </div>
-
-                          {!isCpx ? (
-                            <div className="p-2.5 rounded-lg bg-[#f8fafc] border border-slate-200/60">
-                              <div className="text-[10px] font-semibold text-slate-400">PTC vs Shortlinks</div>
-                              <div className="font-extrabold text-slate-800 font-mono mt-0.5">
-                                {partner.ptcCompletedCount || 0} PTC / {partner.shortlinkCompletedCount || 0} SL
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="p-2.5 rounded-lg bg-[#f8fafc] border border-slate-200/60">
-                              <div className="text-[10px] font-semibold text-slate-400">Avg Gross / Survey</div>
-                              <div className="font-extrabold text-slate-800 font-mono mt-0.5">
-                                ${((partner.avgGrossCents || 0) / 100).toFixed(2)}
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="p-2.5 rounded-lg bg-[#f8fafc] border border-slate-200/60">
-                            <div className="text-[10px] font-semibold text-slate-400">Reversals</div>
-                            <div className="font-extrabold text-slate-800 font-mono mt-0.5">
-                              {partner.reversalCount} (${((partner.chargebackGrossCents || 0) / 100).toFixed(2)})
-                            </div>
-                          </div>
-
-                          <div className="p-2.5 rounded-lg bg-[#f8fafc] border border-slate-200/60">
-                            <div className="text-[10px] font-semibold text-slate-400">Profit Contribution</div>
-                            <div className="font-extrabold text-indigo-700 font-mono mt-0.5">
-                              {partner.shareOfTotalProfitPercent}% of Total
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Quick Action Footer */}
-                      <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] text-slate-500 font-mono truncate">
-                          {partner.integrationType}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setActiveSection(isCpx ? 'cpx_manager' : 'aoy_manager')}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
-                        >
-                          <Settings className="w-3.5 h-3.5" />
-                          <span>{isCpx ? 'CPX Live Settings' : 'AoyTasks Live Settings'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Unit Economics & Per-Points Rate Calculator Table */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900">
-                      Points-to-USDT Settlement Schedule Across All Partners
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Exact calculation of what CPX Research &amp; AoyTasks pay you vs what your users get at your current {activeSharePercent}% User / {activeAdminProfitPercent}% Admin split.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSection('points_split')}
-                    className="text-xs font-bold text-blue-600 hover:underline self-start sm:self-auto"
-                  >
-                    Change {activeSharePercent}%/{activeAdminProfitPercent}% Split &rarr;
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500 bg-slate-50/80">
-                        <th className="py-3 px-4">Points Volume</th>
-                        <th className="py-3 px-4">Partner Pays Us (100% Gross — Hidden)</th>
-                        <th className="py-3 px-4 text-emerald-700">User Gets &amp; Sees ({activeSharePercent}% Share)</th>
-                        <th className="py-3 px-4 text-indigo-700">Our Net Admin Profit ({activeAdminProfitPercent}% Margin)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {(overview?.partnerAccounting?.unitEconomics || []).map((row: any) => (
-                        <tr
-                          key={row.pointsMilestone}
-                          className={
-                            row.pointsMilestone === activePointsPerUsdt
-                              ? 'bg-blue-50/40 font-bold'
-                              : 'hover:bg-slate-50/60'
-                          }
-                        >
-                          <td className="py-3 px-4 font-extrabold text-slate-900">
-                            {row.pointsFormatted}
-                            {row.pointsMilestone === activePointsPerUsdt && (
-                              <span className="ml-2 text-[10px] font-sans font-bold text-blue-600">
-                                (Base Benchmark)
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-slate-700">{row.partnerPaysGrossUsd} USDT</td>
-                          <td className="py-3 px-4 font-extrabold text-emerald-700">{row.userGetsUsd} USDT</td>
-                          <td className="py-3 px-4 font-extrabold text-indigo-700">+{row.adminKeepsProfitUsd} USDT</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Filterable Partner-Wise Transaction & Profit Ledger */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900">
-                      Partner-Wise Transaction &amp; Profit Ledger
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Every survey, PTC ad, and shortlink credit with its exact partner source, 100% gross payout, {activeSharePercent}% user credit, and {activeAdminProfitPercent}% admin profit.
-                    </p>
-                  </div>
-
-                  {/* Interactive Filter Buttons */}
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl self-start sm:self-auto">
-                    {[
-                      { id: 'all', label: 'All Partners' },
-                      { id: 'cpx_research', label: 'CPX Research' },
-                      { id: 'aoytasks', label: 'AoyTasks (aoyco.in)' }
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setPartnerLedgerFilter(tab.id as any)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                          partnerLedgerFilter === tab.id
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {(() => {
-                  const allItems = overview?.partnerAccounting?.ledgerWithPartners || [];
-                  const filteredItems =
-                    partnerLedgerFilter === 'all'
-                      ? allItems
-                      : allItems.filter((item: any) => item.partnerId === partnerLedgerFilter);
-
-                  if (filteredItems.length === 0) {
-                    return (
-                      <div className="py-10 text-center text-xs text-slate-400">
-                        No live transactions recorded for this partner filter yet. Real completed surveys and tasks will appear here automatically.
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-slate-200 text-[11px] font-bold uppercase text-slate-400 bg-slate-50/60">
-                            <th className="py-3 px-4">Partner Source</th>
-                            <th className="py-3 px-4">Member</th>
-                            <th className="py-3 px-4">User-Visible Description</th>
-                            <th className="py-3 px-4">Partner Gross (100%)</th>
-                            <th className="py-3 px-4 text-emerald-700">User Credited</th>
-                            <th className="py-3 px-4 text-indigo-700">Our Net Profit</th>
-                            <th className="py-3 px-4 text-right">Date</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredItems.slice(0, 25).map((item: any) => (
-                            <tr key={item.id} className="hover:bg-slate-50/60">
-                              <td className="py-3 px-4">
-                                <div className="font-bold text-slate-900">{item.partnerName}</div>
-                                <div className="text-[11px] text-slate-400">{item.subCategoryLabel}</div>
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className="font-semibold text-slate-800">{item.userDisplayName}</div>
-                                <div className="text-[11px] text-slate-400">{item.userEmail}</div>
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className="font-semibold text-slate-800">{item.description}</div>
-                                <div className="text-[10px] font-mono text-slate-400">Tx: {item.providerTxId}</div>
-                              </td>
-                              <td className="py-3 px-4 font-mono font-bold text-slate-700">
-                                ${((item.grossCents || 0) / 100).toFixed(2)}
-                              </td>
-                              <td className="py-3 px-4 font-mono font-bold text-emerald-700">
-                                {item.entryType === 'reversal' ? '-' : '+'}$
-                                {((item.amountCents || 0) / 100).toFixed(2)} ({(item.points || 0).toLocaleString('en-US')} Pts)
-                              </td>
-                              <td className="py-3 px-4 font-mono font-extrabold text-indigo-700">
-                                {item.entryType === 'reversal' ? '-' : '+'}$
-                                {((item.adminProfitCents || 0) / 100).toFixed(2)}
-                              </td>
-                              <td className="py-3 px-4 text-right font-mono text-[11px] text-slate-400">
-                                {new Date(item.createdAt).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
-
-          {/* =====================================================================
-              SECTION 2: POINTS & PROFIT SPLIT (40% User / 60% Hidden Admin Control)
-             ===================================================================== */}
-          {activeSection === 'points_split' && settings && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
-                  Points & Profit Split Controller
-                </h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Control how much USDT users receive and see for {activePointsPerUsdt.toLocaleString('en-US')} Points while keeping the $1.00 real value 100% hidden.
-                </p>
-              </div>
-
-              <form onSubmit={(e) => handleSaveSettings(e)} className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-                  <div>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                      <Lock className="w-3.5 h-3.5" />
-                      Hidden Real Rate Architecture
-                    </span>
-                    <h2 className="text-lg font-bold text-slate-900 mt-2">
-                      {(settings.pointsPerUsdt || 10000).toLocaleString('en-US')} Points = ${(settings.userSharePercent / 100).toFixed(2)} USDT Visible to Users ({settings.userSharePercent}%)
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Users never see the $1.00 real ("asl") value. Their dashboard, survey cards, and withdrawal page only show your custom {settings.userSharePercent}% payout rate.
-                    </p>
-                  </div>
-
-                  {/* Preset Quick Buttons */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {[30, 35, 40, 50, 60].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setSettings({ ...settings, userSharePercent: preset })}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all ${
-                          settings.userSharePercent === preset
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        }`}
-                      >
-                        {preset}% (${(preset / 100).toFixed(2)})
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Interactive Range Slider */}
-                <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4">
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-emerald-700">
-                      USER VISIBLE SHARE: {settings.userSharePercent}% (${(settings.userSharePercent / 100).toFixed(2)} USDT per {(settings.pointsPerUsdt || 10000).toLocaleString('en-US')} Pts)
-                    </span>
-                    <span className="text-indigo-700">
-                      YOUR HIDDEN ADMIN PROFIT: {100 - settings.userSharePercent}% (${((100 - settings.userSharePercent) / 100).toFixed(2)} USDT)
-                    </span>
-                  </div>
-
-                  <input
-                    type="range"
-                    min={10}
-                    max={90}
-                    step={1}
-                    value={settings.userSharePercent || 40}
-                    onChange={(e) => setSettings({ ...settings, userSharePercent: Number(e.target.value) })}
-                    className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-                  />
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1.5">
-                        Points Block Size (Default 10,000)
-                      </label>
-                      <input
-                        type="number"
-                        min={100}
-                        step={100}
-                        value={settings.pointsPerUsdt || 10000}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            pointsPerUsdt: Math.max(100, Number(e.target.value) || 10000)
-                          })
-                        }
-                        className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase text-emerald-700 mb-1.5">
-                        User USDT per {(settings.pointsPerUsdt || 10000).toLocaleString('en-US')} Pts ($)
-                      </label>
-                      <input
-                        type="number"
-                        min={0.05}
-                        max={0.95}
-                        step={0.01}
-                        value={Number(((settings.userSharePercent || 40) / 100).toFixed(2))}
-                        onChange={(e) => {
-                          const usdtVal = parseFloat(e.target.value);
-                          if (!isNaN(usdtVal)) {
-                            const newShare = Math.min(95, Math.max(5, Math.round(usdtVal * 100)));
-                            setSettings({ ...settings, userSharePercent: newShare });
-                          }
-                        }}
-                        className="w-full px-3.5 py-2.5 bg-emerald-50/60 border border-emerald-300 rounded-xl text-sm font-mono font-bold text-emerald-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase text-indigo-700 mb-1.5">
-                        Admin Profit per {(settings.pointsPerUsdt || 10000).toLocaleString('en-US')} Pts ($)
-                      </label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={`$${((100 - (settings.userSharePercent || 40)) / 100).toFixed(2)} USDT (${100 - (settings.userSharePercent || 40)}%)`}
-                        className="w-full px-3.5 py-2.5 bg-indigo-50/60 border border-indigo-200 rounded-xl text-sm font-mono font-bold text-indigo-900"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Survey Card Display Format Selector */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, surveyDisplayMode: 'hybrid' })}
-                    className={`p-4 rounded-xl border text-left transition-all ${
-                      (settings.surveyDisplayMode || 'hybrid') === 'hybrid'
-                        ? 'bg-blue-50/60 border-blue-500 ring-2 ring-blue-500/15'
-                        : 'bg-white border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-extrabold text-slate-900">
-                        Hybrid Points + {settings.userSharePercent}% USDT Badge
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-600 text-white">
-                        Recommended
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Survey cards show <strong className="text-slate-700">+10,000 Pts</strong> with a <strong className="text-emerald-700">${(settings.userSharePercent / 100).toFixed(2)} USDT</strong> sub-badge.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, surveyDisplayMode: 'points_only' })}
-                    className={`p-4 rounded-xl border text-left transition-all ${
-                      settings.surveyDisplayMode === 'points_only'
-                        ? 'bg-blue-50/60 border-blue-500 ring-2 ring-blue-500/15'
-                        : 'bg-white border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-extrabold text-slate-900">
-                        Points-Only Survey Cards
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-                        Clean Points
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Survey cards show only Points, converting to <strong className="text-emerald-700">${(settings.userSharePercent / 100).toFixed(2)} USDT per {(settings.pointsPerUsdt || 10000).toLocaleString('en-US')} Pts</strong> at withdrawal.
-                    </p>
-                  </button>
-                </div>
-
-                <div className="pt-2 flex justify-end">
-                  <button
-                    type="submit"
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
-                  >
-                    Save Points & Profit Split
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
 
           {/* =====================================================================
               SECTION 3: CPX RESEARCH MANAGER & POSTBACK SIMULATOR
              ===================================================================== */}
           {activeSection === 'cpx_manager' && (
             <div className="space-y-6">
-              <div>
-                <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
-                  CPX Research Integration Manager
-                </h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Configure your CPX App ID, Offerwall mode, Postback Webhook URLs, and simulate live survey completions.
-                </p>
-              </div>
-
-              {/* CPX Settings Form */}
-              {settings && (
-                <form
-                  onSubmit={(e) => handleSaveSettings(e)}
-                  className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                    <div>
-                      <h2 className="text-base font-bold text-slate-900">
-                        CPX Placement & Feed Configuration (App ID #{settings.cpxAppId || '37479'})
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Control how surveys are fetched from CPX Research and displayed to members.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleTestCpxConnection}
-                      disabled={testingCpxConnection}
-                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors self-start"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${testingCpxConnection ? 'animate-spin' : ''}`} />
-                      <span>{testingCpxConnection ? 'Testing Live API...' : 'Test Live CPX Connection'}</span>
-                    </button>
-                  </div>
-
-                  {cpxConnectionResult && (
-                    <div
-                      className={`p-4 rounded-xl border text-xs ${
-                        cpxConnectionResult.error
-                          ? 'bg-red-50 border-red-200 text-red-700'
-                          : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                      }`}
-                    >
-                      {cpxConnectionResult.error ? (
-                        <p className="font-bold">{cpxConnectionResult.error}</p>
-                      ) : (
-                        <div className="space-y-1">
-                          <div className="font-bold">
-                            Connected to CPX App ID #{cpxConnectionResult.cpxAppId} ({cpxConnectionResult.latencyMs}ms) — {cpxConnectionResult.liveSurveysReturned} Surveys Available
-                          </div>
-                          <div className="text-[11px] text-emerald-700 font-mono break-all">
-                            Offerwall URL: {cpxConnectionResult.offerwallUrlSample}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">CPX App ID</label>
-                      <input
-                        type="text"
-                        value={settings.cpxAppId || '37479'}
-                        onChange={(e) => setSettings({ ...settings, cpxAppId: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        CPX Security Hash / Postback Key
-                      </label>
-                      <input
-                        type="password"
-                        value={settings.cpxHashKey || ''}
-                        onChange={(e) => setSettings({ ...settings, cpxHashKey: e.target.value })}
-                        placeholder="Paste CPX Security Hash Key"
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Integration Mode</label>
-                      <select
-                        value={settings.cpxIntegrationMode || 'hybrid_api'}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            cpxIntegrationMode: e.target.value as 'hybrid_api' | 'direct_wall' | 'paused'
-                          })
-                        }
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900"
-                      >
-                        <option value="hybrid_api">Hybrid API Cards + Offerwall</option>
-                        <option value="direct_wall">Direct Offerwall Launch Only</option>
-                        <option value="paused">Paused (Maintenance)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Max Surveys Displayed</label>
-                      <input
-                        type="number"
-                        min={3}
-                        max={50}
-                        value={settings.cpxMaxSurveys || 12}
-                        onChange={(e) => setSettings({ ...settings, cpxMaxSurveys: Number(e.target.value) })}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Postback URL Copy Box */}
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700">
-                        CPX Server-to-Server (S2S) Postback Webhook URL
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleCopyPostbackUrl}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors"
-                      >
-                        {copiedPostback ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedPostback ? 'Copied!' : 'Copy Postback URL'}</span>
-                      </button>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-400 font-mono text-[11px] break-all select-all">
-                      {postbackWebhookUrl}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors"
-                    >
-                      Save CPX Configuration
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Step-by-Step CPX Research Integration Guide */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+              {/* Header with Title and Real-time Action Buttons */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    How to Integrate CPX Research (Step-by-Step Instructions)
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Complete guide to linking your CPX Research Publisher account with Reward River.
+                  <div className="flex items-center gap-2.5">
+                    <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
+                      CPX Research Statistics &amp; Manager
+                    </h1>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                      Live API Connected
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Publisher ID <span className="font-mono font-bold text-slate-700">#38601</span> • App ID <span className="font-mono font-bold text-slate-700">#{settings?.cpxAppId || '37699'}</span> • Official Statistics API Key <span className="font-mono text-xs text-slate-600">257850...e095</span>
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 1: Get App ID &amp; Security Hash</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      Open <strong className="text-slate-900">publisher.cpx-research.com</strong> &rarr; <strong className="text-slate-900">Apps</strong> &rarr; select your placement. Copy your <strong className="text-slate-900">App ID</strong> and <strong className="text-slate-900">Security Hash Key</strong> into the fields above and click <strong>Save CPX Configuration</strong>.
-                    </p>
-                  </div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleSyncCpxCompletes}
+                    disabled={syncingCpxCompletes}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingCpxCompletes ? 'animate-spin' : ''}`} />
+                    <span>{syncingCpxCompletes ? 'Syncing Real Points...' : 'Sync Real Completes to Users'}</span>
+                  </button>
 
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 2: Configure Points &amp; Currency Ratio</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      In CPX App Settings, set Currency Name = <strong className="text-slate-900">Points</strong> and Ratio for $1.00 USD = <strong className="text-slate-900">{activePointsPerUsdt.toLocaleString('en-US')}</strong>. Reward River automatically converts this so users get &amp; see <strong className="text-emerald-700">{activeSharePercent}% (${(activeSharePercent / 100).toFixed(2)} USDT)</strong> while you keep <strong className="text-indigo-700">{activeAdminProfitPercent}% (${(activeAdminProfitPercent / 100).toFixed(2)} USDT)</strong> profit.
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 3: Paste S2S Postback URL in CPX</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      In CPX <strong className="text-slate-900">Postback Settings</strong>, paste the Webhook URL above. It automatically sends <code className="font-mono">status=1</code> on completion and <code className="font-mono">status=2/3</code> on reversal, verified via <code className="font-mono">secure_hash</code>.
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 4: Verify Settlement &amp; Accounting</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      Click <strong className="text-slate-900">Test Live CPX Connection</strong> and <strong className="text-slate-900">Trigger Simulated Postback</strong> above. Every completed survey is logged in <strong className="text-slate-900">Partner Accounting</strong> with full 100% Gross / {activeSharePercent}% User / {activeAdminProfitPercent}% Profit breakdown.
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchCpxStatistics()}
+                    disabled={loadingCpxStats}
+                    className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingCpxStats ? 'animate-spin' : ''}`} />
+                    <span>{loadingCpxStats ? 'Refreshing...' : 'Refresh Live Stats'}</span>
+                  </button>
                 </div>
               </div>
+
+              {/* Real CPX KPI Cards (Direct from Publisher Account) */}
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">CPX GROSS SALES</span>
+                    <DollarSign className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="text-2xl font-mono font-black text-slate-900">
+                    ${(
+                      cpxStatsTime?.totals?.revenue_completes ??
+                      cpxCompletes.reduce((sum, r) => sum + (Number(r.verdienst_publisher) || 0), 0)
+                    ).toFixed(2)}
+                  </div>
+                  <p className="text-[11px] text-emerald-600 font-bold">100% genuine publisher revenue</p>
+                </div>
+
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">REAL COMPLETES</span>
+                    <Award className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="text-2xl font-mono font-black text-blue-700">
+                    {cpxStatsTime?.totals?.completes ?? cpxCompletes.length}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-semibold">Credited to member profiles</p>
+                </div>
+
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">REAL SCREEN OUTS</span>
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div className="text-2xl font-mono font-black text-amber-700">
+                    {cpxStatsTime?.totals?.outs ?? cpxScreenouts.length}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-semibold">Bonus eligible attempts</p>
+                </div>
+
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">CLICKS &amp; USERS</span>
+                    <Users className="w-4 h-4 text-violet-600" />
+                  </div>
+                  <div className="text-2xl font-mono font-black text-slate-900">
+                    {cpxStatsTime?.totals?.clicks ?? 0} <span className="text-xs font-normal text-slate-400">clicks</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-semibold">
+                    {cpxStatsTime?.totals?.active_users ?? 0} active survey takers
+                  </p>
+                </div>
+
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-1 col-span-2 sm:col-span-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">CONVERSION RATE</span>
+                    <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="text-2xl font-mono font-black text-emerald-700">
+                    {cpxStatsTime?.totals?.clicks && cpxStatsTime?.totals?.completes
+                      ? `${((cpxStatsTime.totals.completes / cpxStatsTime.totals.clicks) * 100).toFixed(1)}%`
+                      : '0.0%'}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-semibold">High quality survey yield</p>
+                </div>
+              </div>
+
+              {/* Subtabs Navigation */}
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+                {[
+                  { id: 'statistics', label: 'Performance & Trends', icon: BarChart3, count: cpxStatsTime?.totals?.clicks },
+                  { id: 'completes', label: 'Live Completes Log', icon: Award, count: cpxCompletes.length },
+                  { id: 'countries', label: 'Sales by Country', icon: Globe, count: cpxStatsCountries.length },
+                  { id: 'screenouts', label: 'Screen Outs', icon: AlertTriangle, count: cpxScreenouts.length },
+                  { id: 'verify', label: 'Verify Transaction ID', icon: SearchCheck },
+                  { id: 'settings', label: 'App Settings & Keys', icon: Settings }
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = cpxActiveSubTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setCpxActiveSubTab(tab.id as any)}
+                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                      {tab.count !== undefined && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* =========================================================================
+                  SUBTAB 1: PERFORMANCE & TIME STATISTICS (api-statistics-time)
+                 ========================================================================= */}
+              {cpxActiveSubTab === 'statistics' && (
+                <div className="space-y-4">
+                  {/* Filters Bar */}
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-700">Time Range:</span>
+                      {(['7d', '30d', '60d', '90d', '365d'] as const).map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => {
+                            setCpxDateRangePreset(preset);
+                            fetchCpxStatistics(preset, cpxGroupBy);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                            cpxDateRangePreset === preset
+                              ? 'bg-slate-900 text-white'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {preset === '7d' ? '7 Days' : preset === '30d' ? '30 Days' : preset === '60d' ? '60 Days' : preset === '90d' ? '90 Days' : '1 Year'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-700">Group By:</span>
+                      {(['day', 'week', 'month'] as const).map((gb) => (
+                        <button
+                          key={gb}
+                          type="button"
+                          onClick={() => {
+                            setCpxGroupBy(gb);
+                            fetchCpxStatistics(cpxDateRangePreset, gb);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg font-bold uppercase text-[10px] transition-colors ${
+                            cpxGroupBy === gb
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {gb}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Daily Breakdown Table */}
+                  <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                      <div>
+                        <h2 className="text-sm font-bold text-slate-900">
+                          Aggregated Performance Breakdown ({cpxDateRangePreset.toUpperCase()})
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Direct live feed from CPX Publisher endpoint <code className="font-mono text-[11px]">page=api-statistics-time</code>
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono text-slate-500 font-semibold">
+                        {cpxStatsTime?.filters?.start_time} &rarr; {cpxStatsTime?.filters?.end_time}
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                            <th className="py-3 px-4">Period / Date</th>
+                            <th className="py-3 px-4 text-center">Clicks</th>
+                            <th className="py-3 px-4 text-center">Active Users</th>
+                            <th className="py-3 px-4 text-center">Completes</th>
+                            <th className="py-3 px-4 text-center">Screen Outs</th>
+                            <th className="py-3 px-4 text-center">Conversion</th>
+                            <th className="py-3 px-4 text-right">Publisher Revenue (USD)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(() => {
+                            const rawRows: any[] = Array.isArray(cpxStatsTime?.data)
+                              ? cpxStatsTime.data
+                              : cpxStatsTime?.results
+                              ? Object.entries(cpxStatsTime.results).map(([dateKey, item]: [string, any]) => ({
+                                  ...item,
+                                  date: item?.date || dateKey
+                                }))
+                              : [];
+                            const activeRows = rawRows.filter(
+                              (r) =>
+                                (Number(r.clicks) || 0) > 0 ||
+                                (Number(r.completes) || 0) > 0 ||
+                                (Number(r.outs) || 0) > 0 ||
+                                (Number(r.revenue_completes) || 0) > 0
+                            );
+                            const rowsToShow = (activeRows.length > 0 ? activeRows : rawRows).sort((a, b) =>
+                              String(b.date || '').localeCompare(String(a.date || ''))
+                            );
+
+                            if (rowsToShow.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={7} className="py-8 text-center text-slate-500 font-semibold">
+                                    {loadingCpxStats ? 'Loading live CPX statistics...' : 'No statistics returned for the selected filter.'}
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return rowsToShow.map((item, idx) => {
+                              const dateKey = item.date || String(idx);
+                              const conv = item.clicks > 0 ? ((item.completes / item.clicks) * 100).toFixed(1) : '0.0';
+                              return (
+                                <tr key={dateKey} className="hover:bg-slate-50/60 transition-colors">
+                                  <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                                    {dateKey}
+                                  </td>
+                                  <td className="py-3 px-4 text-center font-mono font-semibold text-slate-700">
+                                    {item.clicks || 0}
+                                  </td>
+                                  <td className="py-3 px-4 text-center font-mono font-semibold text-slate-700">
+                                    {item.active_users || 0}
+                                  </td>
+                                  <td className="py-3 px-4 text-center font-mono font-bold text-blue-700">
+                                    {item.completes || 0}
+                                  </td>
+                                  <td className="py-3 px-4 text-center font-mono font-semibold text-amber-700">
+                                    {item.outs || 0}
+                                  </td>
+                                  <td className="py-3 px-4 text-center font-mono font-bold text-emerald-700">
+                                    {conv}%
+                                  </td>
+                                  <td className="py-3 px-4 text-right font-mono font-black text-slate-900">
+                                    ${(Number(item.revenue_completes) || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                        {cpxStatsTime?.totals && (
+                          <tfoot>
+                            <tr className="bg-slate-100/90 font-extrabold text-slate-900 border-t-2 border-slate-200">
+                              <td className="py-3.5 px-4 font-mono uppercase text-xs">Total Across Range</td>
+                              <td className="py-3.5 px-4 text-center font-mono">{cpxStatsTime.totals.clicks}</td>
+                              <td className="py-3.5 px-4 text-center font-mono">{cpxStatsTime.totals.active_users}</td>
+                              <td className="py-3.5 px-4 text-center font-mono text-blue-700">{cpxStatsTime.totals.completes}</td>
+                              <td className="py-3.5 px-4 text-center font-mono text-amber-700">{cpxStatsTime.totals.outs}</td>
+                              <td className="py-3.5 px-4 text-center font-mono text-emerald-700">
+                                {cpxStatsTime.totals.clicks > 0
+                                  ? `${((cpxStatsTime.totals.completes / cpxStatsTime.totals.clicks) * 100).toFixed(1)}%`
+                                  : '0.0%'}
+                              </td>
+                              <td className="py-3.5 px-4 text-right font-mono text-emerald-700 text-sm">
+                                ${(Number(cpxStatsTime.totals.revenue_completes) || 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================================
+                  SUBTAB 2: LIVE COMPLETES LOG & USER PROFILE SYNC (api-statistics-completes)
+                 ========================================================================= */}
+              {cpxActiveSubTab === 'completes' && (
+                <div className="space-y-4">
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">
+                        CPX Completed Surveys List ({cpxCompletes.length} Recorded)
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Real-time completed surveys from CPX Research. Every complete is synced to the member's profile at <strong>5,000 Points per $1.00 USD</strong>.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSyncCpxCompletes}
+                      disabled={syncingCpxCompletes}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm shrink-0"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${syncingCpxCompletes ? 'animate-spin' : ''}`} />
+                      <span>{syncingCpxCompletes ? 'Syncing...' : 'Sync Missing Points to Users'}</span>
+                    </button>
+                  </div>
+
+                  <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                            <th className="py-3 px-4">Transaction ID</th>
+                            <th className="py-3 px-4">Date &amp; Time</th>
+                            <th className="py-3 px-4">User / External ID</th>
+                            <th className="py-3 px-4 text-center">Duration (LOI)</th>
+                            <th className="py-3 px-4 text-center">Country &amp; IP</th>
+                            <th className="py-3 px-4 text-right">Publisher USD</th>
+                            <th className="py-3 px-4 text-right">Points to User</th>
+                            <th className="py-3 px-4 text-center">Profile Credit</th>
+                            <th className="py-3 px-4 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {cpxCompletes.length > 0 ? (
+                            cpxCompletes.map((record) => {
+                              const publisherUsd = Number(record.verdienst_publisher) || 0;
+                              const localPoints = Number(record.verdienst_user_local_money);
+                              const points =
+                                !isNaN(localPoints) && localPoints > 0 && localPoints <= publisherUsd * 5500
+                                  ? Math.round(localPoints)
+                                  : Math.round(publisherUsd * 5000);
+                              const loiMin = record.loi_secounds ? (record.loi_secounds / 60).toFixed(1) : '—';
+
+                              return (
+                                <tr key={record.id || record.trans_id} className="hover:bg-slate-50/60 transition-colors">
+                                  <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                                    {record.trans_id}
+                                  </td>
+                                  <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                                    {record.datetime}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="font-mono text-slate-900 font-semibold truncate max-w-[180px]">
+                                      {record.external_user_id}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">
+                                      CPX #{record.internal_user_id}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 text-center font-mono text-slate-700">
+                                    {loiMin} min
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <span className="inline-block px-2 py-0.5 rounded font-mono font-bold bg-slate-100 text-slate-700 text-[10px]">
+                                      {record.country_code || 'US'}
+                                    </span>
+                                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                      {record.ip}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                                    ${publisherUsd.toFixed(2)}
+                                  </td>
+                                  <td className="py-3 px-4 text-right font-mono font-black text-emerald-700">
+                                    +{points.toLocaleString()} Pts
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                      Credited
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCpxActiveSubTab('verify');
+                                        setCpxTxSearchId(record.trans_id);
+                                        handleVerifyCpxTransaction(record.trans_id);
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition-colors"
+                                    >
+                                      Verify &rarr;
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={9} className="py-8 text-center text-slate-500 font-semibold">
+                                {loadingCpxStats ? 'Loading live CPX completes...' : 'No completed surveys recorded.'}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================================
+                  SUBTAB 3: SALES BY COUNTRY (api-statistics-country-sales)
+                 ========================================================================= */}
+              {cpxActiveSubTab === 'countries' && (
+                <div className="space-y-4">
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+                    <h2 className="text-base font-bold text-slate-900">
+                      Geographic Sales &amp; Payout Breakdown
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Country sales breakdown from CPX official endpoint <code className="font-mono text-[11px]">page=api-statistics-country-sales</code>.
+                    </p>
+                  </div>
+
+                  <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                          <th className="py-3 px-4">Country Code</th>
+                          <th className="py-3 px-4 text-center">Number of Completes</th>
+                          <th className="py-3 px-4 text-right">Publisher Sales (USD)</th>
+                          <th className="py-3 px-4 text-right">Total User Points Payout</th>
+                          <th className="py-3 px-4 text-right">Average Yield / Survey</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {cpxStatsCountries.length > 0 ? (
+                          cpxStatsCountries.map((c) => {
+                            const completesNum = Number(c.count_completes) || 0;
+                            const salesUsd = Number(c.sales) || 0;
+                            const payoutPoints = Number(c.pay_to_user_local) || (salesUsd * 5000);
+                            const avgYield = completesNum > 0 ? (salesUsd / completesNum).toFixed(2) : '0.00';
+
+                            return (
+                              <tr key={c.lang_code} className="hover:bg-slate-50/60 transition-colors">
+                                <td className="py-3.5 px-4 font-mono font-bold text-slate-900 flex items-center gap-2">
+                                  <span className="w-6 h-4 bg-slate-200 rounded flex items-center justify-center text-[10px] font-extrabold text-slate-700">
+                                    {c.lang_code}
+                                  </span>
+                                  <span>{c.lang_code === 'US' ? 'United States' : c.lang_code}</span>
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-mono font-bold text-blue-700">
+                                  {completesNum}
+                                </td>
+                                <td className="py-3.5 px-4 text-right font-mono font-black text-slate-900">
+                                  ${salesUsd.toFixed(2)}
+                                </td>
+                                <td className="py-3.5 px-4 text-right font-mono font-black text-emerald-700">
+                                  +{Math.round(payoutPoints).toLocaleString()} Pts
+                                </td>
+                                <td className="py-3.5 px-4 text-right font-mono text-slate-600">
+                                  ${avgYield}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-slate-500 font-semibold">
+                              {loadingCpxStats ? 'Loading live country breakdown...' : 'No country sales returned.'}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================================
+                  SUBTAB 4: SCREEN OUTS LOG (api-statistics-outs)
+                 ========================================================================= */}
+              {cpxActiveSubTab === 'screenouts' && (
+                <div className="space-y-4">
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+                    <h2 className="text-base font-bold text-slate-900">
+                      Screen Outs Log ({cpxScreenouts.length} Recorded)
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Attempts where users started a survey but were redirected or screened out by panel filters.
+                    </p>
+                  </div>
+
+                  <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                            <th className="py-3 px-4">Transaction ID</th>
+                            <th className="py-3 px-4">Date &amp; Time</th>
+                            <th className="py-3 px-4">External User ID</th>
+                            <th className="py-3 px-4 text-center">Country &amp; IP</th>
+                            <th className="py-3 px-4 text-center">Reason / Notice</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {cpxScreenouts.length > 0 ? (
+                            cpxScreenouts.map((out) => (
+                              <tr key={out.id || out.trans_id} className="hover:bg-slate-50/60 transition-colors">
+                                <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                                  {out.trans_id}
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                                  {out.datetime}
+                                </td>
+                                <td className="py-3 px-4 font-mono text-slate-900 font-semibold truncate max-w-[200px]">
+                                  {out.external_user_id}
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  <span className="inline-block px-2 py-0.5 rounded font-mono font-bold bg-slate-100 text-slate-700 text-[10px]">
+                                    {out.country_code || 'US'}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-400 ml-1.5">
+                                    {out.ip}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-center font-mono text-slate-500">
+                                  {out.notice || 'api_standart_screen_out'}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={5} className="py-8 text-center text-slate-500 font-semibold">
+                                {loadingCpxStats ? 'Loading live screenouts...' : 'No screenouts found.'}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================================
+                  SUBTAB 5: OFFICIAL TRANSACTION VALIDATOR (api-check-transaction-id)
+                 ========================================================================= */}
+              {cpxActiveSubTab === 'verify' && (
+                <div className="space-y-5">
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">
+                        CPX Official Transaction Validator
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Calls official endpoint <code className="font-mono text-[11px]">page=api-check-transaction-id&amp;transaction_id=&#123;id&#125;</code> to verify authenticity, payout status, click ID, and user credit directly against CPX servers.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={cpxTxSearchId}
+                          onChange={(e) => setCpxTxSearchId(e.target.value)}
+                          placeholder="Enter CPX Transaction ID (e.g. 1001260846448)"
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm font-bold text-slate-900"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyCpxTransaction()}
+                        disabled={verifyingCpxTx || !cpxTxSearchId.trim()}
+                        className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        {verifyingCpxTx ? 'Verifying with CPX...' : 'Validate Transaction ID'}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="font-semibold">Quick Sample IDs from your live account:</span>
+                      {['1001260846448', '1001259959694', '1001260831122'].map((sampleId) => (
+                        <button
+                          key={sampleId}
+                          type="button"
+                          onClick={() => {
+                            setCpxTxSearchId(sampleId);
+                            handleVerifyCpxTransaction(sampleId);
+                          }}
+                          className="px-2 py-0.5 rounded font-mono text-[11px] bg-slate-100 hover:bg-slate-200 text-blue-700 font-bold transition-colors"
+                        >
+                          {sampleId}
+                        </button>
+                      ))}
+                    </div>
+
+                    {cpxTxSearchResult && (
+                      <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700">CPX Research API Validation Response:</span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase ${
+                              cpxTxSearchResult.type === 'okay'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            Status: {cpxTxSearchResult.type}
+                          </span>
+                        </div>
+
+                        {cpxTxSearchResult.transaction ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">App ID</span>
+                              <span className="font-mono font-bold text-slate-900">#{cpxTxSearchResult.transaction.app_id}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">Event Type</span>
+                              <span className="font-mono font-bold text-blue-700 uppercase">{cpxTxSearchResult.transaction.type}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">Publisher USD</span>
+                              <span className="font-mono font-black text-slate-900">${cpxTxSearchResult.transaction.revenue_us}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">User Points</span>
+                              <span className="font-mono font-black text-emerald-700">+{Number(cpxTxSearchResult.transaction.revenue_user).toLocaleString()} Pts</span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">External User ID</span>
+                              <span className="font-mono font-bold text-slate-900">{cpxTxSearchResult.transaction.external_user_id}</span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">Click ID</span>
+                              <span className="font-mono font-bold text-slate-700">{cpxTxSearchResult.transaction.klick_id}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-red-600 font-semibold">
+                            {cpxTxSearchResult.error || 'Transaction not recognized or not yet confirmed by CPX.'}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================================
+                  SUBTAB 6: APP SETTINGS & KEYS
+                 ========================================================================= */}
+              {cpxActiveSubTab === 'settings' && (
+                <div className="space-y-6">
+                  {settings && (
+                    <form
+                      onSubmit={(e) => handleSaveSettings(e)}
+                      className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                        <div>
+                          <h2 className="text-base font-bold text-slate-900">
+                            CPX Publisher Credentials &amp; Placement Settings
+                          </h2>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Connect your official CPX Research Publisher credentials for automated statistics and instant survey crediting.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleTestCpxConnection}
+                          disabled={testingCpxConnection}
+                          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors self-start"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${testingCpxConnection ? 'animate-spin' : ''}`} />
+                          <span>{testingCpxConnection ? 'Testing Live API...' : 'Test Live CPX Connection'}</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">CPX App ID</label>
+                          <input
+                            type="text"
+                            value={settings.cpxAppId || '37699'}
+                            onChange={(e) => setSettings({ ...settings, cpxAppId: e.target.value })}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            CPX Security Hash / Postback Key
+                          </label>
+                          <input
+                            type="password"
+                            value={settings.cpxHashKey || ''}
+                            onChange={(e) => setSettings({ ...settings, cpxHashKey: e.target.value })}
+                            placeholder="Paste CPX Security Hash Key"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Official Statistics API Key
+                          </label>
+                          <input
+                            type="password"
+                            value={settings.cpxApiKey || '2578500163e1998b3c8929e261a3e095'}
+                            onChange={(e) => setSettings({ ...settings, cpxApiKey: e.target.value })}
+                            placeholder="Paste CPX Statistics API Key"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Points Factor (per $1.00 USD)</label>
+                          <input
+                            type="number"
+                            value={settings.pointsPerUsdt || 5000}
+                            onChange={(e) => setSettings({ ...settings, pointsPerUsdt: Number(e.target.value) })}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">Configured in CPX: 1 $ is 5,000.00 Points</p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Integration Mode</label>
+                          <select
+                            value={settings.cpxIntegrationMode || 'hybrid_api'}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                cpxIntegrationMode: e.target.value as 'hybrid_api' | 'direct_wall' | 'paused'
+                              })
+                            }
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900"
+                          >
+                            <option value="hybrid_api">Hybrid API Cards + Offerwall</option>
+                            <option value="direct_wall">Direct Offerwall Launch Only</option>
+                            <option value="paused">Paused (Maintenance)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Max Surveys Displayed</label>
+                          <input
+                            type="number"
+                            min={3}
+                            max={50}
+                            value={settings.cpxMaxSurveys || 12}
+                            onChange={(e) => setSettings({ ...settings, cpxMaxSurveys: Number(e.target.value) })}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Postback URL Copy Box */}
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700">
+                            CPX Server-to-Server (S2S) Postback Webhook URL
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleCopyPostbackUrl}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors"
+                          >
+                            {copiedPostback ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            <span>{copiedPostback ? 'Copied!' : 'Copy Postback URL'}</span>
+                          </button>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-400 font-mono text-[11px] break-all select-all">
+                          {postbackWebhookUrl}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors"
+                        >
+                          Save CPX Configuration
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1962,7 +2236,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   AoyTasks Manager
                 </h1>
                 <p className="text-sm text-slate-500 mt-1">
-                  Connect your <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">aoyco.in</code> API Key, Secret Key, and Bearer Token. Users only see <strong>Reward River Instant Tasks &amp; PTC</strong> with your custom {activeSharePercent}% Points/USDT share.
+                  Connect your <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">aoyco.in</code> API Key, Secret Key, and Bearer Token. Users only see <strong>Reward River Instant Tasks &amp; PTC</strong> with real Points/USDT rewards.
                 </p>
               </div>
 
@@ -2180,7 +2454,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
                     <div className="font-extrabold text-slate-900">Step 4: 100% White-Label User Experience</div>
                     <p className="text-slate-600 leading-relaxed">
-                      Reward River automatically fetches PTC (<code className="font-mono">/api/v1/ptc/...</code>) and Shortlinks (<code className="font-mono">/api/v1/sl-api/...</code>) with a 60s cache, strips all &ldquo;AoyTasks&rdquo; / &ldquo;aoyco.in&rdquo; names, and displays them to users as <strong className="text-slate-900">Reward River Instant Tasks &amp; PTC</strong> at <strong className="text-emerald-700">{activeSharePercent}% user share</strong> while logging your <strong className="text-indigo-700">{activeAdminProfitPercent}% net profit</strong> in <strong>Partner Accounting</strong>.
+                      Reward River automatically fetches PTC (<code className="font-mono">/api/v1/ptc/...</code>) and Shortlinks (<code className="font-mono">/api/v1/sl-api/...</code>) with a 60s cache, strips all &ldquo;AoyTasks&rdquo; / &ldquo;aoyco.in&rdquo; names, and displays them to users as <strong className="text-slate-900">Reward River Instant Tasks &amp; PTC</strong> with instant real point rewards credited directly to user balances.
                     </p>
                   </div>
                 </div>
@@ -2193,108 +2467,140 @@ export const AdminView: React.FC<AdminViewProps> = ({
              ===================================================================== */}
           {activeSection === 'withdrawals' && (
             <div className="space-y-6">
-              <div>
-                <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
-                  USDT Withdrawals Queue
-                </h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Review, approve, or settle member TRC-20 & ERC-20 USDT withdrawal requests.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
+                    User Withdrawal Requests ({withdrawals.length})
+                  </h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Minimum Withdrawal: <strong>$25.00 USD (250,000 Points)</strong> at <strong>10,000 Points = $1.00 USD</strong>. Approve or mark requests paid in 1 click.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchAdminData}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors self-start sm:self-auto cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh Queue</span>
+                </button>
               </div>
 
               <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                 {withdrawals.length === 0 ? (
                   <div className="p-12 text-center text-sm text-slate-400">
-                    No USDT withdrawal requests in queue.
+                    No withdrawal requests in queue yet. When a user submits a withdrawal request ($25.00 Min), it will appear here immediately.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="border-b border-slate-100 text-[11px] font-bold uppercase text-slate-400 bg-slate-50/50">
-                          <th className="py-3.5 px-4">Request ID & Date</th>
-                          <th className="py-3.5 px-4">Destination Address</th>
-                          <th className="py-3.5 px-4">Net USDT</th>
+                          <th className="py-3.5 px-4">Member / Date</th>
+                          <th className="py-3.5 px-4">Points Redeemed</th>
+                          <th className="py-3.5 px-4">Gross / Net Payout</th>
+                          <th className="py-3.5 px-4">Network &amp; Wallet Address</th>
                           <th className="py-3.5 px-4">Status</th>
-                          <th className="py-3.5 px-4 text-right">Actions</th>
+                          <th className="py-3.5 px-4 text-right">Admin Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {withdrawals.map((w) => (
-                          <tr key={w.id} className="hover:bg-slate-50/60">
-                            <td className="py-3.5 px-4">
-                              <div className="font-mono font-bold text-slate-800">{w.id.slice(0, 14)}...</div>
-                              <div className="text-[11px] text-slate-400">
-                                {new Date(w.createdAt).toLocaleString()}
-                              </div>
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-bold mr-2">
-                                {w.network}
-                              </span>
-                              <span className="font-mono text-slate-700">{w.usdtAddress}</span>
-                            </td>
-                            <td className="py-3.5 px-4 font-mono font-extrabold text-emerald-600">
-                              ${w.netUsdt} USDT
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <span
-                                className={`inline-flex px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase ${
-                                  w.status === 'paid'
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : w.status === 'approved'
-                                    ? 'bg-blue-50 text-blue-700'
-                                    : w.status === 'rejected' || w.status === 'cancelled'
-                                    ? 'bg-red-50 text-red-700'
-                                    : 'bg-amber-50 text-amber-700'
-                                }`}
-                              >
-                                {w.status}
-                              </span>
-                            </td>
-                            <td className="py-3.5 px-4 text-right space-x-1.5">
-                              {['requested', 'under_review'].includes(w.status) && (
-                                <>
+                        {withdrawals.map((w: any) => {
+                          const ptsRedeemed = w.pointsRedeemed || Math.round(w.amountCents * 100);
+                          return (
+                            <tr key={w.id} className="hover:bg-slate-50/60">
+                              <td className="py-3.5 px-4">
+                                <div className="font-bold text-slate-900">{w.userDisplayName || w.userEmail?.split('@')[0] || 'Member'}</div>
+                                <div className="text-[11px] font-mono text-slate-500">{w.userEmail}</div>
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  {new Date(w.createdAt).toLocaleString()}
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono font-extrabold text-emerald-700">
+                                {ptsRedeemed.toLocaleString('en-US')} Pts
+                              </td>
+                              <td className="py-3.5 px-4 font-mono">
+                                <div className="font-bold text-slate-900">${(w.amountCents / 100).toFixed(2)} USD</div>
+                                <div className="text-[11px] font-extrabold text-emerald-600">Net: ${w.netUsdt} USDT</div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-bold">
+                                    {w.network}
+                                  </span>
+                                  <span className="font-mono text-slate-800 select-all">{w.usdtAddress}</span>
                                   <button
                                     type="button"
-                                    onClick={() => handleReviewAction(w.id, 'approve', 'Approved by Admin')}
-                                    className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px]"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(w.usdtAddress);
+                                      setActionMessage({ text: `Copied wallet address: ${w.usdtAddress}`, type: 'success' });
+                                    }}
+                                    className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700"
+                                    title="Copy Wallet Address"
                                   >
-                                    Approve
+                                    <Copy className="w-3.5 h-3.5" />
                                   </button>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span
+                                  className={`inline-flex px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                                    w.status === 'paid'
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : w.status === 'approved'
+                                      ? 'bg-blue-50 text-blue-700'
+                                      : w.status === 'rejected' || w.status === 'cancelled'
+                                      ? 'bg-red-50 text-red-700'
+                                      : 'bg-amber-50 text-amber-700'
+                                  }`}
+                                >
+                                  {w.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-right space-x-1.5">
+                                {['requested', 'under_review'].includes(w.status) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReviewAction(w.id, 'approve', 'Approved by Admin')}
+                                      className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] cursor-pointer"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPayoutModal({ id: w.id, txHash: '', notes: 'Paid in USDT' })}
+                                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer"
+                                    >
+                                      Mark Paid
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReviewAction(w.id, 'reject', 'Rejected by Admin')}
+                                      className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px] cursor-pointer"
+                                    >
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+                                {w.status === 'approved' && (
                                   <button
                                     type="button"
-                                    onClick={() => setPayoutModal({ id: w.id, txHash: '', notes: 'Settled in USDT' })}
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
+                                    onClick={() => setPayoutModal({ id: w.id, txHash: '', notes: 'Paid in USDT' })}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer"
                                   >
                                     Mark Paid
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleReviewAction(w.id, 'reject', 'Rejected by Admin')}
-                                    className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]"
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                              {w.status === 'approved' && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPayoutModal({ id: w.id, txHash: '', notes: 'Settled in USDT' })}
-                                  className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
-                                >
-                                  Record TxHash & Pay
-                                </button>
-                              )}
-                              {w.txHash && (
-                                <span className="font-mono text-[10px] text-slate-400">
-                                  Tx: {w.txHash.slice(0, 10)}...
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                                )}
+                                {w.txHash && (
+                                  <span className="font-mono text-[10px] text-slate-400 block mt-1">
+                                    Ref: {w.txHash}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -2314,7 +2620,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     Registered Users ({usersList.length})
                   </h1>
                   <p className="text-sm text-slate-500 mt-1">
-                    Inspect member balances, WhatsApp numbers, completed surveys, and your hidden {activeAdminProfitPercent}% profit per user.
+                    Inspect member balances, WhatsApp numbers, real points credited, and account status.
                   </p>
                 </div>
 
@@ -2338,8 +2644,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         <th className="py-3.5 px-4">Member</th>
                         <th className="py-3.5 px-4">WhatsApp / Country</th>
                         <th className="py-3.5 px-4">Completed Surveys</th>
-                        <th className="py-3.5 px-4">Available Points &amp; USDT</th>
-                        <th className="py-3.5 px-4">Your Hidden Profit</th>
+                        <th className="py-3.5 px-4">Real Points &amp; Value</th>
+                        <th className="py-3.5 px-4">Member Since</th>
                         <th className="py-3.5 px-4 text-right">Details</th>
                       </tr>
                     </thead>
@@ -2383,15 +2689,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
                               </span>
                             </td>
                             <td className="py-3.5 px-4 font-mono">
-                              <div className="font-bold text-emerald-600">
+                              <div className="font-bold text-emerald-700">
                                 {(u.balances.availablePoints || 0).toLocaleString('en-US')} Pts
                               </div>
-                              <div className="text-[11px] text-slate-500">
-                                ${((u.balances.availableCents || 0) / 100).toFixed(2)} USDT
+                              <div className="text-[11px] text-slate-600 font-bold font-mono">
+                                ${(((u.balances.availableCents || 0) / 100)).toFixed(2)} USD
                               </div>
                             </td>
-                            <td className="py-3.5 px-4 font-mono font-bold text-indigo-600">
-                              +${((u.balances.totalAdminProfitCents || 0) / 100).toFixed(2)} USDT
+                            <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
+                              {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Active'}
                             </td>
                             <td className="py-3.5 px-4 text-right">
                               <div className="inline-flex items-center gap-1.5 justify-end">
@@ -3382,15 +3688,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
-                <div className="text-slate-400 font-semibold">Available User Balance</div>
+                <div className="text-slate-400 font-semibold">Available Points Balance</div>
                 <div className="text-sm font-extrabold text-emerald-600 font-mono mt-0.5">
-                  {(selectedUserDetail.balances.availablePoints || 0).toLocaleString('en-US')} Pts (${((selectedUserDetail.balances.availableCents || 0) / 100).toFixed(2)})
+                  {(selectedUserDetail.balances.availablePoints || 0).toLocaleString('en-US')} Pts
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-200/70">
-                <div className="text-indigo-600 font-semibold">Your Hidden Admin Profit</div>
-                <div className="text-sm font-extrabold text-indigo-900 font-mono mt-0.5">
-                  +${((selectedUserDetail.balances.totalAdminProfitCents || 0) / 100).toFixed(2)} USDT
+              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
+                <div className="text-emerald-700 font-semibold">Real Value (USD)</div>
+                <div className="text-sm font-extrabold text-emerald-900 font-mono mt-0.5">
+                  ${(((selectedUserDetail.balances.availableCents || 0) / 100)).toFixed(2)} USD
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
@@ -3425,8 +3731,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         <div className="font-extrabold text-emerald-700">
                           +{(item.points || 0).toLocaleString('en-US')} Pts
                         </div>
-                        <div className="text-[10px] text-indigo-600 font-bold">
-                          Profit: +${((item.adminProfitCents || 0) / 100).toFixed(2)}
+                        <div className="text-[10px] text-slate-600 font-bold">
+                          ${(((item.amountCents || 0) / 100)).toFixed(2)} USD
                         </div>
                       </div>
                     </div>

@@ -109,13 +109,13 @@ export function calculateUsdtPayout(
   };
 }
 
-export const DEFAULT_POINTS_PER_USDT = 5000; // Real Gross Base: 5,000 Points = $1.00 USD (Matches CPX Currency Factor 5000)
-export const DEFAULT_USER_SHARE_PERCENT = 40; // User gets 40% ($0.40 USDT per 5,000 Points); 60% is Admin Profit
+export const DEFAULT_POINTS_PER_USDT = 5000; // CPX Dashboard Currency Factor: 5,000 Points = $1.00 Gross USD
+export const DEFAULT_USER_SHARE_PERCENT = 50; // 50% User Share / 50% Admin Margin -> User gets 10,000 Points = $1.00 USD
 
 /**
  * Converts User's Net USD cents into Points based on the user's share percentage.
- * Real ("Asl") value of 10,000 Points = 100 gross cents ($1.00), hidden from user.
- * At 40% user share, 10,000 Points = 40 user cents ($0.40 USDT).
+ * With CPX Factor = 5,000 Points/$1.00 and User Share = 50%:
+ * 10,000 Points = 100 user cents ($1.00 USD), 2,000 Points = 20 user cents ($0.20 USD), 250,000 Points = $25.00 USD.
  */
 export function usdCentsToPoints(
   userAmountCents: number,
@@ -125,7 +125,6 @@ export function usdCentsToPoints(
   if (!userAmountCents || userAmountCents <= 0) return 0;
   const safeRate = pointsPerGrossUsdt > 0 ? pointsPerGrossUsdt : DEFAULT_POINTS_PER_USDT;
   const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || DEFAULT_USER_SHARE_PERCENT)));
-  // Since `safeRate` points (10,000) gives the user `safeShare` cents (40 cents = $0.40 USDT):
   return Math.round((Math.floor(userAmountCents) / safeShare) * safeRate);
 }
 

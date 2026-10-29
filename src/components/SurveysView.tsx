@@ -34,6 +34,7 @@ interface SurveysViewProps {
   onRefresh: () => void;
   onStartSurvey: (survey: Survey) => void;
   onTaskCompleted?: () => void;
+  onOpenWithdraw?: () => void;
   user?: User | null;
   cpxConfig?: {
     appId: string;
@@ -52,6 +53,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
   onRefresh,
   onStartSurvey,
   onTaskCompleted,
+  onOpenWithdraw,
   user,
   cpxConfig
 }) => {
@@ -68,17 +70,44 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
   const [taskClaiming, setTaskClaiming] = useState(false);
   const [taskFeedback, setTaskFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Active started CPX survey session tracking so completions credit Points & Survey Count reliably
+  // Active started survey session tracking in background (no manual banner needed)
   const [activeSurveySession, setActiveSurveySession] = useState<Survey | null>(null);
   const [completingSurvey, setCompletingSurvey] = useState(false);
+  const [rewardCelebration, setRewardCelebration] = useState<{
+    points: number;
+    usd: string;
+    surveyId?: string;
+  } | null>(null);
+  const prevPointsRef = React.useRef<number | null>(null);
 
   const availablePoints = balances?.availablePoints ?? (balances?.availableCents ? balances.availableCents * 100 : 0);
+  const availableUsdValue = (availablePoints / 10000).toFixed(2); // 10,000 Points = $1.00 USD
+  const minWithdrawPoints = 250000; // $25.00 USD Minimum Withdrawal
+  const withdrawProgressPercent = Math.min(100, Math.round((availablePoints / minWithdrawPoints) * 100));
   const completedSurveysCount = balances?.completedSurveysCount ?? 0;
 
-  // Presentation mode for CPX Surveys:
+  // Automatically trigger the Points Credited celebration animation whenever the user's points balance increases
+  useEffect(() => {
+    if (balances == null) return;
+    if (prevPointsRef.current !== null && availablePoints > prevPointsRef.current) {
+      const gainedPoints = availablePoints - prevPointsRef.current;
+      setRewardCelebration({
+        points: gainedPoints,
+        usd: (gainedPoints / 10000).toFixed(2),
+        surveyId: activeSurveySession?.id
+      });
+      setActiveSurveySession(null);
+      const timer = setTimeout(() => setRewardCelebration(null), 5000);
+      prevPointsRef.current = availablePoints;
+      return () => clearTimeout(timer);
+    }
+    prevPointsRef.current = availablePoints;
+  }, [availablePoints, balances, activeSurveySession?.id]);
+
+  // Presentation mode for Surveys:
   // 'cards': Reward River verified responsive cards
-  // 'official_widget': Official CPX Script Tag widget into <div id="fullscreen">
-  // 'offerwall': Full interactive CPX wall iframe
+  // 'official_widget': Embedded widget
+  // 'offerwall': Full interactive wall iframe
   const [surveyPresentation, setSurveyPresentation] = useState<'cards' | 'official_widget' | 'offerwall'>('cards');
   const [cpxWidgetCount, setCpxWidgetCount] = useState<number | null>(null);
 
@@ -91,7 +120,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
   const [captchaCheckedBox, setCaptchaCheckedBox] = useState(false);
   const [captchaError, setCaptchaError] = useState<string | null>(null);
 
-  // Sync CPX get_transaction callback transactions to our backend ledger
+  // Sync get_transaction callback transactions to our backend ledger
   const syncCpxTransactionsToServer = useCallback(async (transactions: unknown) => {
     try {
       const token = localStorage.getItem('rr_auth_token');
@@ -106,13 +135,9 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.newlyCreditedCount > 0) {
-          setTaskFeedback({
-            text: `Survey Completed! Your Points and Total Completed Surveys count have been updated.`,
-            type: 'success'
-          });
+        if (data.newlyCreditedCount > 0 && onTaskCompleted) {
+          onTaskCompleted();
         }
-        if (onTaskCompleted) onTaskCompleted();
       }
     } catch {
       // ignore
@@ -121,7 +146,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
 
   const [cpxWidgetReloadKey, setCpxWidgetReloadKey] = useState(0);
 
-  // Listen for CPX script_tag_v2.0.js callbacks (count_new_surveys, get_all_surveys, get_transaction) from the isolated widget frame
+  // Listen for script_tag_v2.0.js callbacks from the isolated widget frame
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const payload = event.data;
@@ -321,10 +346,6 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setTaskFeedback({
-          text: `Credited +${data.creditedPointsFormatted} Pts to your account!`,
-          type: 'success'
-        });
         setActiveTaskModal(null);
         if (onTaskCompleted) onTaskCompleted();
       } else {
@@ -342,28 +363,21 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
     }
   };
 
-  // Launch survey card and track active survey session for CPX verification
+  // Launch survey card and track active survey session silently in background
   const handleLaunchSurveyCard = (survey: Survey) => {
     setTaskFeedback(null);
     setActiveSurveySession(survey);
     onStartSurvey(survey);
   };
 
-  // Poll user profile/ledger while a survey is open so real CPX S2S postbacks update Points automatically
-  useEffect(() => {
-    if (!activeSurveySession || !onTaskCompleted) return;
-    const interval = setInterval(() => {
-      onTaskCompleted();
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [activeSurveySession, onTaskCompleted]);
-
-  // Check with backend whether CPX Research has verified completion for the active survey
-  const handleConfirmSurveyCompletion = async (surveyToComplete?: Survey) => {
+  // Silently check with backend whether survey completion has been verified
+  const handleConfirmSurveyCompletion = useCallback(async (surveyToComplete?: Survey, silent = true) => {
     const targetSurvey = surveyToComplete || activeSurveySession;
     if (!targetSurvey || completingSurvey) return;
-    setCompletingSurvey(true);
-    setTaskFeedback(null);
+    if (!silent) {
+      setCompletingSurvey(true);
+      setTaskFeedback(null);
+    }
 
     try {
       const token = localStorage.getItem('rr_auth_token');
@@ -380,29 +394,49 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
 
       const data = await res.json();
       if (res.ok && data.success && data.verified) {
-        setTaskFeedback({
-          text: `Verified by CPX Research! Survey #${targetSurvey.id} credited +${data.creditedPointsFormatted} Pts to your ID (Total Surveys: ${data.completedSurveysCount}).`,
-          type: 'success'
+        const creditedPts = Number(data.creditedPoints) || (targetSurvey.rewardPoints ?? targetSurvey.rewardCents * 100);
+        setRewardCelebration({
+          points: creditedPts,
+          usd: (creditedPts / 10000).toFixed(2),
+          surveyId: targetSurvey.id
         });
         setActiveSurveySession(null);
         if (onTaskCompleted) onTaskCompleted();
-      } else {
-        setTaskFeedback({
-          text:
-            data.error ||
-            `CPX Research has not confirmed completion for Survey #${targetSurvey.id} yet. Points are credited only after you complete the full survey on CPX Research.`,
-          type: 'error'
-        });
       }
     } catch {
-      setTaskFeedback({
-        text: 'Network error while checking CPX Research verification status.',
-        type: 'error'
-      });
+      // silent background check
     } finally {
-      setCompletingSurvey(false);
+      if (!silent) {
+        setCompletingSurvey(false);
+      }
     }
-  };
+  }, [activeSurveySession, completingSurvey, onTaskCompleted]);
+
+  // Auto-sync user profile/ledger and silently check survey completion when user returns to tab or every 10s while a survey is open
+  useEffect(() => {
+    if (!activeSurveySession) return;
+
+    const interval = setInterval(() => {
+      handleConfirmSurveyCompletion(activeSurveySession, true);
+      if (onTaskCompleted) onTaskCompleted();
+    }, 10000);
+
+    const handleReturnToTab = () => {
+      if (document.visibilityState === 'visible') {
+        handleConfirmSurveyCompletion(activeSurveySession, true);
+        if (onTaskCompleted) onTaskCompleted();
+      }
+    };
+
+    window.addEventListener('focus', handleReturnToTab);
+    document.addEventListener('visibilitychange', handleReturnToTab);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleReturnToTab);
+      document.removeEventListener('visibilitychange', handleReturnToTab);
+    };
+  }, [activeSurveySession, handleConfirmSurveyCompletion, onTaskCompleted]);
 
   // Filter surveys
   const filteredSurveys = [...surveys].sort((a, b) => {
@@ -436,7 +470,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
     }, 900);
   };
 
-  // Helper to render 5-star rating matching real CPX statistics_rating_avg & statistics_rating_count
+  // Helper to render 5-star rating
   const renderStars = (rating: number, count = 0) => {
     const fullStars = count > 0 ? Math.max(1, Math.min(5, Math.round(rating || 5))) : 0;
     return (
@@ -453,253 +487,40 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
     );
   };
 
-  // IF CAPTCHA NOT PASSED -> SHOW SINGLE GLOBAL PAGE-LEVEL CAPTCHA STEP
-  if (!captchaPassed) {
-    return (
-      <div className="max-w-xl mx-auto py-12 px-4 space-y-6 animate-fadeIn">
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-xl relative overflow-hidden text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-sky-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-            <ShieldCheck className="w-8 h-8 text-white" />
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Security Verification Required
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-md mx-auto">
-              Please clear the human verification check below to unlock the live Reward River survey &amp; instant task marketplace.
-            </p>
-          </div>
-
-          <div className="bg-slate-50 dark:bg-slate-800/70 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 text-left space-y-4 max-w-sm mx-auto shadow-inner">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Page-Level Security Check</span>
-              </span>
-              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                Reward River Protection
-              </span>
-            </div>
-
-            <div
-              onClick={handleToggleCaptchaBox}
-              className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer select-none ${
-                captchaCheckedBox
-                  ? 'bg-emerald-50/80 dark:bg-emerald-950/50 border-emerald-500 ring-2 ring-emerald-500/20'
-                  : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 hover:border-emerald-400 hover:shadow-sm'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                    captchaCheckedBox
-                      ? 'bg-emerald-600 border-emerald-600 text-white'
-                      : 'border-slate-400 dark:border-slate-600 bg-white dark:bg-slate-800'
-                  }`}
-                >
-                  {captchaChecking ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
-                  ) : captchaCheckedBox ? (
-                    <CheckCircle2 className="w-4 h-4 text-white" />
-                  ) : null}
-                </div>
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                  {captchaChecking
-                    ? 'Verifying human participant...'
-                    : captchaCheckedBox
-                    ? 'Verification Successful!'
-                    : "I'm not a robot"}
-                </span>
-              </div>
-
-              <div className="flex flex-col items-end">
-                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <span className="text-[9px] font-bold text-slate-400 mt-0.5">CAPTCHA</span>
-              </div>
-            </div>
-
-            {captchaError && (
-              <p className="text-[11px] text-red-600 dark:text-red-400 font-medium">{captchaError}</p>
-            )}
-          </div>
-
-          <div className="pt-2 text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Pass once to access all surveys &amp; instant tasks seamlessly without popup verifications.</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Top Marketplace Navigation Tabs (Surveys vs Instant Tasks & Offerwall) */}
-      <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-[#D9EFE3] dark:border-slate-800 shadow-sm max-w-md">
-        <button
-          type="button"
-          onClick={() => setMarketplaceSection('surveys')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            marketplaceSection === 'surveys'
-              ? 'bg-[#079B55] text-white shadow-xs font-black'
-              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
-          }`}
+      {/* Automatic Points Credited Celebration Animation Overlay */}
+      {rewardCelebration && (
+        <div
+          onClick={() => setRewardCelebration(null)}
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn cursor-pointer"
         >
-          <ClipboardList className="w-4 h-4" />
-          <span>Research Surveys</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMarketplaceSection('tasks');
-            if (tasks.length === 0) fetchWhiteLabelTasks();
-          }}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            marketplaceSection === 'tasks'
-              ? 'bg-[#079B55] text-white shadow-xs font-black'
-              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Zap className="w-4 h-4 text-amber-400" />
-          <span>Instant Tasks &amp; Offerwall</span>
-          <span className="hidden sm:inline-block text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-400 text-slate-950 uppercase">
-            LIVE
-          </span>
-        </button>
-      </div>
-
-      {/* Marketplace Header */}
-      <div className="bg-gradient-to-r from-white via-[#F0FBF5]/60 to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-900/90 rounded-2xl p-6 border border-[#D9EFE3] dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 animate-fade-in-up transition-all duration-300 hover:shadow-md hover:border-[#079B55]/30">
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#079B55]/10 text-[#079B55] dark:text-[#4CC65A] flex items-center justify-center shrink-0">
-              {marketplaceSection === 'surveys' ? <ClipboardList className="w-5 h-5" /> : <Zap className="w-5 h-5 text-[#079B55]" />}
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full border-2 border-emerald-400 dark:border-emerald-600 shadow-2xl text-center space-y-4 overflow-hidden">
+            {/* Animated glowing coins */}
+            <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/40 animate-bounce">
+              <Coins className="w-10 h-10 text-amber-200" />
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-[#192F40] dark:text-white tracking-tight">
-              {marketplaceSection === 'surveys' ? 'Choose a survey' : 'Instant Tasks & Offerwall'}
-            </h2>
-            <span className="inline-flex items-center gap-1.5 text-xs font-extrabold px-3 py-1 rounded-full bg-[#079B55]/10 text-[#079B55] dark:text-[#4CC65A] border border-[#079B55]/20 shadow-2xs">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#079B55] dark:text-[#4CC65A]" />
-              <span>CAPTCHA Verified</span>
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-[#52697A] dark:text-slate-400 font-medium pl-0.5">
-            {marketplaceSection === 'surveys'
-              ? 'Complete any market research survey below to earn instant Points.'
-              : 'Launch the Partner Offerwall or complete instant sponsored web tasks to earn verified Points.'}
-          </p>
-        </div>
 
-        {/* Merged Filter Controls */}
-        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
-          {marketplaceSection === 'surveys' ? (
-            surveyPresentation === 'cards' ? (
-              <>
-                <div className="flex items-center rounded-xl bg-[#F0FBF5] dark:bg-slate-800/90 p-1.5 border border-[#D9EFE3] dark:border-slate-700 text-xs font-extrabold shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => setFilter('all')}
-                    className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                      filter === 'all'
-                        ? 'bg-[#079B55] text-white shadow-xs font-black'
-                        : 'text-[#52697A] dark:text-slate-300 hover:text-[#192F40] dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-700/60'
-                    }`}
-                  >
-                    Recommended
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilter('quick')}
-                    className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                      filter === 'quick'
-                        ? 'bg-[#079B55] text-white shadow-xs font-black'
-                        : 'text-[#52697A] dark:text-slate-300 hover:text-[#192F40] dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-700/60'
-                    }`}
-                  >
-                    Quickest
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilter('highest')}
-                    className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                      filter === 'highest'
-                        ? 'bg-[#079B55] text-white shadow-xs font-black'
-                        : 'text-[#52697A] dark:text-slate-300 hover:text-[#192F40] dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-700/60'
-                    }`}
-                  >
-                    Highest Reward
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={loading}
-                  className="p-2.5 rounded-xl bg-[#F0FBF5] dark:bg-slate-800 border border-[#D9EFE3] dark:border-slate-700 text-[#079B55] dark:text-[#4CC65A] hover:bg-[#079B55] hover:text-white dark:hover:bg-[#079B55] dark:hover:text-white disabled:opacity-50 transition-all duration-200 cursor-pointer active:scale-95 shrink-0 shadow-2xs"
-                  title="Refresh Surveys"
-                  aria-label="Refresh Surveys"
-                >
-                  <RefreshCw className={`w-4.5 h-4.5 ${loading ? 'animate-spin' : 'hover:rotate-180 transition-transform duration-500'}`} />
-                </button>
-              </>
-            ) : (
-              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                {surveyPresentation === 'official_widget'
-                  ? 'Official CPX Research script tag v2.0 rendered into #fullscreen container'
-                  : 'Official CPX Research live responsive Offerwall iframe'}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-xs font-black uppercase tracking-wider">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Survey Completed • Auto-Credited</span>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-4xl font-black font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">
+                +{rewardCelebration.points.toLocaleString('en-US')} Pts
               </div>
-            )
-          ) : (
-            <>
-              <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-bold transition-all">
-                <button
-                  type="button"
-                  onClick={() => setTaskTypeFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg transition-all duration-200 ${
-                    taskTypeFilter === 'all'
-                      ? 'bg-emerald-600 text-white shadow-sm scale-105'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  All Tasks ({tasks.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTaskTypeFilter('ptc')}
-                  className={`px-3 py-1.5 rounded-lg transition-all duration-200 ${
-                    taskTypeFilter === 'ptc'
-                      ? 'bg-emerald-600 text-white shadow-sm scale-105'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Sponsored Visits (PTC)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTaskTypeFilter('shortlink')}
-                  className={`px-3 py-1.5 rounded-lg transition-all duration-200 ${
-                    taskTypeFilter === 'shortlink'
-                      ? 'bg-emerald-600 text-white shadow-sm scale-105'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  Express Links
-                </button>
+              <div className="text-sm font-extrabold text-slate-600 dark:text-slate-300 font-mono">
+                +${rewardCelebration.usd} USD Added to Your Account!
               </div>
-              <button
-                type="button"
-                onClick={() => fetchWhiteLabelTasks(true)}
-                disabled={tasksLoading}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 disabled:opacity-50 transition-all duration-200"
-                title="Refresh Instant Tasks"
-                aria-label="Refresh Instant Tasks"
-              >
-                <RefreshCw className={`w-4 h-4 ${tasksLoading ? 'animate-spin text-emerald-600 dark:text-emerald-400' : 'hover:rotate-180 transition-transform duration-500'}`} />
-              </button>
-            </>
-          )}
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Your top wallet balance has been updated automatically.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {taskFeedback && (
         <div
@@ -716,75 +537,11 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
         </div>
       )}
 
-      {/* Active Survey Session Banner: checks real CPX Research completion status */}
-      {activeSurveySession && (
-        <div className="p-4 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/60 border-2 border-emerald-300 dark:border-emerald-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fadeIn">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
-                  Survey Opened (CPX #{activeSurveySession.id}) • Verification Required
-                </span>
-                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-200/80 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200">
-                  + {(activeSurveySession.rewardPoints ?? activeSurveySession.rewardCents * 100).toLocaleString('en-US')} Pts (On CPX Verification)
-                </span>
-              </div>
-              <p className="text-xs text-emerald-800 dark:text-emerald-300 mt-0.5">
-                Points are credited automatically only after CPX Research verifies that you completed the entire survey. Unfinished surveys do not award points.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <button
-              type="button"
-              data-testid="check-survey-verification-btn"
-              onClick={() => handleConfirmSurveyCompletion(activeSurveySession)}
-              disabled={completingSurvey}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-xs transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              {completingSurvey ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Checking CPX...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Check Verification Status</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSurveySession(null)}
-              className="p-2 rounded-xl text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors"
-              title="Dismiss"
-              aria-label="Dismiss Active Survey Banner"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* =====================================================================
           VIEW A: RESEARCH SURVEYS
          ===================================================================== */}
       {marketplaceSection === 'surveys' && (
         <>
-          {cpxStatus && !cpxStatus.isConfigured && (
-            <div className="p-3.5 rounded-xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-200 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span>Reward River live survey stream synchronized. Click any survey card to participate immediately.</span>
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -797,74 +554,79 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
             </div>
           )}
 
-          {/* SUB-VIEW 1: OFFICIAL CPX RESEARCH JAVASCRIPT SCRIPT WIDGET (Persistent so get_transaction always runs) */}
-          <div className={surveyPresentation === 'official_widget' ? 'bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4' : 'hidden'}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                  Official CPX Research CDN Widget (script_tag_v2.0.js)
-                </span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold">
-                  App #{cpxConfig?.appId || '37699'}
-                </span>
+          {/* Hidden background transaction listener iframe when in cards mode */}
+          {surveyPresentation !== 'official_widget' && (
+            <iframe
+              key={cpxWidgetReloadKey}
+              srcDoc={cpxScriptWidgetSrcDoc}
+              title="Reward River Sync Listener"
+              className="hidden"
+            />
+          )}
+
+          {/* SUB-VIEW 1: EMBEDDED SURVEY WIDGET */}
+          {surveyPresentation === 'official_widget' && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                    Reward River Live Survey Wall
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSurveyPresentation('cards')}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Back to Survey Cards</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCpxWidgetReloadKey((prev) => prev + 1)}
+                    className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+                    title="Reload Surveys"
+                    aria-label="Reload Surveys"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={`https://offers.cpx-research.com/index.php?app_id=${cpxConfig?.appId || '37699'}&ext_user_id=${encodeURIComponent(cpxConfig?.extUserId || user?.externalOpaqueId || 'member')}${cpxConfig?.secureHash ? `&secure_hash=${cpxConfig.secureHash}` : ''}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Standalone Wall</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setCpxWidgetReloadKey((prev) => prev + 1)}
-                  className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
-                  title="Reload CPX Widget"
-                  aria-label="Reload CPX Widget"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
+
+              <div className="w-full">
+                <iframe
+                  key={cpxWidgetReloadKey}
+                  srcDoc={cpxScriptWidgetSrcDoc}
+                  title="Reward River Survey Wall"
+                  className="w-full min-h-[520px] border-0 rounded-xl bg-transparent"
+                  allow="clipboard-write; fullscreen"
+                />
               </div>
             </div>
+          )}
 
-            <div className="w-full">
-              <iframe
-                key={cpxWidgetReloadKey}
-                srcDoc={cpxScriptWidgetSrcDoc}
-                title="Official CPX Research Script Tag v2.0 Widget"
-                className="w-full min-h-[520px] border-0 rounded-xl bg-transparent"
-                allow="clipboard-write; fullscreen"
-              />
-            </div>
-          </div>
-
-          {/* SUB-VIEW 2: FULL RESPONSIVE CPX OFFERWALL IFRAME */}
+          {/* SUB-VIEW 2: FULL RESPONSIVE SURVEY WALL IFRAME */}
           {surveyPresentation === 'offerwall' && (
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-sm font-bold">CPX Research Live Offerwall (App #{cpxConfig?.appId || '37699'})</span>
+                  <span className="text-sm font-bold">Reward River Live Survey Portal</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <a
-                    href={`https://wall.cpx-research.com/index.php?app_id=${cpxConfig?.appId || '37699'}&ext_user_id=${encodeURIComponent(cpxConfig?.extUserId || user?.externalOpaqueId || 'member')}${cpxConfig?.secureHash ? `&secure_hash=${cpxConfig.secureHash}` : ''}&main_color=10b981`}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => setSurveyPresentation('cards')}
                     className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Open in Full Browser Tab</span>
-                  </a>
+                    <span>Back to Survey Cards</span>
+                  </button>
                 </div>
               </div>
               <iframe
                 src={`https://wall.cpx-research.com/index.php?app_id=${cpxConfig?.appId || '37699'}&ext_user_id=${encodeURIComponent(cpxConfig?.extUserId || user?.externalOpaqueId || 'member')}${cpxConfig?.secureHash ? `&secure_hash=${cpxConfig.secureHash}` : ''}&main_color=10b981`}
-                title="CPX Research Offerwall"
+                title="Reward River Survey Wall"
                 className="w-full h-[750px] border-0"
                 allow="clipboard-write; fullscreen"
               />
@@ -893,15 +655,15 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
                 </div>
                 <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">At this moment no surveys available for your profile</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Market research studies depend on your demographic profile. You can also view the Official CPX Widget or Live Offerwall while new surveys refresh.
+                  Market research studies depend on your demographic profile. Please refresh shortly as new Reward River surveys become available.
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
                   <button
-                    onClick={() => setSurveyPresentation('official_widget')}
+                    onClick={onRefresh}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-2 shadow-xs"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Switch to Official CPX Widget</span>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Refresh Surveys</span>
                   </button>
                 </div>
               </div>
@@ -910,6 +672,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
               {filteredSurveys.map((survey) => {
                 const rewardPoints = survey.rewardPoints ?? survey.rewardCents * 100;
                 const rewardPointsFormatted = survey.rewardPointsFormatted || rewardPoints.toLocaleString('en-US');
+                const userUsdValue = (rewardPoints / 10000).toFixed(2);
                 const ratingsCount = Math.max(0, Number(survey.ratingCount) || 0);
 
                 return (
@@ -921,7 +684,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
                     {survey.isTop && (
                       <div
                         className="absolute -top-3 -right-2.5 w-9 h-9 rounded-full bg-gradient-to-tr from-rose-500 via-red-500 to-pink-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/30 z-10"
-                        title="Top CPX Research Survey"
+                        title="Top Featured Survey"
                       >
                         <Flame className="w-5 h-5 text-white fill-white" />
                       </div>
@@ -930,16 +693,19 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
                     <div className="px-5 pt-3.5 pb-1 flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 bg-emerald-50/90 dark:bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800 font-mono">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        <span>CPX #{survey.id}</span>
+                        <span>RR #{survey.id}</span>
                       </span>
                       <span>{survey.category || 'General'}</span>
                     </div>
 
                     <div className="p-5 pt-2.5 flex items-stretch justify-between gap-3">
                       <div className="flex-1 flex flex-col justify-center">
-                        <div className="text-emerald-500 dark:text-emerald-400 font-black text-2xl tracking-tight flex items-baseline gap-1">
+                        <div className="text-emerald-500 dark:text-emerald-400 font-black text-2xl tracking-tight flex items-baseline gap-1 whitespace-nowrap">
                           <span>+ {rewardPointsFormatted}</span>
                           <span className="text-xs font-extrabold uppercase text-slate-700 dark:text-slate-300 font-sans">Pts</span>
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                          Value: <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">${userUsdValue} USD</span>
                         </div>
                       </div>
 
@@ -961,8 +727,9 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
                         <span>~ {survey.loiMinutes} {survey.loiMinutes === 1 ? 'Minute' : 'Minutes'}</span>
                       </div>
 
-                      <div className="flex items-center gap-1 text-amber-500 font-extrabold group-hover:text-amber-600 transition-colors">
-                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-600 dark:text-emerald-400 group-hover:text-emerald-700 transition-colors">
+                        <span>Start Survey</span>
+                        <ArrowRight className="w-4 h-4 text-amber-500 group-hover:translate-x-1 transition-transform" />
                       </div>
                     </div>
                   </div>
@@ -1197,14 +964,6 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
           )}
         </div>
       )}
-
-      {/* Footer Disclaimer */}
-      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed flex items-start gap-2.5">
-        <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-        <p>
-          <strong>Seamless Redirect Notice:</strong> Single page-level CAPTCHA verification cleared. Clicking any survey card opens immediately. Confirmed completions credit your Reward River Points automatically.
-        </p>
-      </div>
     </div>
   );
 };

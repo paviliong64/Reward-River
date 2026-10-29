@@ -116,6 +116,7 @@ export interface SystemSettings {
   surveyDisplayMode?: 'hybrid' | 'points_only';
   cpxAppId?: string;
   cpxHashKey?: string;
+  cpxApiKey?: string;
   cpxIntegrationMode?: 'hybrid_api' | 'direct_wall' | 'paused';
   cpxMaxSurveys?: number;
   cpxThemeColor?: string;

@@ -50,6 +50,95 @@ export interface CpxPostbackPayload {
   sub_id_2?: string;
 }
 
+export interface CpxTimeStatisticItem {
+  date?: string;
+  hour?: string;
+  clicks: number;
+  active_users: number;
+  completes: number;
+  reversed_completes: number;
+  outs: number;
+  survey_ratings: number;
+  revenue_completes: number;
+  revenue_reversed_completes: number;
+  revenue_outs: number;
+  revenue_survey_ratings: number;
+  revenue_total?: number;
+}
+
+export interface CpxTimeStatisticsResponse {
+  success: boolean;
+  publisher_id?: number;
+  filters?: {
+    start_time: string;
+    end_time: string;
+    app_id?: string | null;
+    country_code?: string | null;
+    group_by?: string;
+  };
+  totals?: CpxTimeStatisticItem;
+  data?: CpxTimeStatisticItem[];
+  results?: Record<string, CpxTimeStatisticItem> | CpxTimeStatisticItem[];
+  error?: string;
+}
+
+export interface CpxCountrySale {
+  lang_code: string;
+  count_completes: string | number;
+  sales: string | number;
+  pay_to_user_local: string | number;
+}
+
+export interface CpxCompleteRecord {
+  id: string;
+  internal_user_id: string;
+  external_user_id: string;
+  country_code: string;
+  app_id: string;
+  app_name: string;
+  verdienst_publisher: string;
+  verdienst_user_local_money: string;
+  datetime: string;
+  datetime_klick?: string;
+  loi_secounds: number;
+  ip: string;
+  subid_1?: string;
+  subid_2?: string;
+  status: string;
+  paid_status?: string;
+  trans_id: string;
+}
+
+export interface CpxScreenoutRecord {
+  id: string;
+  internal_user_id: string;
+  external_user_id: string;
+  country_code: string;
+  app_id: string;
+  app_name: string;
+  verdienst_publisher: string;
+  verdienst_user_local_money: string;
+  datetime: string;
+  datetime_klick?: string;
+  loi_secounds: number;
+  ip: string;
+  notice?: string;
+  trans_id: string;
+}
+
+export interface CpxTransactionCheckResult {
+  type: string; // 'okay' | 'error'
+  transaction?: {
+    app_id: string;
+    revenue_us: string;
+    revenue_user: string;
+    type: string;
+    klick_id: string;
+    external_user_id: string;
+  };
+  error?: string;
+}
+
 /**
  * Computes MD5 hash according to CPX documentation: md5(ext_user_id + '-' + hash_key)
  */
@@ -99,7 +188,7 @@ export function verifyCpxPostbackSignature(
 export function normalizeCpxPostbackGrossCents(
   amountUsd?: unknown,
   amountLocal?: unknown,
-  pointsPerUsdt = 10000
+  pointsPerUsdt = 5000
 ): number {
   const cleanUsd = typeof amountUsd === 'string' ? Number(amountUsd.replace(/[^0-9.-]/g, '')) : Number(amountUsd);
   if (!isNaN(cleanUsd) && cleanUsd > 0) {
@@ -165,7 +254,8 @@ export function normalizeCpxSurveyList(
   rawData: unknown,
   appId: string,
   extUserId: string,
-  hashKey?: string
+  hashKey?: string,
+  pointsPerUsdt = 5000
 ): NormalizedSurvey[] {
   if (!rawData || typeof rawData !== 'object') {
     return [];
@@ -177,6 +267,7 @@ export function normalizeCpxSurveyList(
   }
 
   const results: NormalizedSurvey[] = [];
+  const safeFactor = pointsPerUsdt > 0 ? pointsPerUsdt : 5000;
 
   for (const item of payload.surveys) {
     if (!item || typeof item !== 'object') continue;
@@ -187,7 +278,7 @@ export function normalizeCpxSurveyList(
 
     const loiMinutes = Math.max(1, Math.min(60, Number(raw.loi) || 10));
     
-    // Parse payout: CPX returns payout_publisher_usd (e.g. 2.71 USD) and payout in currency points (e.g. "27100.00")
+    // Parse payout: CPX returns payout_publisher_usd (e.g. 0.49 USD) or payout in currency points at 5,000 Pts/$1 (e.g. "2450.00")
     let rewardCents = 10;
     const publisherUsd = raw.payout_publisher_usd !== undefined && raw.payout_publisher_usd !== null && raw.payout_publisher_usd !== ''
       ? Number(raw.payout_publisher_usd)
@@ -198,19 +289,19 @@ export function normalizeCpxSurveyList(
     const rawPayoutNum = Number(raw.payout ?? raw.cpi) || 0;
 
     if (!isNaN(publisherUsd) && publisherUsd > 0) {
-      // Direct USD payout from CPX publisher feed (e.g. 2.71 -> 271 cents)
+      // Direct Gross USD payout from CPX publisher feed (e.g. 0.49 -> 49 gross cents)
       rewardCents = Math.max(1, Math.round(publisherUsd * 100));
     } else if (!isNaN(rawCpi) && rawCpi > 0 && rawCpi <= 50) {
       rewardCents = Math.max(1, Math.round(rawCpi * 100));
     } else if (rawPayoutNum > 50) {
-      // CPX returns points value when app is configured as points currency (e.g. 27100 pts at 10000 pts/$ = 271 cents)
-      rewardCents = Math.max(1, Math.round((rawPayoutNum / 10000) * 100));
+      // CPX returns points value configured at CPX Currency Factor (5,000 Pts = $1.00 Gross USD = 100 gross cents)
+      rewardCents = Math.max(1, Math.round((rawPayoutNum / safeFactor) * 100));
     } else if (rawPayoutNum > 0) {
       rewardCents = Math.max(1, Math.round(rawPayoutNum * 100));
     }
 
     const rewardUsdFormatted = `$${(rewardCents / 100).toFixed(2)}`;
-    const rawPoints = rawPayoutNum > 50 ? Math.round(rawPayoutNum) : rewardCents * 100;
+    const rawPoints = rawPayoutNum > 50 ? Math.round(rawPayoutNum) : Math.round((rewardCents / 100) * safeFactor);
 
     const cpi = !isNaN(publisherUsd) && publisherUsd > 0 ? Number(publisherUsd.toFixed(2)) : (Number(raw.cpi) || (rewardCents / 100));
     const ratingCount = Math.max(0, Math.floor(Number(raw.statistics_rating_count) || 0));

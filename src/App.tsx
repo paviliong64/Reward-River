@@ -67,8 +67,8 @@ export default function App() {
   const [surveysLoading, setSurveysLoading] = useState(false);
   const [surveysError, setSurveysError] = useState<string | null>(null);
   const [surveyDisplayMode, setSurveyDisplayMode] = useState<'hybrid' | 'points_only'>('hybrid');
-  const [pointsPerUsdt, setPointsPerUsdt] = useState<number>(10000);
-  const [userSharePercent, setUserSharePercent] = useState<number>(40);
+  const [pointsPerUsdt, setPointsPerUsdt] = useState<number>(5000);
+  const [userSharePercent, setUserSharePercent] = useState<number>(50);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [cpxConfig, setCpxConfig] = useState<{
@@ -125,8 +125,8 @@ export default function App() {
         } catch {
           // ignore storage quota errors
         }
-        if (data.pointsPerUsdt) setPointsPerUsdt(Number(data.pointsPerUsdt) || 10000);
-        if (data.userSharePercent) setUserSharePercent(Number(data.userSharePercent) || 40);
+        if (data.pointsPerUsdt) setPointsPerUsdt(Number(data.pointsPerUsdt) || 5000);
+        if (data.userSharePercent) setUserSharePercent(Number(data.userSharePercent) || 50);
         return data.user;
       }
     } catch (e) {
@@ -177,10 +177,10 @@ export default function App() {
           setSurveyDisplayMode(data.surveyDisplayMode);
         }
         if (data.pointsPerUsdt) {
-          setPointsPerUsdt(Number(data.pointsPerUsdt) || 10000);
+          setPointsPerUsdt(Number(data.pointsPerUsdt) || 5000);
         }
         if (data.userSharePercent) {
-          setUserSharePercent(Number(data.userSharePercent) || 40);
+          setUserSharePercent(Number(data.userSharePercent) || 50);
         }
         if (data.usdtQuote) {
           setUsdtQuote(data.usdtQuote);
@@ -247,8 +247,8 @@ export default function App() {
         const lData = await ledgRes.json();
         setLedgerEntries(lData.entries || []);
         if (lData.balances) setBalances(lData.balances);
-        if (lData.pointsPerUsdt) setPointsPerUsdt(Number(lData.pointsPerUsdt) || 10000);
-        if (lData.userSharePercent) setUserSharePercent(Number(lData.userSharePercent) || 40);
+        if (lData.pointsPerUsdt) setPointsPerUsdt(Number(lData.pointsPerUsdt) || 5000);
+        if (lData.userSharePercent) setUserSharePercent(Number(lData.userSharePercent) || 50);
       }
 
       if (withRes.ok) {
@@ -483,31 +483,43 @@ export default function App() {
     }
   };
 
-  // Submit Withdrawal Request
-  const handleSubmitWithdrawal = async (amountCents: number, usdtAddress: string, network: UsdtNetwork) => {
+  // Submit Withdrawal Request ($25.00 Minimum = 250,000 Points)
+  const handleSubmitWithdrawal = async (
+    usdtAddress: string,
+    network: UsdtNetwork,
+    amountCents: number
+  ): Promise<{ success: boolean; error?: string }> => {
     const token = getAuthToken();
     if (!token) {
       setAuthInitialMode('signin');
       setAuthModalOpen(true);
-      return;
+      return { success: false, error: 'Please sign in to request a withdrawal.' };
     }
 
-    const res = await fetch('/api/withdrawals', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ amountCents, usdtAddress, network })
-    });
+    try {
+      const res = await fetch('/api/withdrawals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ amountCents, usdtAddress, network })
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Withdrawal request failed.');
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Withdrawal request failed.' };
+      }
+
+      if (data.balances) {
+        setBalances(data.balances);
+      }
+      await fetchLedgerAndWithdrawals();
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error submitting withdrawal request.';
+      return { success: false, error: msg };
     }
-
-    // Refresh balances and withdrawals
-    handleRefreshAll();
   };
 
   // Password change handler
@@ -684,7 +696,22 @@ export default function App() {
               />
             )}
 
-            {(currentTab === 'surveys' || (currentTab !== 'landing' && currentTab !== 'admin')) && (
+            {currentTab === 'withdraw' && (
+              <WithdrawalView
+                user={user}
+                balances={balances}
+                usdtQuote={usdtQuote}
+                withdrawals={withdrawals}
+                pointsPerUsdt={pointsPerUsdt}
+                userSharePercent={userSharePercent}
+                onSubmitWithdrawal={handleSubmitWithdrawal}
+                onVerifyEmail={handleVerifyEmail}
+                onRefresh={handleRefreshAll}
+                onBackToSurveys={() => setCurrentTab('surveys')}
+              />
+            )}
+
+            {(currentTab === 'surveys' || (currentTab !== 'landing' && currentTab !== 'admin' && currentTab !== 'withdraw')) && (
               <SurveysView
                 surveys={surveys}
                 loading={surveysLoading}
@@ -698,6 +725,7 @@ export default function App() {
                 onRefresh={fetchSurveys}
                 onStartSurvey={handleStartSurvey}
                 onTaskCompleted={handleRefreshAll}
+                onOpenWithdraw={() => setCurrentTab('withdraw')}
                 user={user}
                 cpxConfig={cpxConfig}
               />

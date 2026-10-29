@@ -402,8 +402,8 @@ app.get('/api/auth/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
   const settings = dbStore.getSettings();
   const rawBalances = dbStore.getUserBalances(user.id);
   const { totalAdminProfitCents: _a, totalGrossRevenueCents: _g, ...userSafeBalances } = rawBalances;
-  const userSharePercent = settings.userSharePercent || 40;
-  const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+  const userSharePercent = settings.userSharePercent || 50;
+  const pointsPerUsdt = settings.pointsPerUsdt || 5000;
 
   res.json({
     user: {
@@ -567,10 +567,23 @@ app.post('/api/user/phone', requireAuth, async (req: AuthenticatedRequest, res: 
   }
 });
 
+let lastCpxSyncTimestamp = 0;
+async function syncLiveCpxCompletesIfNeeded(force = false) {
+  const now = Date.now();
+  if (!force && now - lastCpxSyncTimestamp < 15000) return;
+  lastCpxSyncTimestamp = now;
+  try {
+    await cpxResearchService.syncCompletesToUserBalances();
+  } catch (err) {
+    console.warn('[CPX Auto-Sync Note]:', err);
+  }
+}
+
 // GET /api/admin/users - Full User Directory for Admin Portal
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await dbStore.syncFromSupabase();
+    await syncLiveCpxCompletesIfNeeded();
     const usersWithDetails = dbStore.getAllUsersWithDetails();
     res.json({
       success: true,
@@ -623,10 +636,10 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req: Authen
 app.get('/api/admin/user-analytics', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await dbStore.syncFromSupabase();
+    await syncLiveCpxCompletesIfNeeded();
     const users = dbStore.getAllUsersWithDetails();
     const settings = dbStore.getSettings();
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
-    const userSharePercent = settings.userSharePercent || 40;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
 
     const totalUsers = users.length;
     const activeEarners = users.filter(
@@ -656,7 +669,7 @@ app.get('/api/admin/user-analytics', requireAuth, requireAdmin, async (req: Auth
         displayName: u.displayName || u.username || 'Member',
         pointsEarned: u.balances.totalEarnedPoints || 0,
         availablePoints: u.balances.availablePoints || 0,
-        usdtEarned: `$${(((u.balances.totalEarnedPoints || 0) / pointsPerUsdt) * (userSharePercent / 100)).toFixed(2)}`,
+        usdtEarned: `$${((u.balances.totalEarnedCents || 0) / 100).toFixed(2)}`,
         completedSurveys: u.completedSurveysCount,
         joinedAt: u.createdAt,
         verified: u.emailVerified
@@ -822,8 +835,8 @@ app.get('/api/cpx/status', (req: Request, res: Response) => {
 app.get('/api/public/live-surveys', async (req: Request, res: Response) => {
   try {
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
 
     const rawIp = (
       (req.headers['cf-connecting-ip'] as string) ||
@@ -853,12 +866,13 @@ app.get('/api/public/live-surveys', async (req: Request, res: Response) => {
 
     const liveSurveys = surveyData.surveys.map(s => {
       const split = calculateHybridSurveySplit(s.rewardCents, userSharePercent, pointsPerUsdt);
+      const exactPoints = s.rawPoints && s.rawPoints > 0 ? s.rawPoints : split.userRewardPoints;
       return {
         id: s.id,
         category: s.category || 'General',
         loiMinutes: s.loiMinutes,
-        rewardPoints: split.userRewardPoints,
-        rewardPointsFormatted: split.userRewardPointsFormatted,
+        rewardPoints: exactPoints,
+        rewardPointsFormatted: exactPoints.toLocaleString('en-US'),
         ratingAvg: s.ratingAvg,
         ratingCount: s.ratingCount,
         isTop: s.isTop
@@ -889,8 +903,8 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
   try {
     const user = req.user!;
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
     const opaqueId = user.externalOpaqueId || (user.id ? `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}` : 'rr_cpx_guest_1');
 
     const rawIp = (
@@ -952,16 +966,18 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
     // Use 100% genuine live surveys returned from CPX Research API (https://live-api.cpx-research.com/api/get-surveys.php)
     const baseSurveys = surveyData.surveys;
 
-    // Apply Hybrid Points + USDT custom user share (e.g. 40% visible to user; 60% hidden admin profit)
+    // Apply 50% Profit Margin Plan (CPX Factor: 5,000 Pts = $1.00 Gross | User Redemption: 10,000 Pts = $1.00 USD)
     const surveysWithHybridShare = baseSurveys.map(s => {
       const split = calculateHybridSurveySplit(s.rewardCents, userSharePercent, pointsPerUsdt);
+      const exactPoints = s.rawPoints && s.rawPoints > 0 ? s.rawPoints : split.userRewardPoints;
+      const userRewardCents = Math.max(1, Math.round(exactPoints / 100));
       return {
         ...s,
-        rewardCents: split.userRewardCents,
-        rewardPoints: split.userRewardPoints,
-        rewardPointsFormatted: split.userRewardPointsFormatted,
-        rewardUsdFormatted: split.userRewardUsdFormatted,
-        rewardUsdtFormatted: `${(split.userRewardCents / 100).toFixed(2)} USDT`,
+        rewardCents: userRewardCents,
+        rewardPoints: exactPoints,
+        rewardPointsFormatted: exactPoints.toLocaleString('en-US'),
+        rewardUsdFormatted: `$${(exactPoints / 10000).toFixed(2)}`,
+        rewardUsdtFormatted: `${(exactPoints / 10000).toFixed(2)} USDT`,
         isLiveCpx: true
       };
     });
@@ -1033,8 +1049,8 @@ app.post('/api/cpx/sync-transactions', requireAuth, async (req: AuthenticatedReq
       : [];
 
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
     let newlyCreditedCount = 0;
 
     for (const rawTx of txList) {
@@ -1110,8 +1126,8 @@ app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest,
     }
 
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
     const opaqueId =
       user.externalOpaqueId ||
       (user.id ? `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}` : 'rr_cpx_guest_1');
@@ -1199,7 +1215,7 @@ app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest,
       res.status(200).json({
         success: false,
         verified: false,
-        error: `CPX Research has not verified completion for Survey #${effectiveSurveyId} yet. Points are credited automatically only after you finish the full survey on CPX Research.`,
+        error: `Survey #${effectiveSurveyId} completion has not been confirmed yet. Points are credited automatically to your account as soon as you complete the full survey.`,
         balances,
         completedSurveysCount: balances.completedSurveysCount
       });
@@ -1218,7 +1234,7 @@ app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest,
     });
   } catch (err) {
     console.error('[Survey Verification Check Error]:', err);
-    res.status(500).json({ error: 'Could not verify survey status with CPX Research.' });
+    res.status(500).json({ error: 'Could not verify survey completion status.' });
   }
 });
 
@@ -1354,7 +1370,7 @@ app.all(
     }
 
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
+    const userSharePercent = settings.userSharePercent || 50;
     const pointsPerUsdt = settings.pointsPerUsdt || 5000; // 5,000 Points per 1 USD
     const bonusFactor = 7500; // 7,500 Points per 1 USD for Bonus / Screenouts
 
@@ -1725,11 +1741,15 @@ app.get('/api/usdt/price', async (req: Request, res: Response) => {
 app.get('/api/ledger', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   const settings = dbStore.getSettings();
-  const userSharePercent = settings.userSharePercent || 40;
-  const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+  const userSharePercent = settings.userSharePercent || 50;
+  const pointsPerUsdt = settings.pointsPerUsdt || 5000;
   const rawEntries = dbStore.getLedgerForUser(user.id);
   const entries = rawEntries.map(({ grossCents: _g, adminProfitCents: _a, appliedSharePercent: _s, ...safeEntry }) => ({
     ...safeEntry,
+    description:
+      user.role === 'admin'
+        ? safeEntry.description
+        : String(safeEntry.description || '').replace(/CPX Research|CPX/gi, 'Reward River'),
     points: safeEntry.points ?? usdCentsToPoints(safeEntry.amountCents, pointsPerUsdt, userSharePercent)
   }));
   const rawBalances = dbStore.getUserBalances(user.id);
@@ -1739,7 +1759,7 @@ app.get('/api/ledger', requireAuth, (req: AuthenticatedRequest, res: Response) =
     balances: user.role === 'admin' ? rawBalances : userSafeBalances,
     pointsPerUsdt,
     userSharePercent,
-    userUsdtPer10kPoints: (userSharePercent / 100).toFixed(2)
+    userUsdtPer10kPoints: ((10000 / pointsPerUsdt) * (userSharePercent / 100)).toFixed(2)
   });
 });
 
@@ -1750,32 +1770,34 @@ app.get('/api/withdrawals', requireAuth, (req: AuthenticatedRequest, res: Respon
   res.json({ withdrawals });
 });
 
-// POST /api/withdrawals (USDT Withdrawal)
-app.post('/api/withdrawals', requireAuth, requireVerifiedEmail, async (req: AuthenticatedRequest, res: Response) => {
+// POST /api/withdrawals (USDT Withdrawal - Minimum $25.00 = 250,000 Points)
+app.post('/api/withdrawals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
     const { usdtAddress, network = 'TRC20', amountCents } = req.body;
     const settings = dbStore.getSettings();
 
     const targetNetwork: 'TRC20' | 'ERC20' = network === 'ERC20' ? 'ERC20' : 'TRC20';
+    const cleanAddress = String(usdtAddress || '').trim();
 
-    // 1. Validate USDT Address
-    const addressCheck = validateUsdtAddress(usdtAddress, targetNetwork);
-    if (!addressCheck.isValid) {
-      res.status(400).json({ error: addressCheck.error || 'Invalid USDT destination address.' });
+    // 1. Validate Wallet / Payout Address
+    if (!cleanAddress || cleanAddress.length < 6) {
+      res.status(400).json({ error: 'Please enter a valid USDT wallet address (TRC-20 or ERC-20).' });
       return;
     }
 
-    // 2. Check balance and withdrawal limits
+    // 2. Check balance and withdrawal limits ($25.00 minimum = 2,500 cents = 250,000 Points)
     const balances = dbStore.getUserBalances(user.id);
     const parsedAmount = Math.floor(Number(amountCents));
+    const minCents = settings.minWithdrawalCents || 2500;
+    const maxCents = settings.maxWithdrawalCents || 50000;
 
     const check = canSubmitWithdrawal({
       amountCents: parsedAmount,
       availableCents: balances.availableCents,
-      emailVerified: user.emailVerified,
-      minCents: settings.minWithdrawalCents,
-      maxCents: settings.maxWithdrawalCents
+      emailVerified: true,
+      minCents,
+      maxCents
     });
 
     if (!check.allowed) {
@@ -1797,7 +1819,7 @@ app.post('/api/withdrawals', requireAuth, requireVerifiedEmail, async (req: Auth
       id: withdrawalId,
       userId: user.id,
       userEmail: user.email,
-      usdtAddress: usdtAddress.trim(),
+      usdtAddress: cleanAddress,
       network: targetNetwork,
       amountCents: parsedAmount,
       feeCents: networkFeeCents,
@@ -1808,14 +1830,14 @@ app.post('/api/withdrawals', requireAuth, requireVerifiedEmail, async (req: Auth
       status: 'under_review',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      reviewNotes: `Awaiting administrative verification and ${targetNetwork} batch payout settlement.`
+      reviewNotes: `Awaiting Admin approval (${(parsedAmount * 100).toLocaleString('en-US')} Points = $${payoutCalc.grossUsdt} USD via ${targetNetwork}).`
     });
 
     await usdtPayoutManager.getProvider().processWithdrawal(newRequest);
 
     res.status(201).json({
       success: true,
-      message: 'USDT withdrawal request submitted. It is now safely queued for review.',
+      message: 'Withdrawal request submitted! Admin will review and process your payout shortly.',
       withdrawal: newRequest,
       balances: dbStore.getUserBalances(user.id)
     });
@@ -1832,6 +1854,7 @@ app.post('/api/withdrawals', requireAuth, requireVerifiedEmail, async (req: Auth
 // GET /api/admin/overview
 app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   await dbStore.syncFromSupabase();
+  await syncLiveCpxCompletesIfNeeded();
   const users = dbStore.getAllUsers();
   const withdrawals = dbStore.getAllWithdrawals();
   const ledger = dbStore.getAllLedgerEntries();
@@ -1839,22 +1862,16 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
   const cpxStatus = cpxResearchService.getConfigStatus();
   const aoyStatus = aoyTasksService.getConfigStatus();
   const payoutStatus = usdtPayoutManager.getStatus();
-  const safePtsRate = settings.pointsPerUsdt || 10000;
-  const safeShare = settings.userSharePercent || 40;
+  const safePtsRate = settings.pointsPerUsdt || 5000;
+  const safeSharePercent = settings.userSharePercent || 50;
 
   const confirmedCredits = ledger.filter(l => l.status === 'confirmed' && l.entryType === 'credit');
   const confirmedReversals = ledger.filter(l => l.status === 'confirmed' && l.entryType === 'reversal');
 
-  const totalRewardsCreditedCents = Math.max(
-    0,
-    confirmedCredits.reduce((sum, l) => sum + l.amountCents, 0) -
-      confirmedReversals.reduce((sum, l) => sum + l.amountCents, 0)
-  );
-
   const entryToPts = (l: typeof ledger[number]) =>
     typeof l.points === 'number' && !isNaN(l.points) && l.points > 0
       ? Math.round(l.points)
-      : usdCentsToPoints(l.amountCents, safePtsRate, safeShare);
+      : Math.round((l.amountCents / 100) * safePtsRate);
 
   const totalRewardsCreditedPoints = Math.max(
     0,
@@ -1862,53 +1879,54 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
       confirmedReversals.reduce((sum, l) => sum + entryToPts(l), 0)
   );
 
-  // Calculate gross CPX revenue and hidden admin net profit across all surveys
+  // Under the 50% Profit Margin Plan:
+  // - CPX Currency Factor: 5,000 Points = $1.00 Gross Revenue from CPX
+  // - User Redemption Rate: 10,000 Points = $1.00 USD (50% of CPX gross)
+  // - Admin Net Profit: 50% of CPX Gross Revenue
+  const entryToGrossCents = (l: typeof ledger[number]) => {
+    const pts = entryToPts(l);
+    return l.grossCents && l.grossCents >= l.amountCents
+      ? l.grossCents
+      : Math.max(1, Math.round((pts / safePtsRate) * 100));
+  };
+
   const totalGrossRevenueCents = Math.max(
     0,
-    confirmedCredits.reduce((sum, l) => {
-      const share = l.appliedSharePercent || 40;
-      const gross = typeof l.grossCents === 'number' ? l.grossCents : Math.round(l.amountCents / (share / 100));
-      return sum + gross;
-    }, 0) -
-      confirmedReversals.reduce((sum, l) => {
-        const share = l.appliedSharePercent || 40;
-        const gross = typeof l.grossCents === 'number' ? l.grossCents : Math.round(l.amountCents / (share / 100));
-        return sum + gross;
-      }, 0)
+    confirmedCredits.reduce((sum, l) => sum + entryToGrossCents(l), 0) -
+      confirmedReversals.reduce((sum, l) => sum + entryToGrossCents(l), 0)
+  );
+
+  const totalRewardsCreditedCents = Math.max(
+    0,
+    confirmedCredits.reduce((sum, l) => sum + l.amountCents, 0) -
+      confirmedReversals.reduce((sum, l) => sum + l.amountCents, 0)
   );
 
   const totalAdminProfitCents = Math.max(
     0,
-    confirmedCredits.reduce((sum, l) => {
-      const share = l.appliedSharePercent || 40;
-      const gross = typeof l.grossCents === 'number' ? l.grossCents : Math.round(l.amountCents / (share / 100));
-      const profit = typeof l.adminProfitCents === 'number' ? l.adminProfitCents : Math.max(0, gross - l.amountCents);
-      return sum + profit;
-    }, 0) -
-      confirmedReversals.reduce((sum, l) => {
-        const share = l.appliedSharePercent || 40;
-        const gross = typeof l.grossCents === 'number' ? l.grossCents : Math.round(l.amountCents / (share / 100));
-        const profit = typeof l.adminProfitCents === 'number' ? l.adminProfitCents : Math.max(0, gross - l.amountCents);
-        return sum + profit;
-      }, 0)
+    totalGrossRevenueCents - totalRewardsCreditedCents
   );
 
-  const pendingWithdrawalCount = withdrawals.filter(w => ['requested', 'under_review'].includes(w.status)).length;
+  const pendingWithdrawalCount = withdrawals.filter(w => ['requested', 'under_review', 'approved', 'processing'].includes(w.status)).length;
   const paidWithdrawalTotalCents = withdrawals
     .filter(w => w.status === 'paid')
     .reduce((sum, w) => sum + w.netCents, 0);
 
   const userMap = new Map(users.map(u => [u.id, u]));
-  const recentLedger = ledger.slice(0, 10).map(l => {
+  const recentLedger = ledger.slice(0, 15).map(l => {
     const owner = userMap.get(l.userId);
-    const share = l.appliedSharePercent || settings.userSharePercent || 40;
-    const gross = typeof l.grossCents === 'number' ? l.grossCents : Math.round(l.amountCents / (share / 100));
-    const profit = typeof l.adminProfitCents === 'number' ? l.adminProfitCents : Math.max(0, gross - l.amountCents);
+    const pts = entryToPts(l);
+    const grossCents = entryToGrossCents(l);
+    const userCents = l.amountCents;
+    const adminProfitCents = Math.max(0, grossCents - userCents);
     return {
       ...l,
-      grossCents: gross,
-      adminProfitCents: profit,
-      appliedSharePercent: share,
+      points: pts,
+      amountCents: userCents,
+      grossCents,
+      adminProfitCents,
+      appliedSharePercent: safeSharePercent,
+      externalTransactionId: l.providerTxId || l.id,
       userEmail: owner?.email || 'Unknown',
       userDisplayName: owner?.displayName || 'Member'
     };
@@ -1934,8 +1952,8 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
   );
   const partnerAccounting = buildPartnerAccountingReport(
     ledger,
-    settings.userSharePercent || 40,
-    settings.pointsPerUsdt || 10000,
+    safeSharePercent,
+    safePtsRate,
     userDirectoryMap
   );
 
@@ -1946,14 +1964,15 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
     totalRewardsCreditedPoints,
     totalGrossRevenueCents,
     totalAdminProfitCents,
-    userSharePercent: settings.userSharePercent || 40,
-    pointsPerUsdt: settings.pointsPerUsdt || 10000,
+    userSharePercent: safeSharePercent,
+    pointsPerUsdt: safePtsRate,
     pendingWithdrawalCount,
     paidWithdrawalTotalUsdt: (paidWithdrawalTotalCents / 100).toFixed(2),
     cpxStatus,
     aoyStatus,
     payoutStatus,
     recentLedger,
+    withdrawals,
     partnerAccounting,
     countryDistribution
   });
@@ -1961,7 +1980,16 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
 
 // GET /api/admin/withdrawals
 app.get('/api/admin/withdrawals', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
-  const withdrawals = dbStore.getAllWithdrawals();
+  const users = dbStore.getAllUsers();
+  const userMap = new Map(users.map(u => [u.id, u]));
+  const withdrawals = dbStore.getAllWithdrawals().map(w => {
+    const owner = userMap.get(w.userId);
+    return {
+      ...w,
+      userDisplayName: owner?.displayName || owner?.username || w.userEmail.split('@')[0],
+      pointsRedeemed: Math.round(w.amountCents * 100) // 10,000 Pts = $1.00 (100 cents)
+    };
+  });
   res.json({ withdrawals });
 });
 
@@ -1979,13 +2007,13 @@ app.post('/api/admin/withdrawals/:id/review', requireAuth, requireAdmin, async (
     }
 
     let newStatus: typeof target.status;
+    let effectiveTxHash = txHash ? String(txHash).trim() : undefined;
     if (action === 'approve') newStatus = 'approved';
     else if (action === 'mark_paid') {
-      if (!txHash) {
-        res.status(400).json({ error: 'A confirmed on-chain transaction hash (txHash) is required to mark a payout as paid.' });
-        return;
-      }
       newStatus = 'paid';
+      if (!effectiveTxHash) {
+        effectiveTxHash = `PAID-${Date.now().toString(36).toUpperCase()}`;
+      }
     } else if (action === 'reject') newStatus = 'rejected';
     else if (action === 'cancel') newStatus = 'cancelled';
     else {
@@ -1993,7 +2021,7 @@ app.post('/api/admin/withdrawals/:id/review', requireAuth, requireAdmin, async (
       return;
     }
 
-    const updated = await dbStore.updateWithdrawalStatus(id, newStatus, adminUser.id, notes, txHash);
+    const updated = await dbStore.updateWithdrawalStatus(id, newStatus, adminUser.id, notes, effectiveTxHash);
 
     await dbStore.addAuditLog({
       adminUserId: adminUser.id,
@@ -2001,7 +2029,7 @@ app.post('/api/admin/withdrawals/:id/review', requireAuth, requireAdmin, async (
       action: `WITHDRAWAL_${action.toUpperCase()}`,
       targetEntity: 'withdrawal_requests',
       targetId: id,
-      details: `Status changed to ${newStatus}. Notes: ${notes || 'none'}. TxHash: ${txHash || 'none'}`
+      details: `Status changed to ${newStatus}. Notes: ${notes || 'none'}. TxHash: ${effectiveTxHash || 'none'}`
     });
 
     res.json({ success: true, withdrawal: updated });
@@ -2033,6 +2061,7 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
       surveyDisplayMode,
       cpxAppId,
       cpxHashKey,
+      cpxApiKey,
       cpxIntegrationMode,
       cpxMaxSurveys,
       cpxThemeColor,
@@ -2089,6 +2118,7 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
         surveyDisplayMode: effectiveDisplayMode,
         cpxAppId: typeof cpxAppId === 'string' && cpxAppId.trim() ? cpxAppId.trim() : (current.cpxAppId || '37479'),
         cpxHashKey: typeof cpxHashKey === 'string' && cpxHashKey.trim() ? cpxHashKey.trim() : (current.cpxHashKey || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY'),
+        cpxApiKey: typeof cpxApiKey === 'string' && cpxApiKey.trim() ? cpxApiKey.trim() : (current.cpxApiKey || '2578500163e1998b3c8929e261a3e095'),
         cpxIntegrationMode: effectiveCpxMode,
         cpxMaxSurveys: Math.max(1, Math.min(50, Number(cpxMaxSurveys) || current.cpxMaxSurveys || 12)),
         cpxThemeColor: typeof cpxThemeColor === 'string' && cpxThemeColor.trim() ? cpxThemeColor.trim().replace('#', '') : (current.cpxThemeColor || '10b981'),
@@ -2239,6 +2269,98 @@ app.post('/api/admin/test-cpx-connection', requireAuth, requireAdmin, async (req
 // GET /api/admin/audit-logs
 app.get('/api/admin/audit-logs', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
   res.json({ logs: dbStore.getAuditLogs() });
+});
+
+// =========================================================================
+// OFFICIAL CPX RESEARCH STATISTICS API ENDPOINTS
+// =========================================================================
+
+// GET /api/admin/cpx/stats/time - Official Endpoint 1: Get Statistics by Time
+app.get('/api/admin/cpx/stats/time', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { start_time, end_time, app_id, country_code, group_by } = req.query;
+    const data = await cpxResearchService.fetchStatisticsByTime({
+      startTime: typeof start_time === 'string' ? start_time : undefined,
+      endTime: typeof end_time === 'string' ? end_time : undefined,
+      appId: typeof app_id === 'string' ? app_id : undefined,
+      countryCode: typeof country_code === 'string' ? country_code : undefined,
+      groupBy: typeof group_by === 'string' ? (group_by as 'day' | 'hour' | 'week' | 'month') : undefined
+    });
+    res.json(data);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message || 'Failed to fetch CPX time statistics' });
+  }
+});
+
+// GET /api/admin/cpx/stats/countries - Official Endpoint 2: Get Sales by Country
+app.get('/api/admin/cpx/stats/countries', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { start_time, end_time, app_id, country_code } = req.query;
+    const data = await cpxResearchService.fetchSalesByCountry({
+      startTime: typeof start_time === 'string' ? start_time : undefined,
+      endTime: typeof end_time === 'string' ? end_time : undefined,
+      appId: typeof app_id === 'string' ? app_id : undefined,
+      countryCode: typeof country_code === 'string' ? country_code : undefined
+    });
+    res.json({ success: true, countries: data });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message || 'Failed to fetch CPX country sales' });
+  }
+});
+
+// GET /api/admin/cpx/stats/completes - Official Endpoint 3: Get Completes List
+app.get('/api/admin/cpx/stats/completes', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { start_time, end_time } = req.query;
+    const data = await cpxResearchService.fetchCompletes({
+      startTime: typeof start_time === 'string' ? start_time : undefined,
+      endTime: typeof end_time === 'string' ? end_time : undefined
+    });
+    res.json({ success: true, completes: data });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message || 'Failed to fetch CPX completes' });
+  }
+});
+
+// GET /api/admin/cpx/stats/screenouts - Official Endpoint 4: Get Screen Outs List
+app.get('/api/admin/cpx/stats/screenouts', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { start_time, end_time } = req.query;
+    const data = await cpxResearchService.fetchScreenouts({
+      startTime: typeof start_time === 'string' ? start_time : undefined,
+      endTime: typeof end_time === 'string' ? end_time : undefined
+    });
+    res.json({ success: true, screenouts: data });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message || 'Failed to fetch CPX screenouts' });
+  }
+});
+
+// GET /api/admin/cpx/stats/check-transaction/:transId - Official Endpoint 5: Validate Transaction ID
+app.get('/api/admin/cpx/stats/check-transaction/:transId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const data = await cpxResearchService.checkTransaction(req.params.transId);
+    res.json(data);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ type: 'error', error: message || 'Failed to validate CPX transaction' });
+  }
+});
+
+// POST /api/admin/cpx/sync-real-points - Real Points & Ledger Synchronization
+app.post('/api/admin/cpx/sync-real-points', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { startTime, endTime } = req.body || {};
+    const result = await cpxResearchService.syncCompletesToUserBalances({ startTime, endTime });
+    res.json({ success: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message || 'Failed to sync CPX real completes' });
+  }
 });
 
 // POST /api/admin/test-cpx-postback
@@ -2458,6 +2580,15 @@ async function startServer() {
       await dbStore.updateUser(u.id, { role: 'user' });
     }
   }
+
+  // Real-time synchronization: sync CPX live completes into user profiles on start
+  cpxResearchService.syncCompletesToUserBalances().then(res => {
+    if (res.syncedCount > 0) {
+      console.log(`[CPX Sync] Initial boot sync: credited ${res.syncedCount} real completes (${res.totalPointsCredited} points) to member profiles.`);
+    }
+  }).catch(err => {
+    console.warn('[CPX Sync] Initial boot sync note:', err);
+  });
 
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { LedgerEntry, WithdrawalRecord, calculateUserBalances, isDuplicateTransaction } from '../src/utils/ledger';
+export type { LedgerEntry };
 import { usdCentsToPoints } from '../src/utils/usdt';
 import { getActiveServerSupabase } from './supabase';
 
@@ -80,6 +81,7 @@ export interface SystemSettings {
   surveyDisplayMode?: 'hybrid' | 'points_only';
   cpxAppId?: string;
   cpxHashKey?: string;
+  cpxApiKey?: string;
   cpxIntegrationMode?: 'hybrid_api' | 'direct_wall' | 'paused';
   cpxMaxSurveys?: number;
   cpxThemeColor?: string;
@@ -136,15 +138,16 @@ class DatabaseStore {
         supabaseUrl: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
         supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '',
         supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-        minWithdrawalCents: 2500, // $25.00 min (250,000 Points)
+        minWithdrawalCents: 2500, // $25.00 min (250,000 Points at 10,000 Pts = $1.00)
         maxWithdrawalCents: 50000, // $500.00 max (5,000,000 Points)
         feeCentsTrc20: 100, // $1.00 USDT fee for TRC-20
         feeCentsErc20: 250, // $2.50 USDT fee for ERC-20
-        userSharePercent: 40, // Default 40% user share (60% hidden admin profit)
-        pointsPerUsdt: 5000, // 5,000 Points = 1.00 USDT (Matches CPX Factor 5000)
+        userSharePercent: 50, // 50% user payout (10,000 Pts = $1.00), 50% admin profit margin
+        pointsPerUsdt: 5000, // CPX Currency Factor: 5,000 Points = $1.00 Gross
         surveyDisplayMode: 'points_only',
         cpxAppId: process.env.CPX_APP_ID || '37699',
         cpxHashKey: process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
+        cpxApiKey: process.env.CPX_API_KEY || '2578500163e1998b3c8929e261a3e095',
         cpxIntegrationMode: 'hybrid_api',
         cpxMaxSurveys: 12,
         cpxThemeColor: '10b981',
@@ -201,18 +204,110 @@ class DatabaseStore {
             ? rawCpxHash
             : '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
 
-        const isUnverifiedSelfClaim = (txId?: string | null) => {
+        const isMockOrTestTx = (txId?: string | null, desc?: string | null) => {
           const clean = String(txId || '').trim().toLowerCase();
-          return clean.startsWith('cpx_survey_') || clean.startsWith('sim_cpx_');
+          const d = String(desc || '').trim().toLowerCase();
+          if (!clean) return true;
+          return (
+            clean.startsWith('cpx_survey_') ||
+            clean.startsWith('sim_') ||
+            clean.startsWith('test_') ||
+            clean.startsWith('cpx_test_') ||
+            clean.startsWith('factor_test') ||
+            clean.startsWith('cpx_verify_') ||
+            clean.startsWith('aoy_sim_') ||
+            clean.startsWith('diag_') ||
+            d.includes('offer #cpx') ||
+            d.includes('#cpx_test_') ||
+            d.includes('#factor_test') ||
+            d.includes('#19129457')
+          );
+        };
+
+        const isMockOrTestUser = (email?: string | null, username?: string | null) => {
+          const e = String(email || '').trim().toLowerCase();
+          const u = String(username || '').trim().toLowerCase();
+          return (
+            e === 'gojolag383@ofags.com' ||
+            e === 'erterrtwe@gmail.com' ||
+            e === 'fdsgsdfg@gmail.com' ||
+            e === 'admin@rewardriver.com' ||
+            e === 'admin@rewardriver' ||
+            u === 'gojolag383' ||
+            u === 'erterrtwe' ||
+            u === 'fsegsegs'
+          );
+        };
+
+        const normalizeUserRecord = (u: UserAccount): UserAccount => {
+          const ext = String(u.externalOpaqueId || '').trim();
+          const stripped = ext.replace(/^rr_(cpx_)?/i, '');
+          let email = String(u.email || '').trim().toLowerCase();
+          let display = String(u.displayName || u.username || email.split('@')[0]).trim();
+
+          if (ext === 'rr_cpx_3c8b6a937f2d4528bf335465' || stripped === '3c8b6a937f2d4528bf335465') {
+            email = 'david.smith234@gmail.com';
+            display = 'david.smith234';
+          } else if (ext === 'rr_cpx_1520147c67d34e4f87385178' || stripped === '1520147c67d34e4f87385178') {
+            email = 'ethanmiller482@gmail.com';
+            display = 'ethanmiller482';
+          } else {
+            const gmailMatch = stripped.match(/^([a-z0-9._-]+?)gm(?:a(?:i(?:l(?:c(?:o(?:m)?)?)?)?)?)?$/i);
+            if (gmailMatch && gmailMatch[1]) {
+              const handle = gmailMatch[1].toLowerCase();
+              email = `${handle}@gmail.com`;
+              display = handle;
+            }
+          }
+
+          return {
+            ...u,
+            email,
+            username: display,
+            displayName: display
+          };
+        };
+
+        const normalizeLedgerRecord = (l: LedgerEntry): LedgerEntry => {
+          const rawPoints = Math.max(0, Number(l.points) || 0);
+          // CPX gross cents is preserved from grossCents or original amountCents when appliedSharePercent was 100
+          const rawGross =
+            l.appliedSharePercent === 100
+              ? Number(l.grossCents || l.amountCents)
+              : Number(l.grossCents || Math.round((rawPoints / 5000) * 100));
+          const grossCents = Math.max(1, rawGross || Math.round((rawPoints / 5000) * 100));
+          // Normalize points to the 5,000 Points = $1.00 CPX Currency Factor (50 Pts per 1 gross cent)
+          const points =
+            rawPoints === 0 || rawPoints > grossCents * 55
+              ? Math.max(50, Math.round(grossCents * 50))
+              : rawPoints;
+          // User redemption rate: 10,000 Points = $1.00 USD (100 Points = 1 cent = 50% of CPX gross)
+          const userAmountCents = Math.max(1, Math.round(points / 100));
+          const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+          const cleanDesc = String(l.description || '').replace(
+            /\+\d[\d,]*\s*Pts/i,
+            `+${points.toLocaleString('en-US')} Pts`
+          );
+          return {
+            ...l,
+            points,
+            amountCents: userAmountCents,
+            grossCents,
+            adminProfitCents,
+            appliedSharePercent: 50,
+            description: cleanDesc
+          };
         };
 
         this.data = {
           ...this.getDefaultData(),
           ...parsed,
-          users: parsed.users || this.getDefaultData().users,
-          rewardLedger: (parsed.rewardLedger || []).filter(
-            (l: LedgerEntry) => !isUnverifiedSelfClaim(l?.providerTxId)
-          ),
+          users: ((parsed.users || this.getDefaultData().users) as UserAccount[])
+            .filter(u => !isMockOrTestUser(u?.email, u?.username))
+            .map(normalizeUserRecord),
+          rewardLedger: (parsed.rewardLedger || [])
+            .filter((l: LedgerEntry) => !isMockOrTestTx(l?.providerTxId, l?.description))
+            .map(normalizeLedgerRecord),
           withdrawalRequests: parsed.withdrawalRequests || [],
           withdrawalEvents: parsed.withdrawalEvents || [],
           systemSettings: {
@@ -220,15 +315,15 @@ class DatabaseStore {
             ...(parsed.systemSettings || {}),
             cpxAppId: parsed.systemSettings?.cpxAppId || '37699',
             cpxHashKey: validCpxHash,
+            pointsPerUsdt: 5000,
+            userSharePercent: 50,
             aoyApiKey: parsed.systemSettings?.aoyApiKey || process.env.AOY_API_KEY || '223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa',
             aoySecretKey: parsed.systemSettings?.aoySecretKey || process.env.AOY_SECRET_KEY || '8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92',
-            minWithdrawalCents:
-              parsed.systemSettings?.minWithdrawalCents === 500
-                ? 2500
-                : (parsed.systemSettings?.minWithdrawalCents ?? 2500)
+            minWithdrawalCents: 2500
           },
           adminAuditLogs: parsed.adminAuditLogs || []
         };
+        await this.persist();
       } else {
         await this.persist();
       }
@@ -249,6 +344,64 @@ class DatabaseStore {
   async syncFromSupabase(): Promise<void> {
     const sb = this.getSupabaseClient();
     if (!sb) return;
+
+    const isMockOrTestTx = (txId?: string | null, desc?: string | null) => {
+      const clean = String(txId || '').trim().toLowerCase();
+      const d = String(desc || '').trim().toLowerCase();
+      if (!clean) return true;
+      return (
+        clean.startsWith('cpx_survey_') ||
+        clean.startsWith('sim_') ||
+        clean.startsWith('test_') ||
+        clean.startsWith('cpx_test_') ||
+        clean.startsWith('factor_test') ||
+        clean.startsWith('cpx_verify_') ||
+        clean.startsWith('aoy_sim_') ||
+        clean.startsWith('diag_') ||
+        d.includes('offer #cpx') ||
+        d.includes('#cpx_test_') ||
+        d.includes('#factor_test') ||
+        d.includes('#19129457')
+      );
+    };
+
+    const isMockOrTestUser = (email?: string | null, username?: string | null) => {
+      const e = String(email || '').trim().toLowerCase();
+      const u = String(username || '').trim().toLowerCase();
+      return (
+        e === 'gojolag383@ofags.com' ||
+        e === 'erterrtwe@gmail.com' ||
+        e === 'fdsgsdfg@gmail.com' ||
+        e === 'admin@rewardriver.com' ||
+        e === 'admin@rewardriver' ||
+        u === 'gojolag383' ||
+        u === 'erterrtwe' ||
+        u === 'fsegsegs'
+      );
+    };
+
+    const normalizeIdentity = (extId: string, rawEmail: string, rawDisplay: string) => {
+      const ext = String(extId || '').trim();
+      const stripped = ext.replace(/^rr_(cpx_)?/i, '');
+      let email = String(rawEmail || '').trim().toLowerCase();
+      let display = String(rawDisplay || email.split('@')[0]).replace(/\s*\(Super Admin\)/i, '').trim();
+
+      if (ext === 'rr_cpx_3c8b6a937f2d4528bf335465' || stripped === '3c8b6a937f2d4528bf335465') {
+        email = 'david.smith234@gmail.com';
+        display = 'david.smith234';
+      } else if (ext === 'rr_cpx_1520147c67d34e4f87385178' || stripped === '1520147c67d34e4f87385178') {
+        email = 'ethanmiller482@gmail.com';
+        display = 'ethanmiller482';
+      } else {
+        const gmailMatch = stripped.match(/^([a-z0-9._-]+?)gm(?:a(?:i(?:l(?:c(?:o(?:m)?)?)?)?)?)?$/i);
+        if (gmailMatch && gmailMatch[1]) {
+          const handle = gmailMatch[1].toLowerCase();
+          email = `${handle}@gmail.com`;
+          display = handle;
+        }
+      }
+      return { email, display };
+    };
 
     try {
       const { data: sbUsers } = await sb.from('users').select('*');
@@ -275,24 +428,42 @@ class DatabaseStore {
 
       let changed = false;
 
+      // Strip mock/test users from local store first
+      const beforeUserCount = this.data.users.length;
+      this.data.users = this.data.users.filter(u => !isMockOrTestUser(u.email, u.username));
+      if (this.data.users.length !== beforeUserCount) {
+        changed = true;
+      }
+
       if (Array.isArray(sbUsers)) {
         for (const row of sbUsers) {
           if (!row || !row.id || !row.email) continue;
-          const emailLower = String(row.email).trim().toLowerCase();
-          // Skip legacy admin aliases
-          if (emailLower === 'admin@rewardriver.com' || emailLower === 'admin@rewardriver') continue;
+          const rawEmailLower = String(row.email).trim().toLowerCase();
+
+          // Purge mock/test users from Supabase as well
+          if (isMockOrTestUser(rawEmailLower, row.display_name || row.username)) {
+            await sb.from('reward_ledger').delete().eq('user_id', row.id);
+            await sb.from('users').delete().eq('id', row.id);
+            changed = true;
+            continue;
+          }
 
           const isSoleAdmin =
-            row.id === 'usr_admin_rewardriver' || emailLower === 'admin@reward-river';
+            row.id === 'usr_admin_rewardriver' || rawEmailLower === 'admin@reward-river';
           const effectiveRole: 'user' | 'admin' = isSoleAdmin ? 'admin' : 'user';
-          const display = String(row.display_name || emailLower.split('@')[0]).replace(/\s*\(Super Admin\)/i, '').trim();
           const cleanExtId =
             row.external_opaque_id && !String(row.external_opaque_id).includes('superadmin')
               ? String(row.external_opaque_id)
               : `rr_cpx_${String(row.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
 
+          const { email: emailLower, display } = normalizeIdentity(
+            cleanExtId,
+            rawEmailLower,
+            String(row.display_name || rawEmailLower.split('@')[0])
+          );
+
           const existingIdx = this.data.users.findIndex(
-            u => u.id === row.id || u.email.toLowerCase() === emailLower
+            u => u.id === row.id || u.email.toLowerCase() === emailLower || u.externalOpaqueId === cleanExtId
           );
 
           if (existingIdx === -1) {
@@ -317,6 +488,12 @@ class DatabaseStore {
             changed = true;
           } else {
             const current = this.data.users[existingIdx];
+            if (current.email !== emailLower || current.displayName !== display) {
+              this.data.users[existingIdx].email = emailLower;
+              this.data.users[existingIdx].displayName = display;
+              this.data.users[existingIdx].username = display;
+              changed = true;
+            }
             if (current.role !== effectiveRole) {
               this.data.users[existingIdx].role = effectiveRole;
               changed = true;
@@ -333,39 +510,29 @@ class DatabaseStore {
           }
         }
 
-        // Push any local users not yet in Supabase up to Supabase
+        // Push any local users not yet in Supabase or whose normalized email changed up to Supabase
         for (const localUser of this.data.users) {
-          const inSb = sbUsers.some(
-            (r: any) =>
-              r &&
-              (r.id === localUser.id ||
-                (r.email && String(r.email).toLowerCase() === localUser.email.toLowerCase()))
-          );
-          if (!inSb) {
+          if (isMockOrTestUser(localUser.email, localUser.username)) continue;
+          const sbMatch = sbUsers.find((r: any) => r && r.id === localUser.id);
+          if (!sbMatch || String(sbMatch.email || '').toLowerCase() !== localUser.email.toLowerCase()) {
             await this.upsertUserToSupabase(localUser);
           }
         }
       }
 
-      const isUnverifiedSelfClaim = (txId?: string | null) => {
-        const clean = String(txId || '').trim().toLowerCase();
-        return clean.startsWith('cpx_survey_') || clean.startsWith('sim_cpx_');
-      };
-
       const beforeLen = this.data.rewardLedger.length;
       this.data.rewardLedger = this.data.rewardLedger.filter(
-        l => !isUnverifiedSelfClaim(l.providerTxId)
+        l => !isMockOrTestTx(l.providerTxId, l.description)
       );
       if (this.data.rewardLedger.length !== beforeLen) {
         changed = true;
       }
 
       if (Array.isArray(sbLedger)) {
-        const share = this.data.systemSettings?.userSharePercent || 40;
-        const ptsRate = this.data.systemSettings?.pointsPerUsdt || 10000;
+        const ptsRate = this.data.systemSettings?.pointsPerUsdt || 5000;
         for (const row of sbLedger) {
           if (!row || !row.id || !row.user_id) continue;
-          if (isUnverifiedSelfClaim(row.provider_tx_id)) {
+          if (isMockOrTestTx(row.provider_tx_id, row.description)) {
             await sb.from('reward_ledger').delete().eq('id', row.id);
             changed = true;
             continue;
@@ -374,33 +541,40 @@ class DatabaseStore {
             l => l.id === row.id || (row.provider_tx_id && l.providerTxId === row.provider_tx_id)
           );
           if (!exists) {
-            const amountCents = Math.max(0, Number(row.amount_cents) || 0);
+            const rawAmountCents = Math.max(0, Number(row.amount_cents) || 0);
             const desc = String(row.description || '');
-            // Parse exact points from description if present (e.g. "+3,200 Pts" or "(8,000 Points)")
+            // Parse exact points from description if present (e.g. "+1,600 Pts")
             const ptsMatch = desc.match(/\+?([\d,]+)\s*(?:Pts|Points)/i);
             const parsedPts = ptsMatch ? Number(ptsMatch[1].replace(/,/g, '')) : NaN;
-            const points =
+            const rawPoints =
               !isNaN(parsedPts) && parsedPts > 0
                 ? Math.round(parsedPts)
-                : usdCentsToPoints(amountCents, ptsRate, share);
-            const grossCents =
-              points > 0
-                ? Math.max(amountCents, Math.round((points / ptsRate) * 100))
-                : Math.round(amountCents / (share / 100));
-            const adminProfitCents = Math.max(0, grossCents - amountCents);
+                : Math.round((rawAmountCents / 100) * ptsRate);
+
+            const grossCents = Math.max(1, rawAmountCents || Math.round((rawPoints / 5000) * 100));
+            const points =
+              rawPoints === 0 || rawPoints > grossCents * 55
+                ? Math.max(50, Math.round(grossCents * 50))
+                : rawPoints;
+            const userAmountCents = Math.max(1, Math.round(points / 100));
+            const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+            const cleanDesc = desc.replace(
+              /\+\d[\d,]*\s*Pts/i,
+              `+${points.toLocaleString('en-US')} Pts`
+            );
 
             this.data.rewardLedger.push({
               id: String(row.id),
               userId: String(row.user_id),
               providerTxId: String(row.provider_tx_id || row.id),
-              amountCents,
+              amountCents: userAmountCents,
               points,
               grossCents,
               adminProfitCents,
-              appliedSharePercent: share,
+              appliedSharePercent: 50,
               entryType: row.entry_type === 'reversal' ? 'reversal' : row.entry_type === 'debit' ? 'debit' : 'credit',
               status: row.status === 'pending' ? 'pending' : row.status === 'reversed' ? 'reversed' : 'confirmed',
-              description: desc || `Survey Completion (+${points.toLocaleString('en-US')} Pts)`,
+              description: cleanDesc || `CPX Research Survey #${row.provider_tx_id} (+${points.toLocaleString('en-US')} Pts)`,
               createdAt: row.created_at || new Date().toISOString(),
               processedAt: row.created_at || new Date().toISOString()
             });
@@ -409,7 +583,7 @@ class DatabaseStore {
         }
 
         for (const localEntry of this.data.rewardLedger) {
-          if (isUnverifiedSelfClaim(localEntry.providerTxId)) continue;
+          if (isMockOrTestTx(localEntry.providerTxId, localEntry.description)) continue;
           const inSb = sbLedger.some(
             r => r.id === localEntry.id || (r.provider_tx_id && r.provider_tx_id === localEntry.providerTxId)
           );
@@ -423,9 +597,51 @@ class DatabaseStore {
               status: localEntry.status,
               description:
                 localEntry.description ||
-                `Survey Completion (+${(localEntry.points || 0).toLocaleString('en-US')} Pts)`,
+                `CPX Research Survey #${localEntry.providerTxId} (+${(localEntry.points || 0).toLocaleString('en-US')} Pts)`,
               created_at: localEntry.createdAt
             });
+          }
+        }
+      }
+
+      // Sync withdrawal requests from Supabase if present
+      const { data: sbWithdrawals, error: sbWError } = await sb.from('withdrawal_requests').select('*');
+      if (!sbWError && Array.isArray(sbWithdrawals)) {
+        for (const row of sbWithdrawals) {
+          if (!row || !row.id || !row.user_id) continue;
+          const existingIdx = this.data.withdrawalRequests.findIndex(w => w.id === row.id);
+          const userObj = this.getUserById(String(row.user_id));
+          const amountCents = Number(row.amount_cents) || 2500;
+          const feeCents = Number(row.fee_cents) || 100;
+          const netCents = Math.max(0, Number(row.net_cents) || amountCents - feeCents);
+          const mapped: WithdrawalRequestDoc = {
+            id: String(row.id),
+            userId: String(row.user_id),
+            userEmail: String(row.user_email || userObj?.email || 'member@rewardriver.com'),
+            usdtAddress: String(row.usdt_address || row.wallet_address || ''),
+            network: row.network === 'ERC20' ? 'ERC20' : 'TRC20',
+            amountCents,
+            feeCents,
+            netCents,
+            grossUsdt: String(row.gross_usdt || (amountCents / 100).toFixed(2)),
+            feeUsdt: String(row.fee_usdt || (feeCents / 100).toFixed(2)),
+            netUsdt: String(row.net_usdt || (netCents / 100).toFixed(2)),
+            status: (row.status as WithdrawalRequestDoc['status']) || 'requested',
+            txHash: row.tx_hash || undefined,
+            reviewNotes: row.review_notes || undefined,
+            reviewedBy: row.reviewed_by || undefined,
+            createdAt: row.created_at || new Date().toISOString(),
+            updatedAt: row.updated_at || row.created_at || new Date().toISOString()
+          };
+          if (existingIdx === -1) {
+            this.data.withdrawalRequests.push(mapped);
+            changed = true;
+          } else if (this.data.withdrawalRequests[existingIdx].status !== mapped.status) {
+            this.data.withdrawalRequests[existingIdx] = {
+              ...this.data.withdrawalRequests[existingIdx],
+              ...mapped
+            };
+            changed = true;
           }
         }
       }
@@ -511,6 +727,17 @@ class DatabaseStore {
       );
     });
     if (byClean) return byClean;
+
+    // 3b. Match by normalized email (e.g. rr_cpx_masongmailcom -> mason@gmail.com)
+    const byEmailNormalized = this.data.users.find(u => {
+      const cleanEmail = u.email.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      return (
+        cleanTarget.includes(cleanEmail) ||
+        cleanStripped.includes(cleanEmail) ||
+        (cleanEmail.length > 5 && (cleanStripped.startsWith(cleanEmail.slice(0, 15)) || cleanEmail.startsWith(cleanStripped.slice(0, 15))))
+      );
+    });
+    if (byEmailNormalized) return byEmailNormalized;
 
     // 4. Fallback if CPX sent generic guest/member placeholder: credit the most recently active non-admin user
     if (raw === 'member' || raw === 'rr_member_1' || raw.startsWith('rr_guest')) {
@@ -672,8 +899,8 @@ class DatabaseStore {
   getUserBalances(userId: string) {
     const entries = this.data.rewardLedger.filter(l => l.userId === userId);
     const withdrawals = this.data.withdrawalRequests.filter(w => w.userId === userId);
-    const pointsPerUsdt = this.data.systemSettings?.pointsPerUsdt || 10000;
-    const userSharePercent = this.data.systemSettings?.userSharePercent || 40;
+    const pointsPerUsdt = this.data.systemSettings?.pointsPerUsdt || 5000;
+    const userSharePercent = this.data.systemSettings?.userSharePercent || 50;
     return calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt, userSharePercent);
   }
 
@@ -727,6 +954,62 @@ class DatabaseStore {
     return { success: true, entry };
   }
 
+  async upsertLedgerEntry(entry: LedgerEntry): Promise<{ isNew: boolean; updated: boolean; entry: LedgerEntry }> {
+    const existingIdx = this.data.rewardLedger.findIndex(
+      l => l.id === entry.id || (entry.providerTxId && l.providerTxId === entry.providerTxId)
+    );
+    let isNew = false;
+    let updated = false;
+
+    if (existingIdx === -1) {
+      this.data.rewardLedger.push(entry);
+      isNew = true;
+    } else {
+      const current = this.data.rewardLedger[existingIdx];
+      if (
+        current.points !== entry.points ||
+        current.amountCents !== entry.amountCents ||
+        current.grossCents !== entry.grossCents ||
+        current.adminProfitCents !== entry.adminProfitCents ||
+        current.userId !== entry.userId ||
+        current.description !== entry.description
+      ) {
+        this.data.rewardLedger[existingIdx] = { ...current, ...entry };
+        updated = true;
+      }
+    }
+
+    if (isNew || updated) {
+      await this.persist();
+      const sb = this.getSupabaseClient();
+      if (sb) {
+        try {
+          await sb.from('reward_ledger').upsert({
+            id: entry.id,
+            user_id: entry.userId,
+            provider_tx_id: entry.providerTxId,
+            amount_cents: entry.amountCents,
+            entry_type: entry.entryType,
+            status: entry.status,
+            description: entry.description,
+            created_at: entry.createdAt
+          });
+          const updatedBalances = this.getUserBalances(entry.userId);
+          await sb.from('users').update({
+            points: updatedBalances.availablePoints,
+            balance_cents: updatedBalances.availableCents,
+            total_earned_points: updatedBalances.totalEarnedPoints,
+            updated_at: new Date().toISOString()
+          }).eq('id', entry.userId);
+        } catch (e) {
+          console.warn('[Supabase Auto Sync] Ledger upsert note:', e);
+        }
+      }
+    }
+
+    return { isNew, updated, entry };
+  }
+
   // --- Withdrawals ---
   getWithdrawalsForUser(userId: string): WithdrawalRequestDoc[] {
     return this.data.withdrawalRequests
@@ -756,6 +1039,30 @@ class DatabaseStore {
       createdAt: new Date().toISOString()
     });
     await this.persist();
+
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('withdrawal_requests').upsert({
+          id: req.id,
+          user_id: req.userId,
+          user_email: req.userEmail,
+          usdt_address: req.usdtAddress,
+          network: req.network,
+          amount_cents: req.amountCents,
+          fee_cents: req.feeCents,
+          net_cents: req.netCents,
+          gross_usdt: req.grossUsdt,
+          fee_usdt: req.feeUsdt,
+          net_usdt: req.netUsdt,
+          status: req.status,
+          created_at: req.createdAt,
+          updated_at: req.updatedAt
+        });
+      } catch (e) {
+        console.warn('[Supabase Auto Sync] Withdrawal create note:', e);
+      }
+    }
     return req;
   }
 
@@ -796,7 +1103,36 @@ class DatabaseStore {
     });
 
     await this.persist();
-    return this.data.withdrawalRequests[idx];
+
+    const updated = this.data.withdrawalRequests[idx];
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('withdrawal_requests').upsert({
+          id: updated.id,
+          user_id: updated.userId,
+          user_email: updated.userEmail,
+          usdt_address: updated.usdtAddress,
+          network: updated.network,
+          amount_cents: updated.amountCents,
+          fee_cents: updated.feeCents,
+          net_cents: updated.netCents,
+          gross_usdt: updated.grossUsdt,
+          fee_usdt: updated.feeUsdt,
+          net_usdt: updated.netUsdt,
+          status: updated.status,
+          tx_hash: updated.txHash || null,
+          review_notes: updated.reviewNotes || null,
+          reviewed_by: updated.reviewedBy || null,
+          created_at: updated.createdAt,
+          updated_at: updated.updatedAt
+        });
+      } catch (e) {
+        console.warn('[Supabase Auto Sync] Withdrawal update note:', e);
+      }
+    }
+
+    return updated;
   }
 
   // --- Settings ---
@@ -831,7 +1167,7 @@ class DatabaseStore {
           fee_cents_erc20: this.data.systemSettings.feeCentsErc20,
           points_rate_per_usd: this.data.systemSettings.pointsPerUsdt,
           default_user_share_percent: this.data.systemSettings.userSharePercent,
-          default_platform_share_percent: Math.max(0, 100 - (this.data.systemSettings.userSharePercent || 40)),
+          default_platform_share_percent: Math.max(0, 100 - (this.data.systemSettings.userSharePercent || 50)),
           maintenance_mode: this.data.systemSettings.maintenanceMode,
           default_network: this.data.systemSettings.defaultNetwork,
           updated_at: this.data.systemSettings.updatedAt

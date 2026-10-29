@@ -135,5 +135,37 @@ test('normalizeCpxPostbackGrossCents: normalizes both USD and local points accur
   assert.equal(normalizeCpxPostbackGrossCents('2.28', '22800.00', 10000), 228);
   assert.equal(normalizeCpxPostbackGrossCents(undefined, '22800.00', 10000), 228);
   assert.equal(normalizeCpxPostbackGrossCents('1.45', undefined, 10000), 145);
+  // Default 5,000 Points = $1.00 Gross CPX Currency Factor:
+  assert.equal(normalizeCpxPostbackGrossCents(undefined, '2100.00'), 42);
+  assert.equal(normalizeCpxPostbackGrossCents('0.42', '2100.00'), 42);
 });
+
+test('normalizeCpxSurveyList & normalizeBrowserCpxSurveys: 5,000 Pts/$1 CPX Factor preserves exact points and 50% Admin Margin', () => {
+  const livePayload = {
+    status: 'success',
+    surveys: [
+      {
+        id: '81406053',
+        loi: 2,
+        payout: '2100.00', // 2,100 Points at 5,000 Pts/$1 = $0.42 Gross USD
+        statistics_rating_count: 22,
+        statistics_rating_avg: 4,
+        top: 1,
+        category: 'General'
+      }
+    ]
+  };
+
+  const serverSurveys = normalizeCpxSurveyList(livePayload, '37699', 'usr_1');
+  assert.equal(serverSurveys[0].rewardCents, 42); // $0.42 Gross CPX payout to Admin
+  assert.equal(serverSurveys[0].rawPoints, 2100); // 2,100 Points displayed & credited to User
+
+  const browserSurveys = normalizeBrowserCpxSurveys(livePayload.surveys, {
+    appId: '37699',
+    extUserId: 'usr_1'
+  });
+  assert.equal(browserSurveys[0].rewardPoints, 2100); // +2,100 PTS
+  assert.equal(browserSurveys[0].rewardCents, 21); // $0.21 USD user value (50% of $0.42 gross -> 50% Admin Profit)
+});
+
 

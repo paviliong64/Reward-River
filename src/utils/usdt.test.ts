@@ -80,6 +80,18 @@ test('Hybrid Points + USDT: on 10,000 Points user gets & sees 40% ($0.40 USDT) w
   assert.equal(split50.userRewardCents, 50);
   assert.equal(split50.userUsdtPer10kPoints, '0.50');
   assert.equal(split50.adminProfitCents, 50);
+
+  // Exact 50% Margin Plan with CPX Currency Factor = 5,000 Points/$1.00 and User Rate = 10,000 Points/$1.00:
+  // On a $0.40 (40 cents) CPX survey: User gets 2,000 Points ($0.20 USD), Admin keeps $0.20 USD (50% profit)
+  const cpx5kSplit = calculateHybridSurveySplit(40, 50, 5000);
+  assert.equal(cpx5kSplit.grossCents, 40);
+  assert.equal(cpx5kSplit.userRewardPoints, 2000);
+  assert.equal(cpx5kSplit.userRewardCents, 20);
+  assert.equal(cpx5kSplit.adminProfitCents, 20);
+  assert.equal(pointsToUsdt(2000, 5000, 50), 0.2);
+  assert.equal(pointsToUsdt(10000, 5000, 50), 1.0);
+  assert.equal(usdCentsToPoints(2500, 5000, 50), 250000); // $25.00 min withdrawal = 250,000 Points
 });
+
 
 

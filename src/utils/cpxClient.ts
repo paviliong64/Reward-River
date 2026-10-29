@@ -173,7 +173,8 @@ export function normalizeBrowserCpxSurveys(
   }
 ): Survey[] {
   if (!Array.isArray(rawList)) return [];
-  const { appId, extUserId, secureHash = '', userSharePercent = 40, pointsPerUsdt = 10000 } = params;
+  const { appId, extUserId, secureHash = '', userSharePercent = 50, pointsPerUsdt = 5000 } = params;
+  const safeFactor = pointsPerUsdt > 0 ? pointsPerUsdt : 5000;
 
   const result: Survey[] = [];
   for (const raw of rawList) {
@@ -198,12 +199,16 @@ export function normalizeBrowserCpxSurveys(
     } else if (!isNaN(rawCpi) && rawCpi > 0 && rawCpi <= 50) {
       grossCents = Math.max(1, Math.round(rawCpi * 100));
     } else if (rawPayoutNum > 50) {
-      grossCents = Math.max(1, Math.round((rawPayoutNum / 10000) * 100));
+      grossCents = Math.max(1, Math.round((rawPayoutNum / safeFactor) * 100));
     } else if (rawPayoutNum > 0) {
       grossCents = Math.max(1, Math.round(rawPayoutNum * 100));
     }
 
-    const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
+    const split = calculateHybridSurveySplit(grossCents, userSharePercent, safeFactor);
+    const exactPoints =
+      rawPayoutNum > 50 && (isNaN(publisherUsd) || publisherUsd <= 0)
+        ? Math.round(rawPayoutNum)
+        : split.userRewardPoints;
     const ratingCount = Math.max(0, Math.floor(Number(raw.statistics_rating_count) || 0));
     const rawRatingAvg = Number(raw.statistics_rating_avg);
     const ratingAvg = !isNaN(rawRatingAvg) && rawRatingAvg > 0
@@ -226,8 +231,8 @@ export function normalizeBrowserCpxSurveys(
       id,
       loiMinutes,
       rewardCents: split.userRewardCents,
-      rewardPoints: split.userRewardPoints,
-      rewardPointsFormatted: split.userRewardPointsFormatted,
+      rewardPoints: exactPoints,
+      rewardPointsFormatted: exactPoints.toLocaleString('en-US'),
       rewardUsdFormatted: split.userRewardUsdFormatted,
       rewardUsdtFormatted: `${(split.userRewardCents / 100).toFixed(2)} USDT`,
       cpi: !isNaN(publisherUsd) && publisherUsd > 0 ? Number(publisherUsd.toFixed(2)) : grossCents / 100,
@@ -237,7 +242,7 @@ export function normalizeBrowserCpxSurveys(
       directUrl,
       category,
       conversionRate,
-      rawPoints: rawPayoutNum > 50 ? Math.round(rawPayoutNum) : grossCents * 100,
+      rawPoints: exactPoints,
       isLiveCpx: true
     });
   }
@@ -283,8 +288,8 @@ export async function fetchLiveCpxSurveysBrowser(params: {
     appId,
     extUserId,
     secureHash,
-    userSharePercent: params.userSharePercent ?? 40,
-    pointsPerUsdt: params.pointsPerUsdt ?? 10000
+    userSharePercent: params.userSharePercent ?? 50,
+    pointsPerUsdt: params.pointsPerUsdt ?? 5000
   });
 
   return {

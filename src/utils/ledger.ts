@@ -54,8 +54,8 @@ export function calculateUserBalances(
   userId: string,
   entries: LedgerEntry[],
   withdrawals: WithdrawalRecord[],
-  pointsPerUsdt: number = 10000,
-  userSharePercent: number = 40
+  pointsPerUsdt: number = 5000,
+  userSharePercent: number = 50
 ): UserBalanceSummary {
   let totalConfirmedCredits = 0;
   let totalDebitsAndReversals = 0;
@@ -68,8 +68,9 @@ export function calculateUserBalances(
   let totalGrossRevenueCents = 0;
   let completedSurveysCount = 0;
 
-  const safePointsRate = pointsPerUsdt > 0 ? pointsPerUsdt : 10000;
-  const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 40)));
+  const safePointsRate = pointsPerUsdt > 0 ? pointsPerUsdt : 5000;
+  const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 50)));
+  const shareRatio = safeShare / 100;
   const centsToPts = (c: number) => Math.round((Math.max(0, c) / safeShare) * safePointsRate);
 
   for (const entry of entries) {
@@ -85,7 +86,7 @@ export function calculateUserBalances(
       totalEarnedCents += entry.amountCents;
       totalConfirmedPoints += entryPts;
       completedSurveysCount += 1;
-      const gross = entry.grossCents ?? Math.round(entry.amountCents / 0.4);
+      const gross = entry.grossCents ?? Math.round(entry.amountCents / shareRatio);
       const profit = entry.adminProfitCents ?? Math.max(0, gross - entry.amountCents);
       totalGrossRevenueCents += gross;
       totalAdminProfitCents += profit;
@@ -99,7 +100,7 @@ export function calculateUserBalances(
       if (entry.entryType === 'reversal') {
         completedSurveysCount = Math.max(0, completedSurveysCount - 1);
       }
-      const grossRev = entry.grossCents ?? Math.round(absAmount / 0.4);
+      const grossRev = entry.grossCents ?? Math.round(absAmount / shareRatio);
       const profitRev = entry.adminProfitCents ?? Math.max(0, grossRev - absAmount);
       totalGrossRevenueCents = Math.max(0, totalGrossRevenueCents - grossRev);
       totalAdminProfitCents = Math.max(0, totalAdminProfitCents - profitRev);
