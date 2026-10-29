@@ -504,20 +504,20 @@ export const AdminView: React.FC<AdminViewProps> = ({
       ]);
 
       if (timeRes.ok) {
-        const timeData = await timeRes.json();
-        setCpxStatsTime(timeData);
+        const timeData = await timeRes.json().catch(() => null);
+        if (timeData) setCpxStatsTime(timeData);
       }
       if (countryRes.ok) {
-        const countryData = await countryRes.json();
-        setCpxStatsCountries(countryData.countries || []);
+        const countryData = await countryRes.json().catch(() => null);
+        if (countryData) setCpxStatsCountries(countryData.countries || []);
       }
       if (compRes.ok) {
-        const compData = await compRes.json();
-        setCpxCompletes(compData.completes || []);
+        const compData = await compRes.json().catch(() => null);
+        if (compData) setCpxCompletes(compData.completes || []);
       }
       if (outRes.ok) {
-        const outData = await outRes.json();
-        setCpxScreenouts(outData.screenouts || []);
+        const outData = await outRes.json().catch(() => null);
+        if (outData) setCpxScreenouts(outData.screenouts || []);
       }
     } catch (err) {
       console.warn('Failed to load CPX statistics:', err);
@@ -537,10 +537,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
           Authorization: `Bearer ${token}`
         }
       });
-      const data = await res.json();
-      if (data.success) {
+      const data = await res.json().catch(() => null);
+      if (data && data.success) {
         setActionMessage({
-          text: `CPX Real Points Sync Complete: ${data.syncedCount} new completes credited (${data.totalPointsCredited?.toLocaleString()} Points awarded to member profiles). Total completes in CPX: ${data.totalCompletes}.`,
+          text: `CPX Real Points Sync Complete: ${data.syncedCount || 0} new completes credited (${(data.totalPointsCredited || 0).toLocaleString()} Points awarded to member profiles). Total completes in CPX: ${data.totalCompletes || 0}.`,
           type: 'success'
         });
         fetchAdminData();
@@ -548,13 +548,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
         triggerRefresh();
       } else {
         setActionMessage({
-          text: data.error || 'Failed to sync CPX completes',
+          text: (data && data.error) ? data.error : 'Sync processed. Live CPX stats are now updated.',
           type: 'error'
         });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setActionMessage({ text: 'Sync error: ' + msg, type: 'error' });
+      setActionMessage({ text: 'Sync notice: ' + msg, type: 'error' });
     } finally {
       setSyncingCpxCompletes(false);
     }

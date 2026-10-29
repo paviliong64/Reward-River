@@ -332,6 +332,10 @@ export class CpxResearchService {
    * Official CPX Statistics Endpoint 1: Get Statistics by Time
    * https://publisher.cpx-research.com/index.php?page=api-statistics-time
    */
+  /**
+   * Official CPX Statistics Endpoint 1: Get Statistics by Time
+   * https://publisher.cpx-research.com/index.php?page=api-statistics-time
+   */
   async fetchStatisticsByTime(params: {
     startTime?: string;
     endTime?: string;
@@ -339,34 +343,43 @@ export class CpxResearchService {
     countryCode?: string;
     groupBy?: 'day' | 'hour' | 'week' | 'month';
   }): Promise<CpxTimeStatisticsResponse> {
-    const { startTime, endTime } = this.normalizeDateRange(params.startTime, params.endTime);
-    const url = new URL('https://publisher.cpx-research.com/index.php');
-    url.searchParams.set('page', 'api-statistics-time');
-    url.searchParams.set('start_time', startTime);
-    url.searchParams.set('end_time', endTime);
-    url.searchParams.set('api_key', this.apiKey);
-    if (params.appId) url.searchParams.set('app_id', params.appId);
-    if (params.countryCode) url.searchParams.set('country_code', params.countryCode);
-    if (params.groupBy) url.searchParams.set('group_by', params.groupBy);
+    try {
+      const { startTime, endTime } = this.normalizeDateRange(params.startTime, params.endTime);
+      const url = new URL('https://publisher.cpx-research.com/index.php');
+      url.searchParams.set('page', 'api-statistics-time');
+      url.searchParams.set('start_time', startTime);
+      url.searchParams.set('end_time', endTime);
+      url.searchParams.set('api_key', this.apiKey);
+      if (params.appId) url.searchParams.set('app_id', params.appId);
+      if (params.countryCode) url.searchParams.set('country_code', params.countryCode);
+      if (params.groupBy) url.searchParams.set('group_by', params.groupBy);
 
-    const res = await fetch(url.toString(), {
-      headers: { Accept: 'application/json' }
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      return { success: false, error: `CPX Statistics API error (${res.status}): ${errText}` };
-    }
-    const json = (await res.json()) as CpxTimeStatisticsResponse;
-    if (Array.isArray(json.data) && !json.results) {
-      const resultsMap: Record<string, any> = {};
-      for (const item of json.data) {
-        if (item && item.date) {
-          resultsMap[item.date] = item;
-        }
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) {
+        return { success: false, error: `CPX Statistics API HTTP ${res.status}` };
       }
-      json.results = resultsMap;
+      const rawText = await res.text();
+      let json: any;
+      try {
+        json = JSON.parse(rawText);
+      } catch {
+        return { success: false, error: 'CPX Statistics API returned non-JSON response' };
+      }
+      if (json && Array.isArray(json.data) && !json.results) {
+        const resultsMap: Record<string, any> = {};
+        for (const item of json.data) {
+          if (item && item.date) {
+            resultsMap[item.date] = item;
+          }
+        }
+        json.results = resultsMap;
+      }
+      return json || { success: false, error: 'Empty statistics response' };
+    } catch (err) {
+      return { success: false, error: 'Could not connect to CPX Statistics endpoint' };
     }
-    return json;
   }
 
   /**
@@ -379,23 +392,31 @@ export class CpxResearchService {
     appId?: string;
     countryCode?: string;
   }): Promise<CpxCountrySale[]> {
-    const { startTime, endTime } = this.normalizeDateRange(params.startTime, params.endTime);
-    const url = new URL('https://publisher.cpx-research.com/index.php');
-    url.searchParams.set('page', 'api-statistics-country-sales');
-    url.searchParams.set('start_time', startTime);
-    url.searchParams.set('end_time', endTime);
-    url.searchParams.set('api_key', this.apiKey);
-    if (params.appId) url.searchParams.set('app_id', params.appId);
-    if (params.countryCode) url.searchParams.set('country_code', params.countryCode);
+    try {
+      const { startTime, endTime } = this.normalizeDateRange(params.startTime, params.endTime);
+      const url = new URL('https://publisher.cpx-research.com/index.php');
+      url.searchParams.set('page', 'api-statistics-country-sales');
+      url.searchParams.set('start_time', startTime);
+      url.searchParams.set('end_time', endTime);
+      url.searchParams.set('api_key', this.apiKey);
+      if (params.appId) url.searchParams.set('app_id', params.appId);
+      if (params.countryCode) url.searchParams.set('country_code', params.countryCode);
 
-    const res = await fetch(url.toString(), {
-      headers: { Accept: 'application/json' }
-    });
-    if (!res.ok) {
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) return [];
+      const rawText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        return [];
+      }
+      return Array.isArray(data) ? data : data && typeof data === 'object' ? Object.values(data) : [];
+    } catch {
       return [];
     }
-    const data = await res.json();
-    return Array.isArray(data) ? data : Object.values(data);
   }
 
   /**
@@ -406,23 +427,31 @@ export class CpxResearchService {
     startTime?: string;
     endTime?: string;
   }): Promise<CpxCompleteRecord[]> {
-    const { startTime, endTime } = this.normalizeDateRange(params?.startTime, params?.endTime);
-    const url = new URL('https://publisher.cpx-research.com/index.php');
-    url.searchParams.set('page', 'api-statistics-completes');
-    url.searchParams.set('start_time', startTime);
-    url.searchParams.set('end_time', endTime);
-    url.searchParams.set('api_key', this.apiKey);
+    try {
+      const { startTime, endTime } = this.normalizeDateRange(params?.startTime, params?.endTime);
+      const url = new URL('https://publisher.cpx-research.com/index.php');
+      url.searchParams.set('page', 'api-statistics-completes');
+      url.searchParams.set('start_time', startTime);
+      url.searchParams.set('end_time', endTime);
+      url.searchParams.set('api_key', this.apiKey);
 
-    const res = await fetch(url.toString(), {
-      headers: { Accept: 'application/json' }
-    });
-    if (!res.ok) {
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) return [];
+      const rawText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        return [];
+      }
+      if (!data || typeof data !== 'object') return [];
+      const list: CpxCompleteRecord[] = Array.isArray(data) ? data : Object.values(data);
+      return list.sort((a, b) => new Date(b.datetime || 0).getTime() - new Date(a.datetime || 0).getTime());
+    } catch {
       return [];
     }
-    const data = await res.json();
-    if (!data || typeof data !== 'object') return [];
-    const list: CpxCompleteRecord[] = Array.isArray(data) ? data : Object.values(data);
-    return list.sort((a, b) => new Date(b.datetime || 0).getTime() - new Date(a.datetime || 0).getTime());
   }
 
   /**
@@ -433,23 +462,31 @@ export class CpxResearchService {
     startTime?: string;
     endTime?: string;
   }): Promise<CpxScreenoutRecord[]> {
-    const { startTime, endTime } = this.normalizeDateRange(params?.startTime, params?.endTime);
-    const url = new URL('https://publisher.cpx-research.com/index.php');
-    url.searchParams.set('page', 'api-statistics-outs');
-    url.searchParams.set('start_time', startTime);
-    url.searchParams.set('end_time', endTime);
-    url.searchParams.set('api_key', this.apiKey);
+    try {
+      const { startTime, endTime } = this.normalizeDateRange(params?.startTime, params?.endTime);
+      const url = new URL('https://publisher.cpx-research.com/index.php');
+      url.searchParams.set('page', 'api-statistics-outs');
+      url.searchParams.set('start_time', startTime);
+      url.searchParams.set('end_time', endTime);
+      url.searchParams.set('api_key', this.apiKey);
 
-    const res = await fetch(url.toString(), {
-      headers: { Accept: 'application/json' }
-    });
-    if (!res.ok) {
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) return [];
+      const rawText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        return [];
+      }
+      if (!data || typeof data !== 'object') return [];
+      const list: CpxScreenoutRecord[] = Array.isArray(data) ? data : Object.values(data);
+      return list.sort((a, b) => new Date(b.datetime || 0).getTime() - new Date(a.datetime || 0).getTime());
+    } catch {
       return [];
     }
-    const data = await res.json();
-    if (!data || typeof data !== 'object') return [];
-    const list: CpxScreenoutRecord[] = Array.isArray(data) ? data : Object.values(data);
-    return list.sort((a, b) => new Date(b.datetime || 0).getTime() - new Date(a.datetime || 0).getTime());
   }
 
   /**
@@ -457,22 +494,31 @@ export class CpxResearchService {
    * https://publisher.cpx-research.com/index.php?page=api-check-transaction-id
    */
   async checkTransaction(transactionId: string): Promise<CpxTransactionCheckResult> {
-    const cleanId = String(transactionId || '').trim();
-    if (!cleanId) {
-      return { type: 'error', error: 'Transaction ID is required' };
-    }
-    const url = new URL('https://publisher.cpx-research.com/index.php');
-    url.searchParams.set('page', 'api-check-transaction-id');
-    url.searchParams.set('transaction_id', cleanId);
-    url.searchParams.set('api_key', this.apiKey);
+    try {
+      const cleanId = String(transactionId || '').trim();
+      if (!cleanId) {
+        return { type: 'error', error: 'Transaction ID is required' };
+      }
+      const url = new URL('https://publisher.cpx-research.com/index.php');
+      url.searchParams.set('page', 'api-check-transaction-id');
+      url.searchParams.set('transaction_id', cleanId);
+      url.searchParams.set('api_key', this.apiKey);
 
-    const res = await fetch(url.toString(), {
-      headers: { Accept: 'application/json' }
-    });
-    if (!res.ok) {
-      return { type: 'error', error: `Validation API returned HTTP ${res.status}` };
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) {
+        return { type: 'error', error: `Validation API returned HTTP ${res.status}` };
+      }
+      const rawText = await res.text();
+      try {
+        return JSON.parse(rawText) as CpxTransactionCheckResult;
+      } catch {
+        return { type: 'error', error: 'Transaction validation returned non-JSON response' };
+      }
+    } catch {
+      return { type: 'error', error: 'Validation request failed' };
     }
-    return (await res.json()) as CpxTransactionCheckResult;
   }
 
   /**
