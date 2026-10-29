@@ -687,38 +687,39 @@ class DatabaseStore {
       u =>
         u.id === stripped ||
         u.externalOpaqueId === `rr_cpx_${stripped}` ||
+        u.id.replace(/[^a-zA-Z0-9]/g, '') === stripped.replace(/[^a-zA-Z0-9]/g, '') ||
         (u.username && u.username.toLowerCase() === raw.toLowerCase()) ||
         (u.username && u.username.toLowerCase() === stripped.toLowerCase()) ||
         u.email.toLowerCase() === raw.toLowerCase()
     );
     if (byStripped) return byStripped;
 
-    // 3. Alphanumeric normalized comparison
+    // 3. Substring matching for user ID, clean UUID hex, email or username inside raw
     const cleanTarget = raw.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     const cleanStripped = stripped.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    const byClean = this.data.users.find(u => {
+
+    for (const u of this.data.users) {
       const cleanId = u.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
       const cleanExt = (u.externalOpaqueId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      return (
-        (cleanTarget && (cleanId === cleanTarget || cleanExt === cleanTarget)) ||
-        (cleanStripped && (cleanId === cleanStripped || cleanExt === cleanStripped))
-      );
-    });
-    if (byClean) return byClean;
-
-    // 3b. Match by normalized email (e.g. rr_cpx_masongmailcom -> mason@gmail.com)
-    const byEmailNormalized = this.data.users.find(u => {
       const cleanEmail = u.email.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      return (
-        cleanTarget.includes(cleanEmail) ||
-        cleanStripped.includes(cleanEmail) ||
-        (cleanEmail.length > 5 && (cleanStripped.startsWith(cleanEmail.slice(0, 15)) || cleanEmail.startsWith(cleanStripped.slice(0, 15))))
-      );
-    });
-    if (byEmailNormalized) return byEmailNormalized;
+      const cleanName = (u.username || u.displayName || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+      if (
+        cleanId === cleanTarget ||
+        cleanExt === cleanTarget ||
+        cleanId === cleanStripped ||
+        cleanExt === cleanStripped ||
+        (cleanId.length > 6 && (cleanTarget.includes(cleanId) || cleanStripped.includes(cleanId))) ||
+        (cleanExt.length > 6 && (cleanTarget.includes(cleanExt) || cleanStripped.includes(cleanExt))) ||
+        (cleanEmail.length > 5 && (cleanTarget.includes(cleanEmail) || cleanStripped.includes(cleanEmail))) ||
+        (cleanName.length > 3 && (cleanTarget.includes(cleanName) || cleanStripped.includes(cleanName)))
+      ) {
+        return u;
+      }
+    }
 
     // 4. Fallback if CPX sent generic guest/member placeholder: credit the most recently active non-admin user
-    if (raw === 'member' || raw === 'rr_member_1' || raw.startsWith('rr_guest')) {
+    if (raw === 'member' || raw === 'rr_member_1' || raw.startsWith('rr_guest') || raw === 'rr_cpx_public_feed') {
       const nonAdminUsers = this.data.users.filter(u => u.role !== 'admin');
       if (nonAdminUsers.length > 0) {
         return nonAdminUsers[nonAdminUsers.length - 1];

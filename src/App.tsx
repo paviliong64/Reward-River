@@ -275,14 +275,22 @@ export default function App() {
     fetchCpxStatus();
 
     const token = getAuthToken();
+    const pathname = typeof window !== 'undefined' ? window.location.pathname.toLowerCase() : '';
+
     if (token) {
       fetchUserData(token).then((loadedUser) => {
         if (loadedUser?.role === 'admin') {
           setCurrentTab('admin');
+        } else if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+          setAuthInitialMode('signin');
+          setAuthModalOpen(true);
         } else {
           setCurrentTab((prev) => (prev === 'landing' || prev === 'dashboard' ? 'surveys' : prev));
         }
       });
+    } else if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+      setAuthInitialMode('signin');
+      setAuthModalOpen(true);
     }
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
