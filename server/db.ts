@@ -240,31 +240,22 @@ class DatabaseStore {
         };
 
         const normalizeUserRecord = (u: UserAccount): UserAccount => {
-          const ext = String(u.externalOpaqueId || '').trim();
-          const stripped = ext.replace(/^rr_(cpx_)?/i, '');
           let email = String(u.email || '').trim().toLowerCase();
           let display = String(u.displayName || u.username || email.split('@')[0]).trim();
 
-          if (ext === 'rr_cpx_3c8b6a937f2d4528bf335465' || stripped === '3c8b6a937f2d4528bf335465') {
-            email = 'david.smith234@gmail.com';
-            display = 'david.smith234';
-          } else if (ext === 'rr_cpx_1520147c67d34e4f87385178' || stripped === '1520147c67d34e4f87385178') {
-            email = 'ethanmiller482@gmail.com';
-            display = 'ethanmiller482';
-          } else {
-            const gmailMatch = stripped.match(/^([a-z0-9._-]+?)gm(?:a(?:i(?:l(?:c(?:o(?:m)?)?)?)?)?)?$/i);
-            if (gmailMatch && gmailMatch[1]) {
-              const handle = gmailMatch[1].toLowerCase();
-              email = `${handle}@gmail.com`;
-              display = handle;
-            }
-          }
+          const rawExt = String(u.externalOpaqueId || '');
+          const isEmailText = rawExt.includes('@') || rawExt.includes('gmail') || rawExt.includes('gma') || rawExt.includes('com') || rawExt.length < 10;
+          const cleanUuid = String(u.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+          const cleanExtId = (!isEmailText && rawExt.startsWith('rr_cpx_'))
+            ? rawExt
+            : `rr_cpx_${cleanUuid || crypto.randomBytes(12).toString('hex')}`;
 
           return {
             ...u,
             email,
             username: display,
-            displayName: display
+            displayName: display,
+            externalOpaqueId: cleanExtId
           };
         };
 
@@ -380,26 +371,9 @@ class DatabaseStore {
       );
     };
 
-    const normalizeIdentity = (extId: string, rawEmail: string, rawDisplay: string) => {
-      const ext = String(extId || '').trim();
-      const stripped = ext.replace(/^rr_(cpx_)?/i, '');
+    const normalizeIdentity = (_extId: string, rawEmail: string, rawDisplay: string) => {
       let email = String(rawEmail || '').trim().toLowerCase();
       let display = String(rawDisplay || email.split('@')[0]).replace(/\s*\(Super Admin\)/i, '').trim();
-
-      if (ext === 'rr_cpx_3c8b6a937f2d4528bf335465' || stripped === '3c8b6a937f2d4528bf335465') {
-        email = 'david.smith234@gmail.com';
-        display = 'david.smith234';
-      } else if (ext === 'rr_cpx_1520147c67d34e4f87385178' || stripped === '1520147c67d34e4f87385178') {
-        email = 'ethanmiller482@gmail.com';
-        display = 'ethanmiller482';
-      } else {
-        const gmailMatch = stripped.match(/^([a-z0-9._-]+?)gm(?:a(?:i(?:l(?:c(?:o(?:m)?)?)?)?)?)?$/i);
-        if (gmailMatch && gmailMatch[1]) {
-          const handle = gmailMatch[1].toLowerCase();
-          email = `${handle}@gmail.com`;
-          display = handle;
-        }
-      }
       return { email, display };
     };
 
@@ -451,10 +425,14 @@ class DatabaseStore {
           const isSoleAdmin =
             row.id === 'usr_admin_rewardriver' || rawEmailLower === 'admin@reward-river';
           const effectiveRole: 'user' | 'admin' = isSoleAdmin ? 'admin' : 'user';
-          const cleanExtId =
-            row.external_opaque_id && !String(row.external_opaque_id).includes('superadmin')
-              ? String(row.external_opaque_id)
-              : `rr_cpx_${String(row.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+          
+          // Strictly force external_opaque_id to be a clean UUID-derived hex without email handles
+          const cleanUuid = String(row.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+          const rawExt = String(row.external_opaque_id || '');
+          const isEmailText = rawExt.includes('@') || rawExt.includes('gmail') || rawExt.includes('gma') || rawExt.includes('com') || rawExt.length < 10;
+          const cleanExtId = (!isEmailText && rawExt.startsWith('rr_cpx_'))
+            ? rawExt
+            : `rr_cpx_${cleanUuid || crypto.randomBytes(12).toString('hex')}`;
 
           const { email: emailLower, display } = normalizeIdentity(
             cleanExtId,

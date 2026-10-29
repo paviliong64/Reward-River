@@ -570,10 +570,11 @@ app.post('/api/user/phone', requireAuth, async (req: AuthenticatedRequest, res: 
 let lastCpxSyncTimestamp = 0;
 async function syncLiveCpxCompletesIfNeeded(force = false) {
   const now = Date.now();
-  if (!force && now - lastCpxSyncTimestamp < 15000) return;
+  const isEmptyLedger = dbStore.getAllLedgerEntries().length === 0;
+  if (!force && !isEmptyLedger && now - lastCpxSyncTimestamp < 15000) return;
   lastCpxSyncTimestamp = now;
   try {
-    await cpxResearchService.syncCompletesToUserBalances();
+    await cpxResearchService.syncCompletesToUserBalances({ startTime: '2025-01-01' });
   } catch (err) {
     console.warn('[CPX Auto-Sync Note]:', err);
   }
@@ -583,7 +584,7 @@ async function syncLiveCpxCompletesIfNeeded(force = false) {
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await dbStore.syncFromSupabase();
-    await syncLiveCpxCompletesIfNeeded();
+    await syncLiveCpxCompletesIfNeeded(true);
     const usersWithDetails = dbStore.getAllUsersWithDetails();
     res.json({
       success: true,
@@ -1854,7 +1855,7 @@ app.post('/api/withdrawals', requireAuth, async (req: AuthenticatedRequest, res:
 // GET /api/admin/overview
 app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   await dbStore.syncFromSupabase();
-  await syncLiveCpxCompletesIfNeeded();
+  await syncLiveCpxCompletesIfNeeded(true);
   const users = dbStore.getAllUsers();
   const withdrawals = dbStore.getAllWithdrawals();
   const ledger = dbStore.getAllLedgerEntries();
@@ -2582,7 +2583,7 @@ async function startServer() {
   }
 
   // Real-time synchronization: sync CPX live completes into user profiles on start
-  cpxResearchService.syncCompletesToUserBalances().then(res => {
+  cpxResearchService.syncCompletesToUserBalances({ startTime: '2025-01-01' }).then(res => {
     if (res.syncedCount > 0) {
       console.log(`[CPX Sync] Initial boot sync: credited ${res.syncedCount} real completes (${res.totalPointsCredited} points) to member profiles.`);
     }
