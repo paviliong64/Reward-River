@@ -484,22 +484,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           </div>
 
-          {mode === 'signin' && (
-            <div className="pt-0.5 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@reward-river');
-                  setPassword('Tahir@300');
-                  setError(null);
-                }}
-                className="text-[11px] font-bold text-slate-500 hover:text-[#079B55] dark:hover:text-[#4CC65A] transition-colors inline-flex items-center gap-1 cursor-pointer"
-              >
-                <ShieldCheck className="w-3 h-3 text-[#079B55]" />
-                <span>Admin Login (Auto-fill)</span>
-              </button>
-            </div>
-          )}
+
 
           {/* Human Math Verification (Bot protection - lightweight & fast) */}
           {mode === 'signup' && (
