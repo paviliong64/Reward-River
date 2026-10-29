@@ -402,7 +402,47 @@ class DatabaseStore {
 
       let changed = false;
 
-      // Strip mock/test users from local store first
+      // 1. Sync System Settings from Supabase (Global Platform Configuration)
+      const { data: sbSettings, error: settingsError } = await sb.from('system_settings').select('*').eq('id', 'global').single();
+      if (!settingsError && sbSettings) {
+        const current = this.data.systemSettings;
+        const newSettings: SystemSettings = {
+          ...current,
+          supabaseUrl: current.supabaseUrl, // preserve local supabase connection
+          supabaseAnonKey: current.supabaseAnonKey,
+          supabaseServiceKey: current.supabaseServiceKey,
+          minWithdrawalCents: Number(sbSettings.min_withdrawal_cents) || current.minWithdrawalCents,
+          maxWithdrawalCents: Number(sbSettings.max_withdrawal_cents) || current.maxWithdrawalCents,
+          feeCentsTrc20: Number(sbSettings.fee_cents_trc20) ?? current.feeCentsTrc20,
+          feeCentsErc20: Number(sbSettings.fee_cents_erc20) ?? current.feeCentsErc20,
+          pointsPerUsdt: Number(sbSettings.points_rate_per_usd) || current.pointsPerUsdt,
+          userSharePercent: Number(sbSettings.default_user_share_percent) || current.userSharePercent,
+          maintenanceMode: Boolean(sbSettings.maintenance_mode),
+          cpxAppId: sbSettings.cpx_app_id || current.cpxAppId,
+          cpxHashKey: sbSettings.cpx_hash_key || current.cpxHashKey,
+          cpxApiKey: sbSettings.cpx_api_key || current.cpxApiKey,
+          cpxIntegrationMode: (sbSettings.cpx_integration_mode as any) || current.cpxIntegrationMode,
+          cpxMaxSurveys: Number(sbSettings.cpx_max_surveys) || current.cpxMaxSurveys,
+          cpxThemeColor: sbSettings.cpx_theme_color || current.cpxThemeColor,
+          cpxEnableFallback: sbSettings.cpx_enable_fallback ?? current.cpxEnableFallback,
+          cpxVerifySignature: sbSettings.cpx_verify_signature ?? current.cpxVerifySignature,
+          aoyApiKey: sbSettings.aoy_api_key || current.aoyApiKey,
+          aoySecretKey: sbSettings.aoy_secret_key || current.aoySecretKey,
+          aoyBearerToken: sbSettings.aoy_bearer_token || current.aoyBearerToken,
+          aoyExchangeRate: Number(sbSettings.aoy_exchange_rate) || current.aoyExchangeRate,
+          metaTitle: sbSettings.meta_title || current.metaTitle,
+          metaDescription: sbSettings.meta_description || current.metaDescription,
+          updatedAt: sbSettings.updated_at || new Date().toISOString()
+        };
+
+        // Deep comparison to avoid redundant writes
+        if (JSON.stringify(newSettings) !== JSON.stringify(current)) {
+          this.data.systemSettings = newSettings;
+          changed = true;
+        }
+      }
+
+      // 2. Purge Mock/Test Users and Sync Real Users
       const beforeUserCount = this.data.users.length;
       this.data.users = this.data.users.filter(u => !isMockOrTestUser(u.email, u.username));
       if (this.data.users.length !== beforeUserCount) {

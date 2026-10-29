@@ -854,9 +854,19 @@ export const AdminView: React.FC<AdminViewProps> = ({
               {/* Top Heading */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
-                    Overview Dashboard
-                  </h1>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
+                      Overview Dashboard
+                    </h1>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm ${
+                      cpxStatsTime?.success !== false 
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
+                        : 'bg-red-50 text-red-700 border border-red-100'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${cpxStatsTime?.success !== false ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                      {cpxStatsTime?.success !== false ? 'CPX Active' : 'CPX Error'}
+                    </span>
+                  </div>
                   <p className="text-sm text-slate-500 mt-1">
                     Monitor platform statistics, category metrics, recent survey activities, and system audits.
                   </p>
@@ -1425,18 +1435,27 @@ export const AdminView: React.FC<AdminViewProps> = ({
               {/* Header with Title and Real-time Action Buttons */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-3">
                     <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
                       CPX Research Statistics &amp; Manager
                     </h1>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold">
-                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                      Live API Connected
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold shadow-sm ${
+                      cpxStatsTime?.success !== false 
+                        ? 'bg-emerald-100 text-emerald-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${cpxStatsTime?.success !== false ? 'bg-emerald-600 animate-pulse' : 'bg-red-600'}`} />
+                      {cpxStatsTime?.success !== false ? 'Live API Connected' : 'API Connection Error'}
                     </span>
                   </div>
                   <p className="text-sm text-slate-500 mt-1">
                     Publisher ID <span className="font-mono font-bold text-slate-700">#38601</span> • App ID <span className="font-mono font-bold text-slate-700">#{settings?.cpxAppId || '37699'}</span> • Official Statistics API Key <span className="font-mono text-xs text-slate-600">257850...e095</span>
                   </p>
+                  {cpxStatsTime?.error && (
+                    <div className="mt-2 text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-lg inline-block">
+                      API Notice: {cpxStatsTime.error}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">

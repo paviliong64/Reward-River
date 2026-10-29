@@ -522,6 +522,11 @@ export class CpxResearchService {
    * Syncs real CPX survey completes directly into user balances and profile ledgers!
    * Guarantees that any completed survey awards exact CPX Points and USD directly to the member profile.
    */
+  /**
+   * Real-time Synchronization:
+   * Syncs real CPX survey completes directly into user balances and profile ledgers!
+   * Guarantees that any completed survey awards exact CPX Points and USD directly to the member profile.
+   */
   async syncCompletesToUserBalances(options?: { startTime?: string; endTime?: string }): Promise<{
     syncedCount: number;
     alreadyProcessedCount: number;
@@ -529,148 +534,181 @@ export class CpxResearchService {
     totalPointsCredited: number;
     totalUsdEarned: number;
     creditedUsers: { id: string; email: string; points: number; completes: number }[];
+    error?: string;
   }> {
-    const completes = await this.fetchCompletes(options);
-    const settings = dbStore.getSettings();
-    const pointsPerUsdt = settings?.pointsPerUsdt || 5000; // 5,000 Points = 1.00 USD
-    const existingLedger = dbStore.getAllLedgerEntries();
-    const existingTxIds = new Set(
-      existingLedger
-        .filter(l => Boolean(l.providerTxId))
-        .map(l => String(l.providerTxId).trim().toLowerCase())
-    );
-
-    let syncedCount = 0;
-    let alreadyProcessedCount = 0;
-    let totalPointsCredited = 0;
-    let totalUsdEarned = 0;
-    const userSummaryMap: Record<string, { id: string; email: string; points: number; completes: number }> = {};
-
-    const resolveCleanIdentity = (extUserId: string): { email: string; username: string; displayName: string } => {
-      if (extUserId === 'rr_cpx_3c8b6a937f2d4528bf335465') {
-        return { email: 'david.smith234@gmail.com', username: 'david.smith234', displayName: 'David Smith' };
+    try {
+      const completes = await this.fetchCompletes(options);
+      
+      // Check if CPX returned an error object instead of a list
+      if ((completes as any).success === false) {
+        console.error('[CPX Sync Error] Statistics API returned error:', (completes as any).error);
+        return {
+          syncedCount: 0,
+          alreadyProcessedCount: 0,
+          totalCompletes: 0,
+          totalPointsCredited: 0,
+          totalUsdEarned: 0,
+          creditedUsers: [],
+          error: (completes as any).error || 'CPX Statistics API failed'
+        };
       }
-      if (extUserId === 'rr_cpx_1520147c67d34e4f87385178') {
-        return { email: 'ethanmiller482@gmail.com', username: 'ethanmiller482', displayName: 'Ethan Miller' };
-      }
-      const stripped = extUserId.replace(/^rr_(cpx_)?/i, '');
-      const gmailMatch = stripped.match(/^([a-z0-9._-]+?)gm(?:a(?:i(?:l(?:c(?:o(?:m)?)?)?)?)?)?$/i);
-      if (gmailMatch && gmailMatch[1]) {
-        const handle = gmailMatch[1].toLowerCase();
+
+      const settings = dbStore.getSettings();
+      const pointsPerUsdt = settings?.pointsPerUsdt || 5000; // 5,000 Points = 1.00 USD
+      const existingLedger = dbStore.getAllLedgerEntries();
+      const existingTxIds = new Set(
+        existingLedger
+          .filter(l => Boolean(l.providerTxId))
+          .map(l => String(l.providerTxId).trim().toLowerCase())
+      );
+
+      let syncedCount = 0;
+      let alreadyProcessedCount = 0;
+      let totalPointsCredited = 0;
+      let totalUsdEarned = 0;
+      const userSummaryMap: Record<string, { id: string; email: string; points: number; completes: number }> = {};
+
+      const resolveCleanIdentity = (extUserId: string): { email: string; username: string; displayName: string } => {
+        const stripped = extUserId.replace(/^rr_(cpx_)?/i, '');
+        
+        // If it looks like a hex UUID, it's likely a direct ID
+        const isHexUuid = /^[0-9a-f]{8,32}$/i.test(stripped);
+        if (isHexUuid) {
+          const handle = stripped.slice(0, 12);
+          return { email: `${handle}@rewardriver.online`, username: stripped, displayName: handle };
+        }
+
+        const gmailMatch = stripped.match(/^([a-z0-9._-]+?)gm(?:a(?:i(?:l(?:c(?:o(?:m)?)?)?)?)?)?$/i);
+        if (gmailMatch && gmailMatch[1]) {
+          const handle = gmailMatch[1].toLowerCase();
+          return { email: `${handle}@gmail.com`, username: handle, displayName: handle };
+        }
+        const handle = stripped.toLowerCase();
         return { email: `${handle}@gmail.com`, username: handle, displayName: handle };
-      }
-      const handle = stripped.toLowerCase();
-      return { email: `${handle}@gmail.com`, username: handle, displayName: handle };
-    };
-
-    for (const item of completes) {
-      const txId = String(item.trans_id || '').trim();
-      if (!txId) continue;
-
-      const txLower = txId.toLowerCase();
-      const wasAlreadyInLedger = existingTxIds.has(txLower) || existingTxIds.has(`cpx_${txLower}`);
-
-      // Match or identify recipient user
-      const extUserId = String(item.external_user_id || '').trim();
-      const cleanIdentity = resolveCleanIdentity(extUserId);
-      let user =
-        dbStore.getUserByExternalId(extUserId) ||
-        dbStore.getUserByUsernameOrEmail(cleanIdentity.email) ||
-        dbStore.getUserByUsernameOrEmail(cleanIdentity.username);
-
-      // If user not found, provision verified profile for this member
-      if (!user) {
-        user = await dbStore.createUser({
-          id: `usr_${crypto.randomUUID()}`,
-          username: cleanIdentity.username,
-          email: cleanIdentity.email,
-          passwordHash: '',
-          salt: '',
-          displayName: cleanIdentity.displayName,
-          emailVerified: true,
-          role: 'user',
-          externalOpaqueId: extUserId,
-          countryCode: item.country_code || 'US',
-          createdAt: item.datetime ? new Date(item.datetime).toISOString() : new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          provider: 'password'
-        });
-      } else if (user.email.endsWith('@rewardriver.online') || user.email !== cleanIdentity.email) {
-        user = (await dbStore.updateUser(user.id, {
-          email: cleanIdentity.email,
-          username: cleanIdentity.username,
-          displayName: cleanIdentity.displayName
-        })) || user;
-      }
-
-      // Apply 50% Margin Plan:
-      // - CPX Currency Factor: 5,000 Points = $1.00 Gross Publisher Revenue
-      // - User receives 100% of face-value survey points (e.g. 2,000 Points)
-      // - User Redemption Rate: 10,000 Points = $1.00 USD (so 2,000 Points = $0.20 USD = 20 cents)
-      // - Admin Profit Margin: 50% of CPX Gross Revenue (e.g. $0.20 USD = 20 cents)
-      const publisherUsd = Number(item.verdienst_publisher) || 0;
-      const grossCents = Math.max(1, Math.round(publisherUsd * 100));
-      const rawUserLocal = Number(item.verdienst_user_local_money);
-      const expectedPointsAtFactor = Math.max(50, Math.round(publisherUsd * pointsPerUsdt));
-      const points =
-        !isNaN(rawUserLocal) && rawUserLocal > 0 && rawUserLocal <= grossCents * 55
-          ? Math.round(rawUserLocal)
-          : expectedPointsAtFactor;
-      const userAmountCents = Math.max(1, Math.round(points / 100));
-      const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-
-      const entryId = `le_cpx_${txId}`;
-      const createdAtDate = item.datetime ? new Date(item.datetime).toISOString() : new Date().toISOString();
-
-      const newEntry: LedgerEntry = {
-        id: entryId,
-        userId: user.id,
-        amountCents: userAmountCents,
-        points,
-        grossCents,
-        adminProfitCents,
-        appliedSharePercent: 50,
-        entryType: 'credit',
-        status: 'confirmed',
-        providerTxId: txId,
-        cpxOfferId: item.id || txId,
-        description: `CPX Research Survey #${txId} (${item.country_code || 'US'} - ${item.loi_secounds ? Math.round(item.loi_secounds / 60) + ' min' : 'Completed'} • +${points.toLocaleString('en-US')} Pts)`,
-        createdAt: createdAtDate
       };
 
-      const upsertRes = await dbStore.upsertLedgerEntry(newEntry);
-      if (upsertRes.entry) {
-        if (!wasAlreadyInLedger) {
+      for (const item of (Array.isArray(completes) ? completes : [])) {
+        const txId = String(item.trans_id || '').trim();
+        if (!txId) continue;
+
+        const txLower = txId.toLowerCase();
+        const wasAlreadyInLedger = existingTxIds.has(txLower) || existingTxIds.has(`cpx_${txLower}`);
+
+        // Match or identify recipient user
+        const extUserId = String(item.external_user_id || '').trim();
+        const cleanIdentity = resolveCleanIdentity(extUserId);
+        
+        // UPGRADED LOOKUP: Try exact external ID, then stripped, then clean UUID
+        let user =
+          dbStore.getUserByExternalId(extUserId) ||
+          dbStore.getUserByExternalId(extUserId.replace(/^rr_cpx_/i, '')) ||
+          dbStore.getUserByUsernameOrEmail(cleanIdentity.email) ||
+          dbStore.getUserByUsernameOrEmail(cleanIdentity.username);
+
+        // If user not found, provision verified profile for this member
+        if (!user) {
+          console.log(`[CPX Sync] Provisioning new user for unknown CPX ID: ${extUserId}`);
+          user = await dbStore.createUser({
+            id: `usr_${crypto.randomUUID()}`,
+            username: cleanIdentity.username,
+            email: cleanIdentity.email,
+            passwordHash: '',
+            salt: '',
+            displayName: cleanIdentity.displayName,
+            emailVerified: true,
+            role: 'user',
+            externalOpaqueId: extUserId,
+            countryCode: item.country_code || 'US',
+            createdAt: item.datetime ? new Date(item.datetime).toISOString() : new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            provider: 'password'
+          });
+        } else if (user.email.endsWith('@rewardriver.online') && !cleanIdentity.email.endsWith('@rewardriver.online')) {
+          user = (await dbStore.updateUser(user.id, {
+            email: cleanIdentity.email,
+            username: cleanIdentity.username,
+            displayName: cleanIdentity.displayName
+          })) || user;
+        }
+
+        if (wasAlreadyInLedger) {
+          alreadyProcessedCount++;
+          if (!userSummaryMap[user.id]) {
+            userSummaryMap[user.id] = { id: user.id, email: user.email, points: 0, completes: 0 };
+          }
+          userSummaryMap[user.id].completes += 1;
+          continue;
+        }
+
+        // Apply 50% Margin Plan:
+        const publisherUsd = Number(item.verdienst_publisher) || 0;
+        const grossCents = Math.max(1, Math.round(publisherUsd * 100));
+        const rawUserLocal = Number(item.verdienst_user_local_money);
+        const expectedPointsAtFactor = Math.max(50, Math.round(publisherUsd * pointsPerUsdt));
+        const points =
+          !isNaN(rawUserLocal) && rawUserLocal > 0 && rawUserLocal <= grossCents * 55
+            ? Math.round(rawUserLocal)
+            : expectedPointsAtFactor;
+        const userAmountCents = Math.max(1, Math.round(points / 100));
+        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+
+        const entryId = `le_cpx_${txId}`;
+        const createdAtDate = item.datetime ? new Date(item.datetime).toISOString() : new Date().toISOString();
+
+        const newEntry: LedgerEntry = {
+          id: entryId,
+          userId: user.id,
+          amountCents: userAmountCents,
+          points,
+          grossCents,
+          adminProfitCents,
+          appliedSharePercent: 50,
+          entryType: 'credit',
+          status: 'confirmed',
+          providerTxId: txId,
+          cpxOfferId: item.id || txId,
+          description: `CPX Research Survey #${txId} (${item.country_code || 'US'} - ${item.loi_secounds ? Math.round(item.loi_secounds / 60) + ' min' : 'Completed'} • +${points.toLocaleString('en-US')} Pts)`,
+          createdAt: createdAtDate
+        };
+
+        const upsertRes = await dbStore.upsertLedgerEntry(newEntry);
+        if (upsertRes.entry) {
           existingTxIds.add(txLower);
           syncedCount++;
-        } else {
-          alreadyProcessedCount++;
-        }
-        totalPointsCredited += points;
-        totalUsdEarned += publisherUsd;
+          totalPointsCredited += points;
+          totalUsdEarned += publisherUsd;
 
-        if (!userSummaryMap[user.id]) {
-          userSummaryMap[user.id] = {
-            id: user.id,
-            email: user.email,
-            points: 0,
-            completes: 0
-          };
+          if (!userSummaryMap[user.id]) {
+            userSummaryMap[user.id] = { id: user.id, email: user.email, points: 0, completes: 0 };
+          }
+          userSummaryMap[user.id].points += points;
+          userSummaryMap[user.id].completes += 1;
         }
-        userSummaryMap[user.id].points += points;
-        userSummaryMap[user.id].completes += 1;
       }
-    }
 
-    return {
-      syncedCount,
-      alreadyProcessedCount,
-      totalCompletes: completes.length,
-      totalPointsCredited,
-      totalUsdEarned: Number(totalUsdEarned.toFixed(2)),
-      creditedUsers: Object.values(userSummaryMap)
-    };
+      return {
+        syncedCount,
+        alreadyProcessedCount,
+        totalCompletes: (Array.isArray(completes) ? completes : []).length,
+        totalPointsCredited,
+        totalUsdEarned: Number(totalUsdEarned.toFixed(2)),
+        creditedUsers: Object.values(userSummaryMap)
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[CPX Sync Crash]:', msg);
+      return {
+        syncedCount: 0,
+        alreadyProcessedCount: 0,
+        totalCompletes: 0,
+        totalPointsCredited: 0,
+        totalUsdEarned: 0,
+        creditedUsers: [],
+        error: msg
+      };
+    }
   }
+
 }
 
 export const cpxResearchService = new CpxResearchService();
