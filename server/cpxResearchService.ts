@@ -303,8 +303,9 @@ export class CpxResearchService {
   }
 
   /**
-   * Helper to normalize date range within CPX limit (max 370 days per window).
+   * Helper to normalize date range within CPX limit (max 370 days).
    * Defaults end_time to +1 day UTC so CPX CET completions on the current day are always included.
+   * Defaults start_time to 14 days ago for active recent data.
    */
   normalizeDateRange(start?: string, end?: string): { startTime: string; endTime: string } {
     const now = new Date();
@@ -313,7 +314,7 @@ export class CpxResearchService {
     
     let startStr = start && /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : '';
     if (!startStr) {
-      const d = new Date(new Date(endStr).getTime() - 60 * 24 * 60 * 60 * 1000);
+      const d = new Date(new Date(endStr).getTime() - 14 * 24 * 60 * 60 * 1000);
       startStr = d.toISOString().slice(0, 10);
     }
 
@@ -339,88 +340,39 @@ export class CpxResearchService {
     groupBy?: 'day' | 'hour' | 'week' | 'month';
   }): Promise<CpxTimeStatisticsResponse> {
     try {
-      const now = new Date();
-      const endStr = params.endTime && /^\d{4}-\d{2}-\d{2}$/.test(params.endTime)
-        ? params.endTime
-        : new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      
-      let startStr = params.startTime && /^\d{4}-\d{2}-\d{2}$/.test(params.startTime)
-        ? params.startTime
-        : new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { startTime, endTime } = this.normalizeDateRange(params.startTime, params.endTime);
+      const url = new URL('https://publisher.cpx-research.com/index.php');
+      url.searchParams.set('page', 'api-statistics-time');
+      url.searchParams.set('start_time', startTime);
+      url.searchParams.set('end_time', endTime);
+      url.searchParams.set('api_key', this.apiKey);
+      if (params.appId) url.searchParams.set('app_id', params.appId);
+      if (params.countryCode) url.searchParams.set('country_code', params.countryCode);
+      if (params.groupBy) url.searchParams.set('group_by', params.groupBy || 'day');
 
-      const startDate = new Date(startStr);
-      const endDate = new Date(endStr);
-      const aggregatedResults: Record<string, any> = {};
-
-      let currentEnd = new Date(endDate);
-      while (currentEnd > startDate) {
-        let currentStart = new Date(currentEnd.getTime() - 300 * 24 * 60 * 60 * 1000);
-        if (currentStart < startDate) {
-          currentStart = new Date(startDate);
-        }
-
-        const sIso = currentStart.toISOString().slice(0, 10);
-        const eIso = currentEnd.toISOString().slice(0, 10);
-
-        const url = new URL('https://publisher.cpx-research.com/index.php');
-        url.searchParams.set('page', 'api-statistics-time');
-        url.searchParams.set('start_time', sIso);
-        url.searchParams.set('end_time', eIso);
-        url.searchParams.set('api_key', this.apiKey);
-        if (params.appId) url.searchParams.set('app_id', params.appId);
-        if (params.countryCode) url.searchParams.set('country_code', params.countryCode);
-        if (params.groupBy) url.searchParams.set('group_by', params.groupBy || 'day');
-
-        const res = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
-        if (res.ok) {
-          const rawText = await res.text();
-          try {
-            const json = JSON.parse(rawText);
-            if (json && json.success !== false) {
-              const resMap = json.results || (Array.isArray(json.data) ? Object.fromEntries(json.data.map((i: any) => [i.date, i])) : {});
-              for (const [dateKey, item] of Object.entries(resMap)) {
-                if (item && typeof item === 'object') {
-                  aggregatedResults[dateKey] = item;
-                }
-              }
-            }
-          } catch {
-            // ignore parse
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) {
+        return { success: false, error: `CPX Statistics API HTTP ${res.status}` };
+      }
+      const rawText = await res.text();
+      let json: any;
+      try {
+        json = JSON.parse(rawText);
+      } catch {
+        return { success: false, error: 'CPX Statistics API returned non-JSON response' };
+      }
+      if (json && Array.isArray(json.data) && !json.results) {
+        const resultsMap: Record<string, any> = {};
+        for (const item of json.data) {
+          if (item && item.date) {
+            resultsMap[item.date] = item;
           }
         }
-
-        currentEnd = new Date(currentStart.getTime() - 24 * 60 * 60 * 1000);
+        json.results = resultsMap;
       }
-
-      let totalClicks = 0;
-      let totalCompletes = 0;
-      let totalScreenouts = 0;
-      let totalEarningUsd = 0;
-
-      for (const item of Object.values(aggregatedResults)) {
-        totalClicks += Number(item.clicks) || 0;
-        totalCompletes += Number(item.completes) || 0;
-        totalScreenouts += Number(item.outs || item.screenouts) || 0;
-        totalEarningUsd += Number(item.earning_usd || item.revenue_total || item.revenue || item.earning) || 0;
-      }
-
-      return {
-        success: true,
-        totals: {
-          clicks: totalClicks,
-          active_users: Math.max(1, Math.round(totalClicks * 0.15)),
-          completes: totalCompletes,
-          reversed_completes: 0,
-          outs: totalScreenouts,
-          survey_ratings: 0,
-          revenue_completes: Number(totalEarningUsd.toFixed(2)),
-          revenue_reversed_completes: 0,
-          revenue_outs: 0,
-          revenue_survey_ratings: 0,
-          revenue_total: Number(totalEarningUsd.toFixed(2))
-        },
-        results: aggregatedResults
-      };
+      return json || { success: false, error: 'Empty statistics response' };
     } catch {
       return { success: false, error: 'Could not connect to CPX Statistics endpoint' };
     }
@@ -437,19 +389,11 @@ export class CpxResearchService {
     countryCode?: string;
   }): Promise<CpxCountrySale[]> {
     try {
-      const now = new Date();
-      const endStr = params.endTime && /^\d{4}-\d{2}-\d{2}$/.test(params.endTime)
-        ? params.endTime
-        : new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      
-      let startStr = params.startTime && /^\d{4}-\d{2}-\d{2}$/.test(params.startTime)
-        ? params.startTime
-        : new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
+      const { startTime, endTime } = this.normalizeDateRange(params.startTime, params.endTime);
       const url = new URL('https://publisher.cpx-research.com/index.php');
       url.searchParams.set('page', 'api-statistics-country-sales');
-      url.searchParams.set('start_time', startStr);
-      url.searchParams.set('end_time', endStr);
+      url.searchParams.set('start_time', startTime);
+      url.searchParams.set('end_time', endTime);
       url.searchParams.set('api_key', this.apiKey);
       if (params.appId) url.searchParams.set('app_id', params.appId);
       if (params.countryCode) url.searchParams.set('country_code', params.countryCode);
@@ -475,8 +419,12 @@ export class CpxResearchService {
    * Official CPX Statistics Endpoint 3: Get Completes List (max 20,000)
    * https://publisher.cpx-research.com/index.php?page=api-statistics-completes
    */
-  private async fetchSingleCompletesWindow(startTime: string, endTime: string): Promise<CpxCompleteRecord[]> {
+  async fetchCompletes(params?: {
+    startTime?: string;
+    endTime?: string;
+  }): Promise<CpxCompleteRecord[]> {
     try {
+      const { startTime, endTime } = this.normalizeDateRange(params?.startTime, params?.endTime);
       const url = new URL('https://publisher.cpx-research.com/index.php');
       url.searchParams.set('page', 'api-statistics-completes');
       url.searchParams.set('start_time', startTime);
@@ -495,54 +443,8 @@ export class CpxResearchService {
         return [];
       }
       if (!data || typeof data !== 'object') return [];
-      return Array.isArray(data) ? data : Object.values(data);
-    } catch {
-      return [];
-    }
-  }
-
-  async fetchCompletes(params?: {
-    startTime?: string;
-    endTime?: string;
-  }): Promise<CpxCompleteRecord[]> {
-    try {
-      const now = new Date();
-      const endStr = params?.endTime && /^\d{4}-\d{2}-\d{2}$/.test(params.endTime)
-        ? params.endTime
-        : new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-      let startStr = params?.startTime && /^\d{4}-\d{2}-\d{2}$/.test(params.startTime)
-        ? params.startTime
-        : new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-      const startDate = new Date(startStr);
-      const endDate = new Date(endStr);
-      const allRecords: CpxCompleteRecord[] = [];
-      const seenTxIds = new Set<string>();
-
-      let currentEnd = new Date(endDate);
-      while (currentEnd > startDate) {
-        let currentStart = new Date(currentEnd.getTime() - 300 * 24 * 60 * 60 * 1000);
-        if (currentStart < startDate) {
-          currentStart = new Date(startDate);
-        }
-
-        const sIso = currentStart.toISOString().slice(0, 10);
-        const eIso = currentEnd.toISOString().slice(0, 10);
-
-        const chunk = await this.fetchSingleCompletesWindow(sIso, eIso);
-        for (const rec of chunk) {
-          const txId = String(rec.trans_id || '').trim();
-          if (txId && !seenTxIds.has(txId)) {
-            seenTxIds.add(txId);
-            allRecords.push(rec);
-          }
-        }
-
-        currentEnd = new Date(currentStart.getTime() - 24 * 60 * 60 * 1000);
-      }
-
-      return allRecords.sort((a, b) => new Date(b.datetime || 0).getTime() - new Date(a.datetime || 0).getTime());
+      const list: CpxCompleteRecord[] = Array.isArray(data) ? data : Object.values(data);
+      return list.sort((a, b) => new Date(b.datetime || 0).getTime() - new Date(a.datetime || 0).getTime());
     } catch {
       return [];
     }

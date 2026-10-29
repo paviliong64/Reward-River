@@ -589,6 +589,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
     fetchUserAnalytics();
     fetchSystemHealth();
     fetchCpxStatistics();
+    handleSyncCpxCompletes();
+
+    const timer = setInterval(() => {
+      fetchAdminData();
+      fetchCpxStatistics();
+    }, 30000);
+
+    return () => clearInterval(timer);
   }, []);
 
   const handleReviewAction = async (id: string, action: string, notes?: string, txHash?: string) => {

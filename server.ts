@@ -2582,14 +2582,20 @@ async function startServer() {
     }
   }
 
-  // Real-time synchronization: sync CPX live completes into user profiles on start
-  cpxResearchService.syncCompletesToUserBalances({ startTime: '2025-01-01' }).then(res => {
-    if (res.syncedCount > 0) {
-      console.log(`[CPX Sync] Initial boot sync: credited ${res.syncedCount} real completes (${res.totalPointsCredited} points) to member profiles.`);
+  // Real-time background auto-synchronization every 2 minutes
+  const runAutoSync = async () => {
+    try {
+      const res = await cpxResearchService.syncCompletesToUserBalances();
+      if (res.syncedCount > 0) {
+        console.log(`[CPX Auto-Sync] Credited ${res.syncedCount} new completes (${res.totalPointsCredited} Pts) to member profiles.`);
+      }
+    } catch (err) {
+      console.warn('[CPX Auto-Sync Note]:', err);
     }
-  }).catch(err => {
-    console.warn('[CPX Sync] Initial boot sync note:', err);
-  });
+  };
+
+  runAutoSync();
+  setInterval(runAutoSync, 120000);
 
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
