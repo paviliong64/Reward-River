@@ -244,9 +244,9 @@ class DatabaseStore {
           let display = String(u.displayName || u.username || email.split('@')[0]).trim();
 
           const rawExt = String(u.externalOpaqueId || '');
-          const isEmailText = rawExt.includes('@') || rawExt.includes('gmail') || rawExt.includes('gma') || rawExt.includes('com') || rawExt.length < 10;
+          const isEmailText = rawExt.includes('@') || rawExt.includes('gmail.com') || rawExt.length < 6;
           const cleanUuid = String(u.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-          const cleanExtId = (!isEmailText && rawExt.startsWith('rr_cpx_'))
+          const cleanExtId = (!isEmailText && (rawExt.startsWith('rr_cpx_') || rawExt.length >= 10))
             ? rawExt
             : `rr_cpx_${cleanUuid || crypto.randomBytes(12).toString('hex')}`;
 
@@ -429,8 +429,8 @@ class DatabaseStore {
           // Strictly force external_opaque_id to be a clean UUID-derived hex without email handles
           const cleanUuid = String(row.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
           const rawExt = String(row.external_opaque_id || '');
-          const isEmailText = rawExt.includes('@') || rawExt.includes('gmail') || rawExt.includes('gma') || rawExt.includes('com') || rawExt.length < 10;
-          const cleanExtId = (!isEmailText && rawExt.startsWith('rr_cpx_'))
+          const isEmailText = rawExt.includes('@') || rawExt.includes('gmail.com') || rawExt.length < 6;
+          const cleanExtId = (!isEmailText && (rawExt.startsWith('rr_cpx_') || rawExt.length >= 10))
             ? rawExt
             : `rr_cpx_${cleanUuid || crypto.randomBytes(12).toString('hex')}`;
 
