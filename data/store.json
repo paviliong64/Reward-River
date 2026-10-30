@@ -406,14 +406,14 @@
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "791b55b2f9314fbd69e4c0807d5fa0777e427e86fb8e6809024fbc93213201a30a99426f15e92bd3909b5817b046e356004e4b8254934156b9f5531ed82958cd",
-      "salt": "411e9391afe499f004f72555f58e5a7f",
+      "passwordHash": "83f81caab9c354b88b3a2aaeeb05773bda8921c69dfee9d6fb7936ce07845eb1d547eb9af526d7cb533f99856fdd22077efd12e604c1e58f94b032bf4d65bd50",
+      "salt": "54e9e8e8a8932232c05e493d6d2ac52f",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-30T14:30:01.133Z",
+      "updatedAt": "2026-10-30T14:38:38.927Z",
       "countryCode": "PK",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -801,7 +801,7 @@
       "salt": "salt",
       "displayName": "mohsin",
       "emailVerified": true,
-      "role": "manager",
+      "role": "user",
       "externalOpaqueId": "rr_cpx_usrb79985df6cb947b683708",
       "createdAt": "2026-10-30T14:27:29.817Z",
       "updatedAt": "2026-10-30T14:27:29.818Z",
@@ -884,11 +884,12 @@
       "salt": "salt",
       "displayName": "Mohsin 1793370466883",
       "emailVerified": true,
-      "role": "manager",
+      "role": "user",
       "externalOpaqueId": "rr_cpx_mohsin_1793370466883",
       "createdAt": "2026-10-30T14:27:46.883Z",
       "updatedAt": "2026-10-30T14:27:46.883Z",
-      "storedPoints": 0
+      "storedPoints": 0,
+      "countryCode": "US"
     },
     {
       "id": "usr_member_1793370466883",
@@ -907,16 +908,18 @@
     },
     {
       "id": "usr_mgr_test_1793370775810",
-      "username": "Manager_1793370775810",
+      "username": "Manager 1793370775810",
       "email": "mgr_1793370775810@rewardriver.online",
       "passwordHash": "hash",
       "salt": "salt",
       "displayName": "Manager 1793370775810",
       "emailVerified": true,
-      "role": "manager",
+      "role": "user",
       "externalOpaqueId": "rr_cpx_mgr_1793370775810",
       "createdAt": "2026-10-30T14:32:55.810Z",
-      "updatedAt": "2026-10-30T14:32:55.810Z"
+      "updatedAt": "2026-10-30T14:32:55.810Z",
+      "storedPoints": 0,
+      "countryCode": "US"
     }
   ],
   "tasks": [
@@ -4697,218 +4700,21 @@
       "details": "{\"team\":{\"id\":\"team_7534642f-5644-4277-b3ab-675c4aa43ac3\",\"name\":\"Renamed By Admin Team\",\"managerId\":\"usr_mgr_test_1793370775810\",\"teamCode\":\"J44D3K\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:32:56.190Z\"},\"removedMembersCount\":0}",
       "id": "log_90001828-0df5-4a04-9d2b-3c7d531b32b2",
       "createdAt": "2026-10-30T14:32:56.940Z"
+    },
+    {
+      "id": "log_eb3ab709-889a-42a4-83b9-162e58d3e353",
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "DELETE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_55aa70ab-d048-4eb6-a633-ca43aeae9f03",
+      "details": "{\"team\":{\"id\":\"team_55aa70ab-d048-4eb6-a633-ca43aeae9f03\",\"name\":\"Special Alpha Force\",\"managerId\":\"usr_4494469c-a777-4bb1-ab21-44c718a31ead\",\"teamCode\":\"VD9E8C\",\"isActive\":true,\"createdAt\":\"2026-10-30T13:26:09.908Z\"},\"removedMembersCount\":0}",
+      "ipAddress": "39.58.139.238",
+      "createdAt": "2026-10-30T14:37:49.297+00:00"
     }
   ],
-  "teams": [
-    {
-      "id": "team_55aa70ab-d048-4eb6-a633-ca43aeae9f03",
-      "name": "Special Alpha Force",
-      "managerId": "usr_4494469c-a777-4bb1-ab21-44c718a31ead",
-      "teamCode": "VD9E8C",
-      "isActive": true,
-      "createdAt": "2026-10-30T13:26:09.908Z"
-    },
-    {
-      "id": "team_cfe1bf93-2ba3-4fb5-9acf-829736d852ae",
-      "name": "Alpha Mohsin Team",
-      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
-      "teamCode": "VDJNS8",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:04:18.460Z"
-    },
-    {
-      "id": "team_8e2fda5a-6014-4e02-9e99-4f303833fb92",
-      "name": "Tariq Primary Force",
-      "managerId": "usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62",
-      "teamCode": "VSB8D3",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:11:36.428Z"
-    },
-    {
-      "id": "team_c6287d31-114c-4831-ab29-0f84e802a143",
-      "name": "Tariq Primary Force",
-      "managerId": "usr_2367a112-3e73-444f-8884-a85d42402b23",
-      "teamCode": "ZVT3K3",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:12:23.349Z"
-    },
-    {
-      "id": "team_9c4d17d6-64d0-42bf-9879-5060a9dca85d",
-      "name": "Tariq Primary Force",
-      "managerId": "usr_41df1a68-e5e7-442a-a559-6beabf3f4b49",
-      "teamCode": "R825TC",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:12:50.187Z"
-    },
-    {
-      "id": "team_ab367104-be22-4407-89d8-32601aa0ff05",
-      "name": "Tariq Primary Force",
-      "managerId": "usr_2ee38f8d-022d-455a-b251-665fb48ed70c",
-      "teamCode": "E3A2RE",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:13:32.093Z"
-    },
-    {
-      "id": "team_ee68ea6e-2b49-44ef-bce2-fed2ceca8e90",
-      "name": "Primary",
-      "managerId": "usr_f5ec14c4-985f-4926-9479-bce37fc8374f",
-      "teamCode": "MN6BYX",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:13:50.424Z"
-    },
-    {
-      "id": "team_f17b3da1-0431-44d7-b1f9-068ccc6c9bbd",
-      "name": "Tariq Primary Force",
-      "managerId": "usr_b2f612f6-5e25-4362-b026-cc56a4c169a4",
-      "teamCode": "ENMH2V",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:14:42.352Z"
-    },
-    {
-      "id": "team_a44067af-f312-42e5-8e9c-7cc37ddedc24",
-      "name": "Primary",
-      "managerId": "usr_5214b4eb-1613-43db-ba99-77849248c0f5",
-      "teamCode": "FYWAZK",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:14:58.260Z"
-    },
-    {
-      "id": "team_55962109-8ea8-412b-9fce-b3c8600ec1d0",
-      "name": "Primary",
-      "managerId": "usr_869417a6-0d6b-42ff-bfb6-40894ad32447",
-      "teamCode": "4V6WPS",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:15:52.698Z"
-    },
-    {
-      "id": "team_eb664593-359e-4994-99aa-8f8d4267e2b9",
-      "name": "Primary",
-      "managerId": "usr_74d4af29-0ff1-4127-99e6-ef040dcc567b",
-      "teamCode": "L26AZJ",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:16:16.218Z"
-    },
-    {
-      "id": "team_72257d00-4406-4413-821c-93c80892b668",
-      "name": "Primary",
-      "managerId": "usr_5d1aa15e-83de-4379-887c-3b3e54ed2875",
-      "teamCode": "JCTUHH",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:17:15.123Z"
-    },
-    {
-      "id": "team_5a2f860c-1f86-4ea3-a924-eb24a5168660",
-      "name": "Primary",
-      "managerId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
-      "teamCode": "ZS3E7E",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:17:50.276Z"
-    },
-    {
-      "id": "team_dafdacd9-6535-45b6-a5e1-eb840f62dd21",
-      "name": "Secondary Team",
-      "managerId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
-      "teamCode": "93X4XL",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:17:50.888Z"
-    },
-    {
-      "id": "team_b46dc75e-c874-4fce-a090-7e14ac8460b8",
-      "name": "Tariq Primary Force",
-      "managerId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
-      "teamCode": "GANR6B",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:18:08.890Z"
-    },
-    {
-      "id": "team_af608845-9631-480b-861e-5b6da9d97129",
-      "name": "Tariq Secondary Squad",
-      "managerId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
-      "teamCode": "6TP9X8",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:18:09.510Z"
-    },
-    {
-      "id": "team_c0feae0e-b039-41ed-a0ac-6a7131b4a1ec",
-      "name": "Tariq Primary Force",
-      "managerId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
-      "teamCode": "ZM8NUT",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:19:20.728Z"
-    },
-    {
-      "id": "team_bf0c83ae-3db0-4363-8ba5-3a70181ee67f",
-      "name": "Tariq Secondary Squad",
-      "managerId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
-      "teamCode": "LS9N6E",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:19:21.386Z"
-    },
-    {
-      "id": "team_628f52e5-fd91-4169-8359-d19103d07b23",
-      "name": "Mohsin Alpha Team",
-      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
-      "teamCode": "M87T8L",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:26:36.543Z"
-    },
-    {
-      "id": "team_4962d143-7cdd-45c4-9e95-ec22bfd54b9b",
-      "name": "Mohsin Beta Team",
-      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
-      "teamCode": "FYHZPF",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:26:37.019Z"
-    },
-    {
-      "id": "team_daa835ad-0637-4a63-8d42-f0d777e65621",
-      "name": "Mohsin Alpha Team",
-      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
-      "teamCode": "E8NDP3",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:27:30.280Z"
-    },
-    {
-      "id": "team_63c5c3e2-9f90-4dfa-b673-b95ce7ab2a02",
-      "name": "Mohsin Beta Team",
-      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
-      "teamCode": "EHW5Z4",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:27:30.836Z"
-    },
-    {
-      "id": "team_5a45cd8b-0eb1-4824-aa54-f722adf38ac8",
-      "name": "Mohsin Alpha Team 1793370466883",
-      "managerId": "usr_mohsin_1793370466883",
-      "teamCode": "HHJV6B",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:27:47.288Z"
-    },
-    {
-      "id": "team_0bd09e57-7fac-41f3-807f-9ba8a73e4c5e",
-      "name": "Mohsin Beta Team 1793370466883",
-      "managerId": "usr_mohsin_1793370466883",
-      "teamCode": "FD5TXA",
-      "isActive": true,
-      "createdAt": "2026-10-30T14:27:47.722Z"
-    }
-  ],
-  "teamMembers": [
-    {
-      "id": "tm_cfdbd300-90b3-4d11-be76-a7611cf11ab3",
-      "teamId": "team_628f52e5-fd91-4169-8359-d19103d07b23",
-      "userId": "usr_member_mohsin1",
-      "joinedAt": "2026-10-30T14:26:37.679Z",
-      "consentAcceptedAt": "2026-10-30T14:26:37.679Z"
-    },
-    {
-      "id": "tm_8530d786-ae30-4cfe-9452-8b4bf91d2e03",
-      "teamId": "team_5a45cd8b-0eb1-4824-aa54-f722adf38ac8",
-      "userId": "usr_member_1793370466883",
-      "joinedAt": "2026-10-30T14:27:48.397Z",
-      "consentAcceptedAt": "2026-10-30T14:27:48.397Z"
-    }
-  ],
+  "teams": [],
+  "teamMembers": [],
   "callbackLogs": [],
   "impersonationSessions": []
 }
