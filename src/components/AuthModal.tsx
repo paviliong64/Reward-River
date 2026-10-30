@@ -259,7 +259,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           password: targetPassword,
           teamCode: teamLookup.found ? teamCode.trim().toUpperCase() : '',
           teamConsentAccepted,
-          turnstileToken
+          turnstileToken,
+          'cf-turnstile-response': turnstileToken
         })
       });
 
@@ -269,12 +270,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (data && typeof data.error === 'string') {
           setError(data.error);
           setLoading(false);
+          turnstileRef.current?.reset();
           return;
         }
         const fallback = buildFallbackAuthSession(targetEmail, derivedUsername, targetPassword);
         if ('error' in fallback) {
           setError(fallback.error);
           setLoading(false);
+          turnstileRef.current?.reset();
           return;
         }
         onSuccess(fallback.token, fallback.user, fallback.balances);
@@ -289,6 +292,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const fallback = buildFallbackAuthSession(targetEmail, derivedUsername, targetPassword);
         if ('error' in fallback) {
           setError(fallback.error);
+          turnstileRef.current?.reset();
           return;
         }
         onSuccess(fallback.token, fallback.user, fallback.balances);
@@ -298,6 +302,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const fallback = buildFallbackAuthSession(targetEmail, derivedUsername, targetPassword);
       if ('error' in fallback) {
         setError(fallback.error);
+        turnstileRef.current?.reset();
       } else {
         onSuccess(fallback.token, fallback.user, fallback.balances);
         onClose?.();
@@ -326,7 +331,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           identifier: identifierInput.trim(),
           email: identifierInput.trim(),
           password: passwordInput,
-          turnstileToken
+          turnstileToken,
+          'cf-turnstile-response': turnstileToken
         })
       });
 
@@ -336,12 +342,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (data && typeof data.error === 'string') {
           setError(data.error);
           setLoading(false);
+          turnstileRef.current?.reset();
           return;
         }
         const fallback = buildFallbackAuthSession(identifierInput, identifierInput, passwordInput);
         if ('error' in fallback) {
           setError(fallback.error);
           setLoading(false);
+          turnstileRef.current?.reset();
           return;
         }
         onSuccess(fallback.token, fallback.user, fallback.balances);
@@ -356,6 +364,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const fallback = buildFallbackAuthSession(identifierInput, identifierInput, passwordInput);
         if ('error' in fallback) {
           setError(fallback.error);
+          turnstileRef.current?.reset();
           return;
         }
         onSuccess(fallback.token, fallback.user, fallback.balances);
@@ -365,6 +374,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const fallback = buildFallbackAuthSession(identifierInput, identifierInput, passwordInput);
       if ('error' in fallback) {
         setError(fallback.error);
+        turnstileRef.current?.reset();
       } else {
         onSuccess(fallback.token, fallback.user, fallback.balances);
         onClose?.();

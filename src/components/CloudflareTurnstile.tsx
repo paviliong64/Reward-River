@@ -47,7 +47,7 @@ const DEFAULT_SITE_KEY =
   (typeof import.meta !== 'undefined' &&
     import.meta.env &&
     import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY) ||
-  '1x00000000000000000000AA';
+  '0x4AAAAAAFsriP1bMbtMNkub';
 
 export const CloudflareTurnstile = forwardRef<CloudflareTurnstileRef, CloudflareTurnstileProps>(
   ({ siteKey, onSuccess, onError, onExpire, theme = 'auto', action = 'login', className = '' }, ref) => {
