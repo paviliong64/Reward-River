@@ -673,9 +673,12 @@ class DatabaseStore {
           const isSoleAdmin =
             row.id === 'usr_admin_rewardriver' || rawEmailLower === 'admin@reward-river';
           const rowRole = String(row.role || '').toLowerCase();
+          const ownsTeams = (this.data.teams || []).some(
+            t => t.managerId === String(row.id) || t.managerId === rawEmailLower
+          );
           const effectiveRole: 'user' | 'manager' | 'admin' = isSoleAdmin
             ? 'admin'
-            : rowRole === 'manager'
+            : rowRole === 'manager' || ownsTeams
             ? 'manager'
             : 'user';
 
@@ -733,6 +736,12 @@ class DatabaseStore {
               for (const w of this.data.withdrawalRequests) {
                 if (w.userId === oldId) w.userId = canonicalId;
               }
+              for (const t of this.data.teams || []) {
+                if (t.managerId === oldId) t.managerId = canonicalId;
+              }
+              for (const tm of this.data.teamMembers || []) {
+                if (tm.userId === oldId) tm.userId = canonicalId;
+              }
               changed = true;
             }
             if (current.externalOpaqueId !== cleanExtId && rawExt.startsWith('rr_cpx_')) {
@@ -749,10 +758,13 @@ class DatabaseStore {
               this.data.users[existingIdx].username = display;
               changed = true;
             }
-            // Preserve local 'manager' role if Supabase users table hasn't synced it yet
+            // Preserve local 'manager' role if user owns teams or has manager role
+            const userOwnsTeamsNow = (this.data.teams || []).some(
+              t => t.managerId === current.id || t.managerId === canonicalId || t.managerId === current.email
+            );
             const desiredRole: 'user' | 'manager' | 'admin' = isSoleAdmin
               ? 'admin'
-              : effectiveRole === 'manager' || current.role === 'manager'
+              : effectiveRole === 'manager' || current.role === 'manager' || userOwnsTeamsNow
               ? 'manager'
               : 'user';
             if (current.role !== desiredRole) {
@@ -1002,6 +1014,127 @@ class DatabaseStore {
               createdAt: row.created_at || new Date().toISOString()
             });
             changed = true;
+          }
+        }
+      }
+
+      // 7. Sync Teams from & to Supabase
+      const { data: sbTeams, error: sbTeamsErr } = await sb.from('teams').select('*');
+      if (!sbTeamsErr && Array.isArray(sbTeams)) {
+        for (const row of sbTeams) {
+          if (!row || !row.id || !row.manager_id) continue;
+          const existingIdx = (this.data.teams || []).findIndex(t => t.id === row.id);
+          const mapped: TeamRecord = {
+            id: String(row.id),
+            name: String(row.name || 'Team'),
+            managerId: String(row.manager_id),
+            teamCode: String(row.team_code || '').toUpperCase(),
+            isActive: row.is_active !== false,
+            createdAt: row.created_at || new Date().toISOString()
+          };
+          if (existingIdx === -1) {
+            if (!Array.isArray(this.data.teams)) this.data.teams = [];
+            this.data.teams.push(mapped);
+            changed = true;
+          } else {
+            const cur = this.data.teams[existingIdx];
+            if (cur.name !== mapped.name || cur.isActive !== mapped.isActive || cur.teamCode !== mapped.teamCode) {
+              this.data.teams[existingIdx] = mapped;
+              changed = true;
+            }
+          }
+        }
+
+        // Push local teams up to Supabase
+        for (const localTeam of this.data.teams || []) {
+          const inSb = sbTeams.some(r => r && r.id === localTeam.id);
+          if (!inSb) {
+            try {
+              await sb.from('teams').upsert({
+                id: localTeam.id,
+                name: localTeam.name,
+                manager_id: localTeam.managerId,
+                team_code: localTeam.teamCode,
+                is_active: localTeam.isActive,
+                created_at: localTeam.createdAt
+              });
+            } catch {
+              // optional
+            }
+          }
+        }
+      } else if (Array.isArray(this.data.teams) && this.data.teams.length > 0) {
+        for (const localTeam of this.data.teams) {
+          try {
+            await sb.from('teams').upsert({
+              id: localTeam.id,
+              name: localTeam.name,
+              manager_id: localTeam.managerId,
+              team_code: localTeam.teamCode,
+              is_active: localTeam.isActive,
+              created_at: localTeam.createdAt
+            });
+          } catch {
+            // optional
+          }
+        }
+      }
+
+      // 8. Sync Team Members from & to Supabase
+      const { data: sbMembers, error: sbMembersErr } = await sb.from('team_members').select('*');
+      if (!sbMembersErr && Array.isArray(sbMembers)) {
+        for (const row of sbMembers) {
+          if (!row || !row.id || !row.team_id || !row.user_id) continue;
+          const existingIdx = (this.data.teamMembers || []).findIndex(tm => tm.id === row.id);
+          const mapped: TeamMemberRecord = {
+            id: String(row.id),
+            teamId: String(row.team_id),
+            userId: String(row.user_id),
+            joinedAt: row.joined_at || new Date().toISOString(),
+            consentAcceptedAt: row.consent_accepted_at || new Date().toISOString()
+          };
+          if (existingIdx === -1) {
+            if (!Array.isArray(this.data.teamMembers)) this.data.teamMembers = [];
+            this.data.teamMembers.push(mapped);
+            changed = true;
+          } else {
+            const cur = this.data.teamMembers[existingIdx];
+            if (cur.teamId !== mapped.teamId || cur.userId !== mapped.userId) {
+              this.data.teamMembers[existingIdx] = mapped;
+              changed = true;
+            }
+          }
+        }
+
+        // Push local team members up to Supabase
+        for (const localMember of this.data.teamMembers || []) {
+          const inSb = sbMembers.some(r => r && r.id === localMember.id);
+          if (!inSb) {
+            try {
+              await sb.from('team_members').upsert({
+                id: localMember.id,
+                team_id: localMember.teamId,
+                user_id: localMember.userId,
+                joined_at: localMember.joinedAt,
+                consent_accepted_at: localMember.consentAcceptedAt
+              });
+            } catch {
+              // optional
+            }
+          }
+        }
+      } else if (Array.isArray(this.data.teamMembers) && this.data.teamMembers.length > 0) {
+        for (const localMember of this.data.teamMembers) {
+          try {
+            await sb.from('team_members').upsert({
+              id: localMember.id,
+              team_id: localMember.teamId,
+              user_id: localMember.userId,
+              joined_at: localMember.joinedAt,
+              consent_accepted_at: localMember.consentAcceptedAt
+            });
+          } catch {
+            // optional
           }
         }
       }
@@ -2614,7 +2747,10 @@ class DatabaseStore {
     sortBy?: 'points' | 'surveys' | 'joinedAt';
     nowIso?: string;
   }) {
-    const manager = this.getUserById(params.managerId);
+    const manager =
+      this.getUserById(params.managerId) ||
+      this.getUserByEmail(params.managerId) ||
+      this.getUserByUsernameOrEmail(params.managerId);
     if (!manager) {
       throw new Error('Manager account not found.');
     }

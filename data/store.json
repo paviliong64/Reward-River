@@ -406,14 +406,14 @@
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "a7e2011b1dd52fdec07f4ea82eeab0f06bd0d5df426de405492a6a713e73d4f7e0900b25f3326205827c4e5aaea1ef6ce77fa12570b89f574ed581d89c190bf3",
-      "salt": "8ffef869ad856bce56c505b0e3fb6bae",
+      "passwordHash": "03deac23bdc10cf1fa0920839f1536ba2e600af10053076bf2e1db2a7cbb7e5daa7cc6deb83b2a7c1468ae350ebc8f7a2d311e42272e58b597575ab87bbd8408",
+      "salt": "8c9c380eeb510ecd889256dacac07d3c",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-30T14:19:18.253Z",
+      "updatedAt": "2026-10-30T14:24:27.045Z",
       "countryCode": "PK",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -797,14 +797,14 @@
       "id": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
       "username": "mohsin",
       "email": "mohsin@rewardriver.online",
-      "passwordHash": "36b06423b4b609248ff79f3e7151601ae32b97a8048e3df9bb497bbf8e77716fe6ce079422b02a4c26d55ed959ae0841200a9a84f0c18e40976329e4ab613b35",
-      "salt": "a28b3534fe254c29e1066331c3c50a0c",
+      "passwordHash": "hash",
+      "salt": "salt",
       "displayName": "mohsin",
       "emailVerified": true,
       "role": "manager",
       "externalOpaqueId": "rr_cpx_usrb79985df6cb947b683708",
-      "createdAt": "2026-10-30T14:01:01.891+00:00",
-      "updatedAt": "2026-10-30T14:04:17.508Z",
+      "createdAt": "2026-10-30T14:27:29.817Z",
+      "updatedAt": "2026-10-30T14:27:29.818Z",
       "countryCode": "US",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -826,6 +826,84 @@
       "provider": "password",
       "hasPromptedPhone": true,
       "storedPoints": 0
+    },
+    {
+      "id": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "username": "member.tariq2",
+      "email": "member.tariq2@gmail.com",
+      "passwordHash": "d0cef86f148e8fe8e577cde65b714551ed1ac62ce18063c0cb9ce9b981e49e4303fe3aea55fbee9f90b3f2e156782a33104b6340a727cc9cda24c29f8bdc82b0",
+      "salt": "ad72d036a6e074b4d72257888d0fec52",
+      "displayName": "member.tariq2",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_usra8c87720c4fe45ff85828",
+      "createdAt": "2026-10-30T14:11:39.687+00:00",
+      "updatedAt": "2026-10-30T14:11:39.687+00:00",
+      "countryCode": "US",
+      "provider": "password",
+      "hasPromptedPhone": true,
+      "storedPoints": 0
+    },
+    {
+      "id": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "username": "member.tariq1",
+      "email": "member.tariq1@gmail.com",
+      "passwordHash": "0a867b946c72e224a20743060cd3dcf2fd04314667238a345650d92fa0e778b20692a2e36c73d469b2ba02ec3b4d205a5a1741271cc921972170ff71eccfa280",
+      "salt": "4574f279744eed65f07af916f4bb9d9e",
+      "displayName": "member.tariq1",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_usr10ae800415c64081a2fd2",
+      "createdAt": "2026-10-30T14:11:39.399+00:00",
+      "updatedAt": "2026-10-30T14:11:39.399+00:00",
+      "countryCode": "US",
+      "provider": "password",
+      "hasPromptedPhone": true,
+      "storedPoints": 0
+    },
+    {
+      "id": "usr_member_mohsin1",
+      "username": "TeamMember1",
+      "email": "member1@rewardriver.online",
+      "passwordHash": "hash",
+      "salt": "salt",
+      "displayName": "TeamMember1",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_member1",
+      "createdAt": "2026-10-30T14:27:31.274Z",
+      "updatedAt": "2026-10-30T14:27:31.274Z",
+      "storedPoints": 0,
+      "countryCode": "US"
+    },
+    {
+      "id": "usr_mohsin_1793370466883",
+      "username": "Mohsin_1793370466883",
+      "email": "mohsin_1793370466883@rewardriver.online",
+      "passwordHash": "hash",
+      "salt": "salt",
+      "displayName": "Mohsin 1793370466883",
+      "emailVerified": true,
+      "role": "manager",
+      "externalOpaqueId": "rr_cpx_mohsin_1793370466883",
+      "createdAt": "2026-10-30T14:27:46.883Z",
+      "updatedAt": "2026-10-30T14:27:46.883Z",
+      "storedPoints": 0
+    },
+    {
+      "id": "usr_member_1793370466883",
+      "username": "TeamMember_1793370466883",
+      "email": "member_1793370466883@rewardriver.online",
+      "passwordHash": "hash",
+      "salt": "salt",
+      "displayName": "TeamMember_1793370466883",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_member_1793370466883",
+      "createdAt": "2026-10-30T14:27:48.203Z",
+      "updatedAt": "2026-10-30T14:27:48.203Z",
+      "storedPoints": 0,
+      "countryCode": "US"
     }
   ],
   "tasks": [
@@ -4417,6 +4495,131 @@
       "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
       "id": "log_b4ceb17f-f5a4-4cf7-934b-88bde93b0cad",
       "createdAt": "2026-10-30T14:19:26.237Z"
+    },
+    {
+      "id": "log_a801c724-c66a-48b9-b162-b532d7db1b92",
+      "adminUserId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "adminEmail": "mohsin@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_039cd60d-3a29-439e-a7e9-71e747b44ea2",
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_039cd60d-3a29-439e-a7e9-71e747b44ea2\",\"name\":\"new\",\"managerId\":\"usr_b79985df-6cb9-47b6-8370-8858ba62c02d\",\"teamCode\":\"72HUKZ\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:22:50.992Z\"}}",
+      "ipAddress": "39.58.139.238",
+      "createdAt": "2026-10-30T14:22:50.992+00:00"
+    },
+    {
+      "adminUserId": "usr_mohsin_test",
+      "adminEmail": "mohsin@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_628f52e5-fd91-4169-8359-d19103d07b23",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_628f52e5-fd91-4169-8359-d19103d07b23",
+        "name": "Mohsin Alpha Team",
+        "managerId": "usr_mohsin_test",
+        "teamCode": "M87T8L",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:26:36.543Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_628f52e5-fd91-4169-8359-d19103d07b23\",\"name\":\"Mohsin Alpha Team\",\"managerId\":\"usr_mohsin_test\",\"teamCode\":\"M87T8L\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:26:36.543Z\"}}",
+      "id": "log_2d76cf61-a946-495c-bfb3-8b9581de128a",
+      "createdAt": "2026-10-30T14:26:36.544Z"
+    },
+    {
+      "adminUserId": "usr_mohsin_test",
+      "adminEmail": "mohsin@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_4962d143-7cdd-45c4-9e95-ec22bfd54b9b",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_4962d143-7cdd-45c4-9e95-ec22bfd54b9b",
+        "name": "Mohsin Beta Team",
+        "managerId": "usr_mohsin_test",
+        "teamCode": "FYHZPF",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:26:37.019Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_4962d143-7cdd-45c4-9e95-ec22bfd54b9b\",\"name\":\"Mohsin Beta Team\",\"managerId\":\"usr_mohsin_test\",\"teamCode\":\"FYHZPF\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:26:37.019Z\"}}",
+      "id": "log_793b0255-f901-45d8-9ff8-64d1df152dbe",
+      "createdAt": "2026-10-30T14:26:37.019Z"
+    },
+    {
+      "adminUserId": "usr_mohsin_test",
+      "adminEmail": "mohsin@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_daa835ad-0637-4a63-8d42-f0d777e65621",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_daa835ad-0637-4a63-8d42-f0d777e65621",
+        "name": "Mohsin Alpha Team",
+        "managerId": "usr_mohsin_test",
+        "teamCode": "E8NDP3",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:27:30.280Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_daa835ad-0637-4a63-8d42-f0d777e65621\",\"name\":\"Mohsin Alpha Team\",\"managerId\":\"usr_mohsin_test\",\"teamCode\":\"E8NDP3\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:27:30.280Z\"}}",
+      "id": "log_87344559-588d-4bbd-93b0-4e4ddca65111",
+      "createdAt": "2026-10-30T14:27:30.280Z"
+    },
+    {
+      "adminUserId": "usr_mohsin_test",
+      "adminEmail": "mohsin@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_63c5c3e2-9f90-4dfa-b673-b95ce7ab2a02",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_63c5c3e2-9f90-4dfa-b673-b95ce7ab2a02",
+        "name": "Mohsin Beta Team",
+        "managerId": "usr_mohsin_test",
+        "teamCode": "EHW5Z4",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:27:30.836Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_63c5c3e2-9f90-4dfa-b673-b95ce7ab2a02\",\"name\":\"Mohsin Beta Team\",\"managerId\":\"usr_mohsin_test\",\"teamCode\":\"EHW5Z4\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:27:30.836Z\"}}",
+      "id": "log_7c83e4b1-7549-409d-8677-9854c0e1e11f",
+      "createdAt": "2026-10-30T14:27:30.836Z"
+    },
+    {
+      "adminUserId": "usr_mohsin_1793370466883",
+      "adminEmail": "mohsin_1793370466883@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_5a45cd8b-0eb1-4824-aa54-f722adf38ac8",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_5a45cd8b-0eb1-4824-aa54-f722adf38ac8",
+        "name": "Mohsin Alpha Team 1793370466883",
+        "managerId": "usr_mohsin_1793370466883",
+        "teamCode": "HHJV6B",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:27:47.288Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_5a45cd8b-0eb1-4824-aa54-f722adf38ac8\",\"name\":\"Mohsin Alpha Team 1793370466883\",\"managerId\":\"usr_mohsin_1793370466883\",\"teamCode\":\"HHJV6B\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:27:47.288Z\"}}",
+      "id": "log_3da220f5-5330-4388-97a7-893c5a5092fd",
+      "createdAt": "2026-10-30T14:27:47.288Z"
+    },
+    {
+      "adminUserId": "usr_mohsin_1793370466883",
+      "adminEmail": "mohsin_1793370466883@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_0bd09e57-7fac-41f3-807f-9ba8a73e4c5e",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_0bd09e57-7fac-41f3-807f-9ba8a73e4c5e",
+        "name": "Mohsin Beta Team 1793370466883",
+        "managerId": "usr_mohsin_1793370466883",
+        "teamCode": "FD5TXA",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:27:47.722Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_0bd09e57-7fac-41f3-807f-9ba8a73e4c5e\",\"name\":\"Mohsin Beta Team 1793370466883\",\"managerId\":\"usr_mohsin_1793370466883\",\"teamCode\":\"FD5TXA\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:27:47.722Z\"}}",
+      "id": "log_8321f40b-53d0-4923-882d-7449037fbe19",
+      "createdAt": "2026-10-30T14:27:47.722Z"
     }
   ],
   "teams": [
@@ -4563,9 +4766,72 @@
       "teamCode": "LS9N6E",
       "isActive": true,
       "createdAt": "2026-10-30T14:19:21.386Z"
+    },
+    {
+      "id": "team_628f52e5-fd91-4169-8359-d19103d07b23",
+      "name": "Mohsin Alpha Team",
+      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "teamCode": "M87T8L",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:26:36.543Z"
+    },
+    {
+      "id": "team_4962d143-7cdd-45c4-9e95-ec22bfd54b9b",
+      "name": "Mohsin Beta Team",
+      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "teamCode": "FYHZPF",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:26:37.019Z"
+    },
+    {
+      "id": "team_daa835ad-0637-4a63-8d42-f0d777e65621",
+      "name": "Mohsin Alpha Team",
+      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "teamCode": "E8NDP3",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:27:30.280Z"
+    },
+    {
+      "id": "team_63c5c3e2-9f90-4dfa-b673-b95ce7ab2a02",
+      "name": "Mohsin Beta Team",
+      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "teamCode": "EHW5Z4",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:27:30.836Z"
+    },
+    {
+      "id": "team_5a45cd8b-0eb1-4824-aa54-f722adf38ac8",
+      "name": "Mohsin Alpha Team 1793370466883",
+      "managerId": "usr_mohsin_1793370466883",
+      "teamCode": "HHJV6B",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:27:47.288Z"
+    },
+    {
+      "id": "team_0bd09e57-7fac-41f3-807f-9ba8a73e4c5e",
+      "name": "Mohsin Beta Team 1793370466883",
+      "managerId": "usr_mohsin_1793370466883",
+      "teamCode": "FD5TXA",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:27:47.722Z"
     }
   ],
-  "teamMembers": [],
+  "teamMembers": [
+    {
+      "id": "tm_cfdbd300-90b3-4d11-be76-a7611cf11ab3",
+      "teamId": "team_628f52e5-fd91-4169-8359-d19103d07b23",
+      "userId": "usr_member_mohsin1",
+      "joinedAt": "2026-10-30T14:26:37.679Z",
+      "consentAcceptedAt": "2026-10-30T14:26:37.679Z"
+    },
+    {
+      "id": "tm_8530d786-ae30-4cfe-9452-8b4bf91d2e03",
+      "teamId": "team_5a45cd8b-0eb1-4824-aa54-f722adf38ac8",
+      "userId": "usr_member_1793370466883",
+      "joinedAt": "2026-10-30T14:27:48.397Z",
+      "consentAcceptedAt": "2026-10-30T14:27:48.397Z"
+    }
+  ],
   "callbackLogs": [],
   "impersonationSessions": []
 }
