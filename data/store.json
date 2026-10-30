@@ -12,8 +12,9 @@
       "externalOpaqueId": "rr_cpx_dda859054fed4229a12ee018",
       "countryCode": "US",
       "createdAt": "2026-10-29T18:23:04.000Z",
-      "updatedAt": "2026-10-29T17:24:45.770Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:26.314Z",
+      "provider": "password",
+      "storedPoints": 9150
     },
     {
       "id": "usr_e0ab715c-fd70-408e-8dee-1e20db57f7ca",
@@ -27,8 +28,9 @@
       "externalOpaqueId": "rr_cpx_97f0ac8d5bae4334b685f071",
       "countryCode": "US",
       "createdAt": "2026-10-29T18:19:05.000Z",
-      "updatedAt": "2026-10-29T17:24:46.641Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:27.122Z",
+      "provider": "password",
+      "storedPoints": 2950
     },
     {
       "id": "usr_be9fe85b-98a7-4fd8-af57-edfe0fdd454b",
@@ -42,8 +44,9 @@
       "externalOpaqueId": "rr_cpx_cfa1f7dd00644943a1cbdf12",
       "countryCode": "US",
       "createdAt": "2026-10-29T18:18:38.000Z",
-      "updatedAt": "2026-10-29T17:24:47.441Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:27.908Z",
+      "provider": "password",
+      "storedPoints": 3350
     },
     {
       "id": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
@@ -57,8 +60,9 @@
       "externalOpaqueId": "rr_cpx_0783480e86b74262b521d8b7",
       "countryCode": "US",
       "createdAt": "2026-10-29T17:44:13.000Z",
-      "updatedAt": "2026-10-29T17:24:49.009Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:28.673Z",
+      "provider": "password",
+      "storedPoints": 17800
     },
     {
       "id": "usr_89d623a1-7259-4448-957a-165c9694d882",
@@ -72,8 +76,9 @@
       "externalOpaqueId": "rr_cpx_2d177c52a7ce4a98a7f14aa4",
       "countryCode": "US",
       "createdAt": "2026-10-29T17:02:11.000Z",
-      "updatedAt": "2026-10-29T17:24:50.965Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:29.425Z",
+      "provider": "password",
+      "storedPoints": 4400
     },
     {
       "id": "usr_050d2fcd-e380-4eca-9ad9-1c5592c96d43",
@@ -87,8 +92,9 @@
       "externalOpaqueId": "rr_cpx_1520147c67d34e4f87385178",
       "countryCode": "US",
       "createdAt": "2026-10-29T15:13:14.000Z",
-      "updatedAt": "2026-10-29T17:24:52.947Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:30.279Z",
+      "provider": "password",
+      "storedPoints": 9600
     },
     {
       "id": "usr_aa528286-a91f-4aa8-abef-d35f521f3059",
@@ -102,8 +108,9 @@
       "externalOpaqueId": "rr_cpx_3c8b6a937f2d4528bf335465",
       "countryCode": "US",
       "createdAt": "2026-10-29T15:11:19.000Z",
-      "updatedAt": "2026-10-29T17:24:53.731Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:31.054Z",
+      "provider": "password",
+      "storedPoints": 8950
     },
     {
       "id": "usr_03d08108-e120-49c3-a303-0093921096ac",
@@ -117,8 +124,9 @@
       "externalOpaqueId": "rr_cpx_usr03d08108e12049c3a3030",
       "countryCode": "US",
       "createdAt": "2026-10-29T02:44:52.000Z",
-      "updatedAt": "2026-10-29T17:24:56.847Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:31.832Z",
+      "provider": "password",
+      "storedPoints": 18600
     },
     {
       "id": "usr_31e80846-a44f-4227-a35c-ab7cadf3cdb1",
@@ -132,8 +140,9 @@
       "externalOpaqueId": "rr_cpx_usr31e80846a44f4227a35ca",
       "countryCode": "US",
       "createdAt": "2026-10-29T02:23:32.000Z",
-      "updatedAt": "2026-10-29T17:24:58.430Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:32.617Z",
+      "provider": "password",
+      "storedPoints": 18800
     },
     {
       "id": "usr_7502d4c1-c458-462f-9cd6-d04218692b56",
@@ -147,8 +156,9 @@
       "externalOpaqueId": "rr_cpx_usr7502d4c1c458462f9cd6d",
       "countryCode": "US",
       "createdAt": "2026-10-29T02:08:22.000Z",
-      "updatedAt": "2026-10-29T17:24:59.599Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:33.360Z",
+      "provider": "password",
+      "storedPoints": 11200
     },
     {
       "id": "usr_6072e2e6-c397-455e-9105-57c0d58a43d0",
@@ -162,8 +172,9 @@
       "externalOpaqueId": "rr_cpx_usr6072e2e6c397455e91055",
       "countryCode": "US",
       "createdAt": "2026-10-29T01:29:19.000Z",
-      "updatedAt": "2026-10-29T17:25:01.967Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:34.104Z",
+      "provider": "password",
+      "storedPoints": 32600
     },
     {
       "id": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
@@ -177,8 +188,9 @@
       "externalOpaqueId": "rr_cpx_usrb63068b55d124d98a2288",
       "countryCode": "US",
       "createdAt": "2026-10-29T01:20:32.000Z",
-      "updatedAt": "2026-10-29T17:25:02.749Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:34.845Z",
+      "provider": "password",
+      "storedPoints": 24000
     },
     {
       "id": "usr_8a334fd4-69d2-4e7b-811a-c70d90ee3ed0",
@@ -192,8 +204,9 @@
       "externalOpaqueId": "rr_cpx_usr8a334fd469d24e7b811ac",
       "countryCode": "US",
       "createdAt": "2026-10-29T00:45:56.000Z",
-      "updatedAt": "2026-10-29T17:25:05.893Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:35.621Z",
+      "provider": "password",
+      "storedPoints": 19600
     },
     {
       "id": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
@@ -207,8 +220,9 @@
       "externalOpaqueId": "rr_cpx_usrb65197d862f24935918bc",
       "countryCode": "US",
       "createdAt": "2026-10-29T00:04:42.000Z",
-      "updatedAt": "2026-10-29T17:25:08.590Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:36.370Z",
+      "provider": "password",
+      "storedPoints": 30600
     },
     {
       "id": "usr_33e2075f-3c80-4b3a-bee1-c13b8740c551",
@@ -222,8 +236,9 @@
       "externalOpaqueId": "rr_cpx_alexanderward619gm",
       "countryCode": "US",
       "createdAt": "2026-10-29T00:00:45.000Z",
-      "updatedAt": "2026-10-29T17:25:09.347Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:37.114Z",
+      "provider": "password",
+      "storedPoints": 22200
     },
     {
       "id": "usr_b197e50d-b8e7-4991-b742-120bccde7605",
@@ -237,8 +252,9 @@
       "externalOpaqueId": "rr_cpx_usrb197e50db8e74991b7421",
       "countryCode": "US",
       "createdAt": "2026-10-28T23:08:01.000Z",
-      "updatedAt": "2026-10-29T17:25:13.504Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:37.857Z",
+      "provider": "password",
+      "storedPoints": 19600
     },
     {
       "id": "usr_a79d47d2-f661-4082-8f61-e03234a0974b",
@@ -252,8 +268,9 @@
       "externalOpaqueId": "rr_cpx_usra79d47d2f66140828f61e",
       "countryCode": "US",
       "createdAt": "2026-10-28T23:03:14.000Z",
-      "updatedAt": "2026-10-29T17:25:14.270Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:38.628Z",
+      "provider": "password",
+      "storedPoints": 15600
     },
     {
       "id": "usr_25ad4876-ddb4-40da-a6b0-19ff5f15a7e5",
@@ -267,8 +284,9 @@
       "externalOpaqueId": "rr_cpx_usr25ad4876ddb440daa6b01",
       "countryCode": "US",
       "createdAt": "2026-10-28T22:42:21.000Z",
-      "updatedAt": "2026-10-29T17:25:15.785Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:39.371Z",
+      "provider": "password",
+      "storedPoints": 18800
     },
     {
       "id": "usr_5b118faf-e7df-4639-a7b3-b017dc19c77f",
@@ -282,8 +300,9 @@
       "externalOpaqueId": "rr_cpx_usr5b118fafe7df4639a7b3b",
       "countryCode": "US",
       "createdAt": "2026-10-28T22:23:00.000Z",
-      "updatedAt": "2026-10-29T17:25:18.055Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:40.115Z",
+      "provider": "password",
+      "storedPoints": 19600
     },
     {
       "id": "usr_38545e60-8e41-466c-98a1-7efccac056eb",
@@ -297,8 +316,9 @@
       "externalOpaqueId": "rr_cpx_usr38545e608e41466c98a17",
       "countryCode": "US",
       "createdAt": "2026-10-28T21:40:43.000Z",
-      "updatedAt": "2026-10-29T17:25:20.718Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:40.890Z",
+      "provider": "password",
+      "storedPoints": 6600
     },
     {
       "id": "usr_1853941c-d146-473a-a931-ff5e72938aaa",
@@ -312,8 +332,9 @@
       "externalOpaqueId": "rr_cpx_usr1853941cd146473aa931f",
       "countryCode": "US",
       "createdAt": "2026-10-28T20:58:47.000Z",
-      "updatedAt": "2026-10-29T17:25:21.462Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:41.714Z",
+      "provider": "password",
+      "storedPoints": 6600
     },
     {
       "id": "usr_b3929210-6eb3-46e9-a840-8ee0e9b39cfa",
@@ -327,8 +348,9 @@
       "externalOpaqueId": "rr_cpx_usr_local_1793195189787",
       "countryCode": "US",
       "createdAt": "2026-10-28T15:27:08.000Z",
-      "updatedAt": "2026-10-29T17:25:22.210Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:42.470Z",
+      "provider": "password",
+      "storedPoints": 17800
     },
     {
       "id": "usr_b495bea7-0e71-49fc-95a0-193c9d8c7891",
@@ -342,8 +364,9 @@
       "externalOpaqueId": "rr_cpx_usr_local_1793190189092",
       "countryCode": "US",
       "createdAt": "2026-10-28T14:07:01.000Z",
-      "updatedAt": "2026-10-29T17:25:23.340Z",
-      "provider": "password"
+      "updatedAt": "2026-10-30T10:22:43.250Z",
+      "provider": "password",
+      "storedPoints": 8200
     },
     {
       "id": "028c2221-8d81-4893-b44c-6525f4936e10",
@@ -359,7 +382,8 @@
       "updatedAt": "2026-10-23T17:24:18.983+00:00",
       "countryCode": "US",
       "provider": "supabase",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 0
     },
     {
       "id": "50ef23d0-7b16-45b7-b866-ceede570e7e7",
@@ -375,23 +399,25 @@
       "updatedAt": "2026-10-29T14:23:07.41944+00:00",
       "countryCode": "US",
       "provider": "supabase",
-      "hasPromptedPhone": true
+      "hasPromptedPhone": true,
+      "storedPoints": 13000
     },
     {
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "cfa50122dd83d2c0280c55bd9699641f96904dfa3fa110d648ce039b0561009e0fc8e94ac9fb49dac0c2d1fb66001e9f3d953aa6d9473e12b09a8fc3797b6d4c",
-      "salt": "2a3ae41af0712a1c1eb3ce2202ffe604",
+      "passwordHash": "59b1a5666a7c3bf048704a8802d433d8d5ef3e7f425b7aa5c7aa1f1ba482792dad80d4543970e4e3abee96d8de029ad8add1dc4d969880499ad86b7267ce274c",
+      "salt": "05a73f982aa798f53793b41617f810bc",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-30T09:45:27.403Z",
+      "updatedAt": "2026-10-30T10:30:30.696Z",
       "countryCode": "PK",
       "provider": "password",
-      "hasPromptedPhone": true
+      "hasPromptedPhone": true,
+      "storedPoints": 0
     },
     {
       "id": "usr_4981ca6d-c0cb-4206-944f-8686825f27ab",
@@ -407,7 +433,8 @@
       "updatedAt": "2026-10-30T05:09:02.767+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 5500
     },
     {
       "id": "usr_0bbb0283-76ab-4dff-90b5-ac51720b6bdf",
@@ -423,7 +450,8 @@
       "updatedAt": "2026-10-29T21:25:11.224+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 950
     },
     {
       "id": "usr_d8c59fa7-a02e-45e5-aa5e-6ee63f43e905",
@@ -439,7 +467,8 @@
       "updatedAt": "2026-10-30T05:08:58.645+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 2350
     },
     {
       "id": "usr_dde64202-9168-4bf3-8c37-65df460c31f3",
@@ -455,7 +484,8 @@
       "updatedAt": "2026-10-29T19:38:38.921+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 11200
     },
     {
       "id": "usr_8280043d-5652-44b6-a719-0941e97b5c60",
@@ -471,7 +501,8 @@
       "updatedAt": "2026-10-29T22:09:12.33+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 7050
     },
     {
       "id": "usr_fd5a2d5c-565f-4cff-ab8d-0fd43ef71310",
@@ -487,7 +518,8 @@
       "updatedAt": "2026-10-30T05:08:55.107+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 8100
     },
     {
       "id": "usr_57e00d97-7b7d-47ef-8aa0-acf59088665c",
@@ -503,7 +535,8 @@
       "updatedAt": "2026-10-30T05:08:55.509+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 3900
     },
     {
       "id": "usr_cb3b4751-0a7f-4cac-ae28-7079993ccefa",
@@ -519,7 +552,8 @@
       "updatedAt": "2026-10-30T05:09:00.439+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 5850
     },
     {
       "id": "usr_692a0752-b483-45cf-bbf0-fc1a90926906",
@@ -535,7 +569,8 @@
       "updatedAt": "2026-10-30T05:09:00.852+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 3500
     },
     {
       "id": "usr_be936210-b688-42a6-b024-0b2d7127c2f7",
@@ -551,7 +586,8 @@
       "updatedAt": "2026-10-30T05:08:50.873+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 5500
     },
     {
       "id": "usr_8967416e-ee33-4c9c-9bd8-28564cec8db5",
@@ -567,7 +603,8 @@
       "updatedAt": "2026-10-30T05:08:57.162+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 2350
     },
     {
       "id": "usr_1f886111-fa00-44fe-884d-70c397897504",
@@ -583,7 +620,8 @@
       "updatedAt": "2026-10-30T05:08:51.293+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 6850
     },
     {
       "id": "usr_07402927-3514-4149-aea9-66c9fe44fdb2",
@@ -599,7 +637,8 @@
       "updatedAt": "2026-10-30T05:08:51.883+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 1650
     },
     {
       "id": "usr_03da85e9-a0e0-4acf-a3d1-78ec4cfbaaf0",
@@ -615,7 +654,8 @@
       "updatedAt": "2026-10-29T18:29:01.766+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 1650
     },
     {
       "id": "939355d1-9c14-463a-a811-083b737d6239",
@@ -631,7 +671,8 @@
       "updatedAt": "2026-10-30T05:25:43.163+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": true
+      "hasPromptedPhone": true,
+      "storedPoints": 0
     },
     {
       "id": "usr_cf51b8fe-beab-4bc8-a4bb-be18ec15e84f",
@@ -647,7 +688,8 @@
       "updatedAt": "2026-10-29T18:28:19.794+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 4100
     },
     {
       "id": "usr_25b43980-356f-401f-b301-e263a6f90815",
@@ -663,7 +705,8 @@
       "updatedAt": "2026-10-29T19:45:36.247+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 5250
     },
     {
       "id": "usr_a9ed23fc-ac5c-434c-b96b-e5c56548c5d5",
@@ -679,7 +722,8 @@
       "updatedAt": "2026-10-29T19:53:36.281+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 4200
     },
     {
       "id": "usr_ba872c0d-95d2-45a6-a6b2-7f899b3c4d5f",
@@ -695,7 +739,8 @@
       "updatedAt": "2026-10-29T20:26:36.397+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 4050
     },
     {
       "id": "usr_688ccd37-d8a3-4791-83c4-ba574d8ae2ef",
@@ -711,7 +756,8 @@
       "updatedAt": "2026-10-29T21:13:13.355+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 7700
     },
     {
       "id": "usr_8354a1c3-48c9-442c-b527-394271cbca6c",
@@ -727,7 +773,8 @@
       "updatedAt": "2026-10-29T21:01:32.255+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 3700
     },
     {
       "id": "usr_6694922a-eb35-4a17-a456-c2b122267d8f",
@@ -743,9 +790,79 @@
       "updatedAt": "2026-10-29T21:37:36.333+00:00",
       "countryCode": "US",
       "provider": "password",
-      "hasPromptedPhone": false
+      "hasPromptedPhone": false,
+      "storedPoints": 7700
     }
   ],
+  "tasks": [
+    {
+      "id": "task_cpx_survey",
+      "title": "CPX Research Verified Survey Completion",
+      "description": "Full market research survey verified via cryptographic S2S postback (status=1). Point value scales dynamically at 5,000 Pts per $1.00 gross (50% user share).",
+      "taskType": "survey",
+      "rewardPoints": 5000,
+      "isActive": true,
+      "dailyLimit": 50,
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "task_cpx_screenout",
+      "title": "CPX Research Survey Screenout Bonus",
+      "description": "Qualification attempt / screenout participation bonus verified via S2S postback (status=2 & payout > 0).",
+      "taskType": "survey",
+      "rewardPoints": 100,
+      "isActive": true,
+      "dailyLimit": 10,
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "task_aoy_ptc",
+      "title": "AdsOnYourPTC Sponsored Campaign Visit",
+      "description": "Verified PTC campaign timer completion via AdsOnYourPTC wall.",
+      "taskType": "ptc",
+      "rewardPoints": 150,
+      "isActive": true,
+      "dailyLimit": 25,
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "task_aoy_shortlink",
+      "title": "AdsOnYourPTC Verified Shortlink",
+      "description": "Verified shortlink traversal and anti-bot check completion.",
+      "taskType": "shortlink",
+      "rewardPoints": 250,
+      "isActive": true,
+      "dailyLimit": 20,
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "task_daily_checkin",
+      "title": "Daily Verified Earner Check-In",
+      "description": "Daily active earner verification reward.",
+      "taskType": "daily_checkin",
+      "rewardPoints": 100,
+      "isActive": true,
+      "dailyLimit": 1,
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    },
+    {
+      "id": "task_profile_verify",
+      "title": "Research Profile & Phone Verification",
+      "description": "One-time bonus for completing full demographic and WhatsApp/Phone verification.",
+      "taskType": "profile_verification",
+      "rewardPoints": 250,
+      "isActive": true,
+      "dailyLimit": 1,
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    }
+  ],
+  "taskCompletions": [],
   "rewardLedger": [
     {
       "id": "le_cpx_1001261797144",

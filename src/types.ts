@@ -19,9 +19,17 @@ export interface User {
 export interface AdminUserDetail extends User {
   balances: UserBalances;
   completedSurveysCount: number;
+  tasksPendingCount?: number;
+  tasksRejectedCount?: number;
   totalTransactionsCount: number;
+  cohort?: 'new' | 'old';
+  storedPoints?: number;
   recentEntries?: LedgerEntry[];
+  fullLedger?: LedgerEntry[];
+  withdrawals?: Withdrawal[];
   lastActiveAt?: string;
+  createdAtKarachi?: string;
+  lastActiveAtKarachi?: string;
 }
 
 export interface UserBalances {
@@ -91,16 +99,19 @@ export interface LedgerEntry {
   id: string;
   userId: string;
   providerTxId: string;
+  taskId?: string;
   amountCents: number;
   points?: number;
   grossCents?: number;
   adminProfitCents?: number;
   appliedSharePercent?: number;
   entryType: 'credit' | 'debit' | 'reversal';
-  status: 'pending' | 'confirmed' | 'reversed';
+  status: 'pending' | 'confirmed' | 'reversed' | 'rejected';
   createdAt: string;
+  processedAt?: string;
   description?: string;
   cpxOfferId?: string;
+  approvedBy?: string;
 }
 
 export interface SystemSettings {

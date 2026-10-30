@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { User, Withdrawal, SystemSettings, AdminUserDetail } from '../types';
 import { fetchLiveCpxSurveysBrowser } from '../utils/cpxClient';
 import {
@@ -188,6 +189,47 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [copiedRobots, setCopiedRobots] = useState(false);
   const [copiedSitemap, setCopiedSitemap] = useState(false);
 
+  // Real Database Dashboard Date Filters & Time-Series Grouping (Asia/Karachi)
+  const [dashRange, setDashRange] = useState<'today' | '7d' | '30d' | 'all' | 'custom'>('all');
+  const [dashGroupBy, setDashGroupBy] = useState<'day' | 'week' | 'month'>('day');
+  const [dashStartDate, setDashStartDate] = useState('');
+  const [dashEndDate, setDashEndDate] = useState('');
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Data Integrity Check & User Backfill state
+  const [integrityReport, setIntegrityReport] = useState<any | null>(null);
+  const [runningIntegrityCheck, setRunningIntegrityCheck] = useState(false);
+  const [backfillSummary, setBackfillSummary] = useState<any | null>(null);
+  const [runningBackfill, setRunningBackfill] = useState(false);
+
+  // Admin-Editable Task Definitions state
+  const [tasksCatalog, setTasksCatalog] = useState<any[]>([]);
+  const [savingTask, setSavingTask] = useState(false);
+  const [taskForm, setTaskForm] = useState<{
+    id: string;
+    title: string;
+    description: string;
+    taskType: string;
+    rewardPoints: number;
+    dailyLimit: number;
+    isActive: boolean;
+  }>({
+    id: '',
+    title: '',
+    description: '',
+    taskType: 'survey',
+    rewardPoints: 500,
+    dailyLimit: 10,
+    isActive: true
+  });
+
+  // Manual Point Adjustment state inside User Detail Modal
+  const [adjustPointsDelta, setAdjustPointsDelta] = useState<string>('');
+  const [adjustPointsReason, setAdjustPointsReason] = useState<string>('');
+  const [adjustPointsTaskId, setAdjustPointsTaskId] = useState<string>('admin_manual_adjustment');
+  const [adjustingPoints, setAdjustingPoints] = useState(false);
+  const [userDetailTab, setUserDetailTab] = useState<'ledger' | 'withdrawals' | 'adjust'>('ledger');
+
   const postbackWebhookUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/cpx/postback?status={status}&trans_id={trans_id}&ext_user_id={user_id}&amount_usd={amount_usd}&amount_local={amount_local}&offer_id={offer_id}&secure_hash={secure_hash}`;
   const aoyPostbackWebhookUrl = typeof window !== 'undefined' && window.location.hostname === 'rewardriver.online'
     ? 'https://rewardriver.online/wh/aoytasks'
@@ -347,19 +389,44 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
-  const fetchAdminData = async () => {
+  const fetchAdminData = async (
+    overrideRange = dashRange,
+    overrideGroupBy = dashGroupBy,
+    overrideStart = dashStartDate,
+    overrideEnd = dashEndDate
+  ) => {
     setLoading(true);
+    setFetchError(null);
     try {
       const token = localStorage.getItem('rr_auth_token');
+      const qs = new URLSearchParams({
+        range: overrideRange,
+        groupBy: overrideGroupBy
+      });
+      if (overrideRange === 'custom') {
+        if (overrideStart) qs.set('startDate', overrideStart);
+        if (overrideEnd) qs.set('endDate', overrideEnd);
+      }
+
       const [ovRes, wRes, sRes, lRes, uRes] = await Promise.all([
-        fetch('/api/admin/overview', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/admin/overview?${qs.toString()}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/admin/withdrawals', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/admin/settings', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/admin/audit-logs', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
-      if (ovRes.ok) setOverview(await ovRes.json());
+      if (!ovRes.ok) {
+        const errBody = await ovRes.json().catch(() => ({}));
+        throw new Error(errBody.error || `Failed to load dashboard overview (HTTP ${ovRes.status})`);
+      }
+
+      const ovData = await ovRes.json();
+      setOverview(ovData);
+      if (Array.isArray(ovData.tasksCatalog)) {
+        setTasksCatalog(ovData.tasksCatalog);
+      }
+
       if (wRes.ok) {
         const data = await wRes.json();
         setWithdrawals(data.withdrawals || []);
@@ -371,12 +438,179 @@ export const AdminView: React.FC<AdminViewProps> = ({
       }
       if (uRes.ok) {
         const data = await uRes.json();
-        setUsersList(data.users || []);
+        const freshUsers: AdminUserDetail[] = data.users || [];
+        setUsersList(freshUsers);
+        if (selectedUserDetail) {
+          const updatedSelected = freshUsers.find(u => u.id === selectedUserDetail.id);
+          if (updatedSelected) setSelectedUserDetail(updatedSelected);
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin data:', err);
+      setFetchError(err?.message || 'Database query error while loading Admin Portal statistics.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunDataIntegrityCheck = async (autoFix = false) => {
+    setRunningIntegrityCheck(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/data-integrity-check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ autoFix })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to run data integrity check.');
+      setIntegrityReport(data.report);
+      setActionMessage({
+        text: data.report.isHealthy
+          ? `Data Integrity Check Passed: Ledger sum (${data.report.sumOfLedgerAvailablePoints.toLocaleString('en-US')} Pts) matches stored user totals (${data.report.sumOfStoredUserPoints.toLocaleString('en-US')} Pts) across all ${data.report.totalUsersChecked} users!`
+          : `Data Integrity Report: ${data.report.mismatchedUsersCount} mismatch(es) detected${autoFix ? ` (${data.report.autoFixedCount} repaired)` : ''}.`,
+        type: data.report.isHealthy ? 'success' : 'error'
+      });
+      if (autoFix) {
+        await fetchAdminData();
+        await fetchUserAnalytics();
+        triggerRefresh();
+      }
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Integrity check failed.', type: 'error' });
+    } finally {
+      setRunningIntegrityCheck(false);
+    }
+  };
+
+  const handleRunUserBackfill = async () => {
+    setRunningBackfill(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/backfill-users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to run user backfill.');
+      setBackfillSummary(data.summary);
+      setActionMessage({
+        text: `Backfill & Reconciliation Complete: Scanned ${data.summary.totalUsersScanned} users • ${data.summary.legacyPointsBackfilledCount} historical ledger records backfilled • ${data.summary.userTotalsReconciledCount} balances reconciled • ${data.summary.supabaseSyncedCount} Supabase records synced.`,
+        type: 'success'
+      });
+      await fetchAdminData();
+      await fetchUserAnalytics();
+      triggerRefresh();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'User backfill failed.', type: 'error' });
+    } finally {
+      setRunningBackfill(false);
+    }
+  };
+
+  const handleSaveTaskDefinition = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingTask(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(taskForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save task definition.');
+      setTasksCatalog(data.tasks || []);
+      setTaskForm({
+        id: '',
+        title: '',
+        description: '',
+        taskType: 'survey',
+        rewardPoints: 500,
+        dailyLimit: 10,
+        isActive: true
+      });
+      setActionMessage({
+        text: `Saved task definition "${data.task?.title}" (${(data.task?.rewardPoints || 0).toLocaleString('en-US')} Pts) to database.`,
+        type: 'success'
+      });
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to save task definition.', type: 'error' });
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const handleDeleteTaskDefinition = async (taskId: string) => {
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete task.');
+      setTasksCatalog(data.tasks || []);
+      setActionMessage({ text: `Deleted task definition ${taskId}.`, type: 'success' });
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to delete task.', type: 'error' });
+    }
+  };
+
+  const handleAdjustUserPoints = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserDetail) return;
+    const delta = Math.round(Number(adjustPointsDelta));
+    if (!delta || isNaN(delta)) {
+      setActionMessage({ text: 'Please enter a non-zero points amount (e.g. 500 or -200).', type: 'error' });
+      return;
+    }
+    if (!adjustPointsReason || adjustPointsReason.trim().length < 3) {
+      setActionMessage({ text: 'Please provide a clear audit reason (min 3 characters).', type: 'error' });
+      return;
+    }
+    setAdjustingPoints(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(selectedUserDetail.id)}/adjust-points`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          pointsDelta: delta,
+          reason: adjustPointsReason.trim(),
+          taskId: adjustPointsTaskId || 'admin_manual_adjustment'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to adjust user points.');
+      setAdjustPointsDelta('');
+      setAdjustPointsReason('');
+      if (data.user) {
+        setSelectedUserDetail(data.user);
+      }
+      setActionMessage({
+        text: `Ledger updated for ${selectedUserDetail.email}: ${delta > 0 ? `+${delta.toLocaleString('en-US')}` : delta.toLocaleString('en-US')} Pts recorded in points_ledger & audit_log. New balance: ${(data.balances?.availablePoints || 0).toLocaleString('en-US')} Pts.`,
+        type: 'success'
+      });
+      await fetchAdminData();
+      await fetchUserAnalytics();
+      triggerRefresh();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to adjust points.', type: 'error' });
+    } finally {
+      setAdjustingPoints(false);
     }
   };
 
@@ -846,49 +1080,158 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           )}
 
+          {/* Database Query Error State Banner (Never falls back to fake numbers) */}
+          {fetchError && (
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Database Query Error: {fetchError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchAdminData()}
+                className="px-3 py-1 rounded-lg bg-rose-600 text-white font-bold hover:bg-rose-500 transition-colors shrink-0"
+              >
+                Retry Query
+              </button>
+            </div>
+          )}
+
           {/* =====================================================================
-              SECTION 1: DASHBOARD OVERVIEW (Matches Screenshot Layout 1:1)
+              SECTION 1: DASHBOARD OVERVIEW (100% Real Database Records • Asia/Karachi)
              ===================================================================== */}
           {activeSection === 'overview' && (
             <div className="space-y-6">
               {/* Top Heading */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
                       Overview Dashboard
                     </h1>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm ${
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-900 text-white font-mono">
+                      TZ: {overview?.timezone || 'Asia/Karachi'} (PKT)
+                    </span>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-bold shadow-xs ${
                       cpxStatsTime?.success !== false 
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                        : 'bg-red-50 text-red-700 border border-red-100'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                        : 'bg-red-50 text-red-700 border border-red-200'
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${cpxStatsTime?.success !== false ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                      {cpxStatsTime?.success !== false ? 'CPX Active' : 'CPX Error'}
+                      {cpxStatsTime?.success !== false ? 'Live DB & CPX Synced' : 'CPX Warning'}
                     </span>
                   </div>
                   <p className="text-sm text-slate-500 mt-1">
-                    Monitor platform statistics, category metrics, recent survey activities, and system audits.
+                    Every statistic is calculated server-side directly from Supabase PostgreSQL &amp; the double-entry points ledger in Asia/Karachi time.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={fetchAdminData}
+                  onClick={() => fetchAdminData()}
                   disabled={loading}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-700 shadow-xs transition-colors self-start sm:self-auto"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-700 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                  <span>Refresh Console</span>
+                  <span>{loading ? 'Querying Database...' : 'Refresh Live Data'}</span>
                 </button>
               </div>
 
-              {/* Row 1: 4 Clean White KPI Cards showing Completes, CPX Gross, User 50% Value, and Admin 50% Profit */}
+              {/* Date Filter & Chart Grouping Bar (Changes Server-Side Database Queries) */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-2">
+                    Date Filter (PKT):
+                  </span>
+                  {(
+                    [
+                      { id: 'all', label: 'All Time' },
+                      { id: 'today', label: 'Today' },
+                      { id: '7d', label: 'Last 7 Days' },
+                      { id: '30d', label: 'Last 30 Days' },
+                      { id: 'custom', label: 'Custom Range' }
+                    ] as const
+                  ).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setDashRange(preset.id);
+                        if (preset.id !== 'custom') {
+                          fetchAdminData(preset.id, dashGroupBy, dashStartDate, dashEndDate);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        dashRange === preset.id
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                  {dashRange === 'custom' && (
+                    <div className="flex flex-wrap items-center gap-2 ml-1">
+                      <input
+                        type="date"
+                        value={dashStartDate}
+                        onChange={(e) => setDashStartDate(e.target.value)}
+                        className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
+                      />
+                      <span className="text-xs text-slate-400">to</span>
+                      <input
+                        type="date"
+                        value={dashEndDate}
+                        onChange={(e) => setDashEndDate(e.target.value)}
+                        className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fetchAdminData('custom', dashGroupBy, dashStartDate, dashEndDate)}
+                        className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                      >
+                        Apply Range
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                    Chart Grouping:
+                  </span>
+                  {(
+                    [
+                      { id: 'day', label: 'Daily' },
+                      { id: 'week', label: 'Weekly' },
+                      { id: 'month', label: 'Monthly' }
+                    ] as const
+                  ).map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => {
+                        setDashGroupBy(g.id);
+                        fetchAdminData(dashRange, g.id, dashStartDate, dashEndDate);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        dashGroupBy === g.id
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Row 1: 4 Financial & Revenue KPI Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* KPI Card 1: Completed Surveys & Points */}
+                {/* KPI Card 1: Completed Tasks & Points */}
                 <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between">
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      COMPLETED SURVEYS
+                      COMPLETED TASKS / SURVEYS
                     </span>
                     <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600 shrink-0">
                       <FileCheck2 className="w-5 h-5" />
@@ -896,10 +1239,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                   <div className="mt-3">
                     <div className="text-2xl font-extrabold text-slate-900 font-mono">
-                      {overview?.completedSurveysCount ?? 0}
+                      {overview?.dashboardStats?.tasks?.completedCount ?? overview?.completedSurveysCount ?? 0}
                     </div>
                     <div className="text-[11px] font-bold text-emerald-700 mt-1 font-mono">
-                      {((overview?.totalRewardsCreditedPoints || 0)).toLocaleString('en-US')} Total Points
+                      {(overview?.dashboardStats?.points?.totalPointsAwarded ?? overview?.totalRewardsCreditedPoints ?? 0).toLocaleString('en-US')} Points Awarded
                     </div>
                   </div>
                 </div>
@@ -962,6 +1305,561 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       50% Margin • {overview?.totalUsers ?? usersList.length} Members
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Row 1A: Comprehensive Database Statistics Grid (Users Cohorts, Tasks Status, Points Ledger) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Column 1: User Cohorts (Total, New Today/7d/30d, Old vs New, Active) */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                      1. Users &amp; Cohorts (PKT)
+                    </span>
+                    <span className="text-[11px] font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                      Total: {overview?.dashboardStats?.users?.totalUsers ?? usersList.length}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5 text-xs">
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60">
+                      <div className="text-[10px] font-bold uppercase text-slate-400">Old Users (&gt;7d)</div>
+                      <div className="text-base font-extrabold font-mono text-slate-900 mt-0.5">
+                        {overview?.dashboardStats?.users?.oldUsersCount ?? 0}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-blue-50/60 border border-blue-200/60">
+                      <div className="text-[10px] font-bold uppercase text-blue-700">New Users (&le;7d)</div>
+                      <div className="text-base font-extrabold font-mono text-blue-900 mt-0.5">
+                        {overview?.dashboardStats?.users?.newUsersCount ?? 0}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/60">
+                      <div className="text-[10px] font-bold uppercase text-emerald-700">Active Users</div>
+                      <div className="text-base font-extrabold font-mono text-emerald-900 mt-0.5">
+                        {overview?.dashboardStats?.users?.activeUsersInRange ?? 0}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60">
+                      <div className="text-[10px] font-bold uppercase text-slate-400">Today / 7d / 30d</div>
+                      <div className="text-xs font-extrabold font-mono text-slate-800 mt-1">
+                        +{overview?.dashboardStats?.users?.newUsersToday ?? 0} / +{overview?.dashboardStats?.users?.newUsers7d ?? 0} / +{overview?.dashboardStats?.users?.newUsers30d ?? 0}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Column 2: Task Status Breakdown (Completed, Pending, Rejected/Reversed) */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                      2. Task Verification Status
+                    </span>
+                    <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                      {dashRange === 'all' ? 'All Time' : `Filter: ${dashRange}`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/70">
+                      <div className="text-[10px] font-bold uppercase text-emerald-700">Completed</div>
+                      <div className="text-lg font-extrabold font-mono text-emerald-900 mt-0.5">
+                        {overview?.dashboardStats?.tasks?.completedCount ?? 0}
+                      </div>
+                      <div className="text-[10px] text-emerald-700">Verified S2S</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/70">
+                      <div className="text-[10px] font-bold uppercase text-amber-700">Pending</div>
+                      <div className="text-lg font-extrabold font-mono text-amber-900 mt-0.5">
+                        {overview?.dashboardStats?.tasks?.pendingCount ?? 0}
+                      </div>
+                      <div className="text-[10px] text-amber-700">In Review</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/70">
+                      <div className="text-[10px] font-bold uppercase text-rose-700">Rejected</div>
+                      <div className="text-lg font-extrabold font-mono text-rose-900 mt-0.5">
+                        {overview?.dashboardStats?.tasks?.rejectedCount ?? 0}
+                      </div>
+                      <div className="text-[10px] text-rose-700">Reversed</div>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-slate-500 pt-1">
+                    All-time Totals: <strong>{overview?.dashboardStats?.tasks?.completedAllTime ?? 0}</strong> Completed • <strong>{overview?.dashboardStats?.tasks?.pendingAllTime ?? 0}</strong> Pending • <strong>{overview?.dashboardStats?.tasks?.rejectedAllTime ?? 0}</strong> Rejected
+                  </div>
+                </div>
+
+                {/* Column 3: Points Ledger Accounting (Awarded, Redeemed/Withdrawn, Outstanding Balance) */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                      3. Points Ledger Accounting
+                    </span>
+                    <span className="text-[11px] font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                      10k Pts = $1
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs font-mono">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-50/60 border border-emerald-200/60">
+                      <span className="font-sans font-semibold text-slate-600">Total Points Awarded:</span>
+                      <span className="font-extrabold text-emerald-700">
+                        {(overview?.dashboardStats?.points?.totalPointsAwarded ?? 0).toLocaleString('en-US')} Pts
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-amber-50/60 border border-amber-200/60">
+                      <span className="font-sans font-semibold text-slate-600">Points Redeemed / Withdrawn:</span>
+                      <span className="font-extrabold text-amber-800">
+                        {(overview?.dashboardStats?.points?.totalPointsRedeemed ?? 0).toLocaleString('en-US')} Pts
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900 text-white">
+                      <span className="font-sans font-semibold text-slate-300">Outstanding Points Balance:</span>
+                      <span className="font-extrabold text-emerald-400">
+                        {(overview?.dashboardStats?.points?.outstandingPointsBalance ?? 0).toLocaleString('en-US')} Pts
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 1C: Daily / Weekly / Monthly Time-Series Chart (Built from Real Database Timestamps in Asia/Karachi) */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div>
+                    <h2 className="text-sm font-extrabold text-slate-900">
+                      Real-Time Activity &amp; Points Ledger Chart ({dashGroupBy === 'day' ? 'Daily' : dashGroupBy === 'week' ? 'Weekly' : 'Monthly'} • Asia/Karachi)
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Aggregated directly from verified database timestamps ({overview?.dashboardStats?.dateFilter?.startDate || 'All'} to {overview?.dashboardStats?.dateFilter?.endDate || 'Now'}).
+                    </p>
+                  </div>
+                  <div className="text-xs font-mono font-bold text-slate-600">
+                    {(overview?.dashboardStats?.timeSeries || []).length} Time Bucket(s)
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="py-10 text-center text-xs text-slate-400 font-semibold">
+                    Loading real time-series records from database...
+                  </div>
+                ) : !overview?.dashboardStats?.timeSeries || overview.dashboardStats.timeSeries.length === 0 ? (
+                  <div className="py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                    No data yet for the selected date filter ({dashRange}).
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Visual Bar Chart */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-10 gap-2 items-end pt-4 pb-2 px-3 bg-slate-50/70 rounded-xl border border-slate-200/70 min-h-[140px]">
+                      {(() => {
+                        const buckets = overview.dashboardStats.timeSeries.slice(-10);
+                        const maxPts = Math.max(1, ...buckets.map((b: any) => b.pointsAwarded || 0));
+                        return buckets.map((b: any) => {
+                          const heightPct = Math.max(8, Math.round(((b.pointsAwarded || 0) / maxPts) * 100));
+                          return (
+                            <div key={b.bucketKey} className="flex flex-col items-center gap-1.5">
+                              <div className="text-[10px] font-mono font-bold text-emerald-700">
+                                {(b.pointsAwarded || 0).toLocaleString('en-US')}
+                              </div>
+                              <div className="w-full h-20 flex items-end justify-center bg-slate-200/50 rounded-lg overflow-hidden p-1">
+                                <div
+                                  className="w-full bg-emerald-600 rounded transition-all"
+                                  style={{ height: `${heightPct}%` }}
+                                  title={`${b.label}: ${(b.pointsAwarded || 0).toLocaleString('en-US')} Pts • ${b.tasksCompleted} Tasks • ${b.newUsers} New Users`}
+                                />
+                              </div>
+                              <div className="text-[10px] font-mono font-bold text-slate-700 truncate max-w-full">
+                                {b.label}
+                              </div>
+                              <div className="text-[9px] font-mono text-slate-400">
+                                {b.tasksCompleted} tasks • +{b.newUsers} usr
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+
+                    {/* Tabular Time-Series Breakdown */}
+                    <div className="overflow-x-auto max-h-60">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/80">
+                            <th className="py-2 px-3">Period (Asia/Karachi)</th>
+                            <th className="py-2 px-3">New Users</th>
+                            <th className="py-2 px-3">Tasks Completed</th>
+                            <th className="py-2 px-3">Tasks Pending / Rejected</th>
+                            <th className="py-2 px-3">Points Awarded</th>
+                            <th className="py-2 px-3">Points Redeemed</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {[...overview.dashboardStats.timeSeries].reverse().map((b: any) => (
+                            <tr key={b.bucketKey} className="hover:bg-slate-50/60">
+                              <td className="py-2 px-3 font-bold text-slate-800">{b.label}</td>
+                              <td className="py-2 px-3 text-blue-700 font-bold">+{b.newUsers}</td>
+                              <td className="py-2 px-3 text-emerald-700 font-bold">{b.tasksCompleted}</td>
+                              <td className="py-2 px-3 text-slate-500">
+                                {b.tasksPending} pending / {b.tasksRejected} rejected
+                              </td>
+                              <td className="py-2 px-3 font-extrabold text-emerald-700">
+                                +{(b.pointsAwarded || 0).toLocaleString('en-US')} Pts
+                              </td>
+                              <td className="py-2 px-3 text-amber-700">
+                                {(b.pointsRedeemed || 0).toLocaleString('en-US')} Pts
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Row 1D: Top 10 Users by Points Leaderboard (Direct on Overview) */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div>
+                    <h2 className="text-sm font-extrabold text-slate-900">
+                      Top 10 Users by Points (Calculated from Points Ledger)
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Every user&apos;s balance equals the exact sum of their verified points ledger entries. Click any user to inspect their full task and points history.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">
+                    Single Source of Truth: reward_ledger
+                  </span>
+                </div>
+
+                {!overview?.dashboardStats?.topUsersByPoints || overview.dashboardStats.topUsersByPoints.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">No user points recorded yet.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
+                          <th className="py-2.5 px-3">Rank</th>
+                          <th className="py-2.5 px-3">Permanent User ID</th>
+                          <th className="py-2.5 px-3">Member &amp; Cohort</th>
+                          <th className="py-2.5 px-3">Tasks Completed</th>
+                          <th className="py-2.5 px-3">Total Earned Points</th>
+                          <th className="py-2.5 px-3">Available Balance</th>
+                          <th className="py-2.5 px-3 text-right">Inspect</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {overview.dashboardStats.topUsersByPoints.map((tu: any) => (
+                          <tr key={tu.id} className="hover:bg-slate-50/70">
+                            <td className="py-2.5 px-3 font-mono font-extrabold text-slate-700">#{tu.rank}</td>
+                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">
+                              <div className="font-bold text-slate-800">{tu.id}</div>
+                              <div className="text-[10px] text-slate-400">{tu.externalOpaqueId}</div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900">{tu.displayName}</span>
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                    tu.cohort === 'new'
+                                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                      : 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {tu.cohort === 'new' ? 'New (<=7d)' : 'Old (>7d)'}
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-400">{tu.email}</div>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-sky-700">
+                              {tu.tasksCompleted} verified
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
+                              {(tu.totalEarnedPoints || 0).toLocaleString('en-US')} Pts
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                              {(tu.availablePoints || 0).toLocaleString('en-US')} Pts (${((tu.availablePoints || 0) / 10000).toFixed(2)})
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const found = usersList.find(u => u.id === tu.id);
+                                  if (found) {
+                                    setUserDetailTab('ledger');
+                                    setSelectedUserDetail(found);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] cursor-pointer"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Full History</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Row 1E: Data Integrity Check & Historical User Backfill Console */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <h2 className="text-sm font-extrabold text-slate-900">
+                        Data Integrity Check &amp; Old User Backfill / Reconciliation
+                      </h2>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Compares the sum of every user&apos;s points_ledger entries against their stored users.points total, verifies permanent User IDs, and flags or repairs any mismatch.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={runningIntegrityCheck}
+                      onClick={() => handleRunDataIntegrityCheck(false)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{runningIntegrityCheck ? 'Verifying Ledger...' : 'Data Integrity Check'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={runningIntegrityCheck}
+                      onClick={() => handleRunDataIntegrityCheck(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Auto-Repair Mismatches</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={runningBackfill}
+                      onClick={handleRunUserBackfill}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <span>{runningBackfill ? 'Running Backfill...' : 'Run Old Users Backfill Script'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {integrityReport && (
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-md font-bold uppercase text-[10px] ${
+                            integrityReport.isHealthy
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {integrityReport.isHealthy ? '100% INTEGRITY VERIFIED' : 'MISMATCH FLAGGED'}
+                        </span>
+                        <span className="font-mono text-slate-500">
+                          Checked at {integrityReport.checkedAtKarachi}
+                        </span>
+                      </div>
+                      <div className="font-mono font-bold text-slate-700">
+                        Users Checked: {integrityReport.totalUsersChecked} • Ledger Rows: {integrityReport.totalLedgerEntriesChecked}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 font-mono">
+                      <div className="p-3 rounded-lg bg-white border border-slate-200">
+                        <div className="text-[10px] font-sans font-bold uppercase text-slate-400">Ledger Available Sum</div>
+                        <div className="text-sm font-extrabold text-emerald-700 mt-0.5">
+                          {(integrityReport.sumOfLedgerAvailablePoints || 0).toLocaleString('en-US')} Pts
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white border border-slate-200">
+                        <div className="text-[10px] font-sans font-bold uppercase text-slate-400">Stored Users.Points Sum</div>
+                        <div className="text-sm font-extrabold text-slate-900 mt-0.5">
+                          {(integrityReport.sumOfStoredUserPoints || 0).toLocaleString('en-US')} Pts
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white border border-slate-200">
+                        <div className="text-[10px] font-sans font-bold uppercase text-slate-400">Global Points Delta</div>
+                        <div className={`text-sm font-extrabold mt-0.5 ${integrityReport.globalPointsDelta === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {integrityReport.globalPointsDelta} Pts
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white border border-slate-200">
+                        <div className="text-[10px] font-sans font-bold uppercase text-slate-400">Mismatched / Dup Tx</div>
+                        <div className="text-sm font-extrabold text-slate-800 mt-0.5">
+                          {integrityReport.mismatchedUsersCount} users / {integrityReport.duplicateTxIdsCount} dup tx
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {backfillSummary && (
+                  <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200 text-xs text-blue-900 font-mono">
+                    Backfill executed at {backfillSummary.executedAtKarachi}: Scanned {backfillSummary.totalUsersScanned} users • Permanent IDs assigned: {backfillSummary.permanentIdsAssigned} • Opaque IDs assigned: {backfillSummary.opaqueIdsAssigned} • Legacy points backfilled: {backfillSummary.legacyPointsBackfilledCount} • Balances reconciled: {backfillSummary.userTotalsReconciledCount}
+                  </div>
+                )}
+              </div>
+
+              {/* Row 1F: Admin-Editable Task Point Definitions (Stored in Database) */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="pb-3 border-b border-slate-100">
+                  <h2 className="text-sm font-extrabold text-slate-900">
+                    Database Task Point Definitions (Admin-Editable)
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Task point values are stored in the database and looked up server-side upon verified task completion. Never hardcoded in the client UI.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  <div className="lg:col-span-7 overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
+                          <th className="py-2 px-3">Task ID &amp; Title</th>
+                          <th className="py-2 px-3">Type</th>
+                          <th className="py-2 px-3">Reward Points</th>
+                          <th className="py-2 px-3">Daily Limit</th>
+                          <th className="py-2 px-3 text-right">Edit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {tasksCatalog.map((t: any) => (
+                          <tr key={t.id} className="hover:bg-slate-50/70">
+                            <td className="py-2.5 px-3">
+                              <div className="font-bold text-slate-900">{t.title}</div>
+                              <div className="text-[10px] font-mono text-slate-400">{t.id}</div>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono uppercase text-[10px] text-slate-600">
+                              {t.taskType}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-extrabold text-emerald-700">
+                              {(t.rewardPoints || 0).toLocaleString('en-US')} Pts
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-600">{t.dailyLimit}/day</td>
+                            <td className="py-2.5 px-3 text-right space-x-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setTaskForm({
+                                    id: t.id,
+                                    title: t.title,
+                                    description: t.description || '',
+                                    taskType: t.taskType || 'custom',
+                                    rewardPoints: t.rewardPoints || 100,
+                                    dailyLimit: t.dailyLimit || 10,
+                                    isActive: t.isActive !== false
+                                  })
+                                }
+                                className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer"
+                              >
+                                Edit
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <form onSubmit={handleSaveTaskDefinition} className="lg:col-span-5 p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3 text-xs">
+                    <div className="font-bold text-slate-900">
+                      {taskForm.id ? `Update Task: ${taskForm.id}` : 'Create / Update Task Point Value'}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Task ID (optional)</label>
+                        <input
+                          type="text"
+                          value={taskForm.id}
+                          onChange={(e) => setTaskForm({ ...taskForm, id: e.target.value })}
+                          placeholder="e.g. task_aoy_ptc"
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Task Type</label>
+                        <select
+                          value={taskForm.taskType}
+                          onChange={(e) => setTaskForm({ ...taskForm, taskType: e.target.value })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                        >
+                          <option value="survey">survey</option>
+                          <option value="ptc">ptc</option>
+                          <option value="shortlink">shortlink</option>
+                          <option value="daily_checkin">daily_checkin</option>
+                          <option value="profile_verification">profile_verification</option>
+                          <option value="custom">custom</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Task Title</label>
+                      <input
+                        type="text"
+                        required
+                        value={taskForm.title}
+                        onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                        placeholder="Verified Task Name"
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Reward Points</label>
+                        <input
+                          type="number"
+                          min={1}
+                          required
+                          value={taskForm.rewardPoints}
+                          onChange={(e) => setTaskForm({ ...taskForm, rewardPoints: Number(e.target.value) })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Daily Limit</label>
+                        <input
+                          type="number"
+                          min={1}
+                          required
+                          value={taskForm.dailyLimit}
+                          onChange={(e) => setTaskForm({ ...taskForm, dailyLimit: Number(e.target.value) })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      {taskForm.id && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTaskForm({
+                              id: '',
+                              title: '',
+                              description: '',
+                              taskType: 'survey',
+                              rewardPoints: 500,
+                              dailyLimit: 10,
+                              isActive: true
+                            })
+                          }
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-bold"
+                        >
+                          Clear
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={savingTask}
+                        className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                      >
+                        {savingTask ? 'Saving...' : 'Save Task Point Value'}
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
 
@@ -2641,7 +3539,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           )}
 
           {/* =====================================================================
-              SECTION 5: USERS DIRECTORY
+              SECTION 5: USERS DIRECTORY (Permanent User IDs, Cohorts, Tasks, Points)
              ===================================================================== */}
           {activeSection === 'users' && (
             <div className="space-y-6">
@@ -2651,119 +3549,174 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     Registered Users ({usersList.length})
                   </h1>
                   <p className="text-sm text-slate-500 mt-1">
-                    Inspect member balances, WhatsApp numbers, real points credited, and account status.
+                    Permanent User IDs, Old (&gt;7d) vs New (&le;7d) cohorts, Asia/Karachi join &amp; last-active timestamps, verified tasks, and points ledger totals.
                   </p>
                 </div>
 
-                <div className="relative w-full sm:w-72">
+                <div className="relative w-full sm:w-80">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
-                    placeholder="Search username, email, phone..."
+                    placeholder="Search by User ID, name, email, phone..."
                     className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
 
               <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-[11px] font-bold uppercase text-slate-400 bg-slate-50/50">
-                        <th className="py-3.5 px-4">Member</th>
-                        <th className="py-3.5 px-4">WhatsApp / Country</th>
-                        <th className="py-3.5 px-4">Completed Surveys</th>
-                        <th className="py-3.5 px-4">Real Points &amp; Value</th>
-                        <th className="py-3.5 px-4">Member Since</th>
-                        <th className="py-3.5 px-4 text-right">Details</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {filteredUsers.map((u) => {
-                        const cleanPhone = (u.whatsappNumber || u.phoneNumber || '').replace(/[^0-9]/g, '');
-                        return (
-                          <tr key={u.id} className="hover:bg-slate-50/60">
-                            <td className="py-3.5 px-4">
-                              <div className="font-bold text-slate-900">{u.displayName}</div>
-                              <div className="text-[11px] text-slate-400">{u.email}</div>
-                              {u.externalOpaqueId && (
-                                <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                                  ID: {u.externalOpaqueId}
+                {loading && usersList.length === 0 ? (
+                  <div className="p-12 text-center text-xs text-slate-400">
+                    Loading real user records from database...
+                  </div>
+                ) : filteredUsers.length === 0 ? (
+                  <div className="p-12 text-center text-xs text-slate-400">
+                    No users match your search query.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
+                          <th className="py-3.5 px-4">Permanent User ID</th>
+                          <th className="py-3.5 px-4">Name &amp; Email / Phone</th>
+                          <th className="py-3.5 px-4">Join Date (PKT)</th>
+                          <th className="py-3.5 px-4">Last Active (PKT)</th>
+                          <th className="py-3.5 px-4">Status &amp; Cohort</th>
+                          <th className="py-3.5 px-4">Tasks Completed</th>
+                          <th className="py-3.5 px-4">Total Points</th>
+                          <th className="py-3.5 px-4 text-right">Details</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {filteredUsers.map((u) => {
+                          const cleanPhone = (u.whatsappNumber || u.phoneNumber || '').replace(/[^0-9]/g, '');
+                          const isActiveEarner = (u.balances.totalEarnedPoints || 0) > 0 || u.completedSurveysCount > 0;
+                          return (
+                            <tr
+                              key={u.id}
+                              onClick={() => {
+                                setUserDetailTab('ledger');
+                                setSelectedUserDetail(u);
+                              }}
+                              className="hover:bg-slate-50/80 cursor-pointer transition-colors"
+                            >
+                              <td className="py-3.5 px-4 font-mono">
+                                <div className="font-bold text-slate-900 text-[11px] select-all">{u.id}</div>
+                                {u.externalOpaqueId && (
+                                  <div className="text-[10px] text-slate-400 select-all mt-0.5">
+                                    {u.externalOpaqueId}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                                <div className="font-bold text-slate-900">{u.displayName}</div>
+                                <div className="text-[11px] font-mono text-slate-500">{u.email}</div>
+                                <div className="mt-0.5 flex items-center gap-1.5">
+                                  {cleanPhone ? (
+                                    <a
+                                      href={`https://wa.me/${cleanPhone}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-[11px] hover:underline"
+                                    >
+                                      <MessageSquare className="w-3 h-3" />
+                                      <span>{u.whatsappNumber || u.phoneNumber}</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">No phone</span>
+                                  )}
+                                  {u.countryCode && (
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[9px]">
+                                      {u.countryCode}
+                                    </span>
+                                  )}
                                 </div>
-                              )}
-                            </td>
-                            <td className="py-3.5 px-4">
-                              {cleanPhone ? (
-                                <a
-                                  href={`https://wa.me/${cleanPhone}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 text-emerald-600 font-semibold hover:underline"
-                                >
-                                  <MessageSquare className="w-3.5 h-3.5" />
-                                  <span>{u.whatsappNumber || u.phoneNumber}</span>
-                                </a>
-                              ) : (
-                                <span className="text-slate-400">Not linked</span>
-                              )}
-                              {u.countryCode && (
-                                <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px]">
-                                  {u.countryCode}
+                              </td>
+                              <td className="py-3.5 px-4 font-mono text-[11px] text-slate-600">
+                                {u.createdAtKarachi || (u.createdAt ? new Date(u.createdAt).toLocaleString() : 'N/A')}
+                              </td>
+                              <td className="py-3.5 px-4 font-mono text-[11px] text-slate-600">
+                                {u.lastActiveAtKarachi || (u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : 'N/A')}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex flex-col items-start gap-1">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                      isActiveEarner
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                  >
+                                    {isActiveEarner ? 'Active Earner' : 'Registered'}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                      u.cohort === 'new'
+                                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                  >
+                                    {u.cohort === 'new' ? 'New (<=7d)' : 'Old (>7d)'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 font-bold text-xs">
+                                  {u.completedSurveysCount} Completed
                                 </span>
-                              )}
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 font-mono font-bold text-xs">
-                                {u.completedSurveysCount} {u.completedSurveysCount === 1 ? 'Survey' : 'Surveys'}
-                              </span>
-                            </td>
-                            <td className="py-3.5 px-4 font-mono">
-                              <div className="font-bold text-emerald-700">
-                                {(u.balances.availablePoints || 0).toLocaleString('en-US')} Pts
-                              </div>
-                              <div className="text-[11px] text-slate-600 font-bold font-mono">
-                                ${(((u.balances.availableCents || 0) / 100)).toFixed(2)} USD
-                              </div>
-                            </td>
-                            <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
-                              {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Active'}
-                            </td>
-                            <td className="py-3.5 px-4 text-right">
-                              <div className="inline-flex items-center gap-1.5 justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedUserDetail(u)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors"
-                                  title="Inspect user details"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  <span>Inspect</span>
-                                </button>
-                                {adminUser?.id !== u.id && adminUser?.email !== u.email ? (
+                                {(u.tasksPendingCount || u.tasksRejectedCount) ? (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    {u.tasksPendingCount || 0} pend • {u.tasksRejectedCount || 0} rej
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td className="py-3.5 px-4 font-mono">
+                                <div className="font-extrabold text-emerald-700">
+                                  {(u.balances.availablePoints || 0).toLocaleString('en-US')} Pts
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  Earned: {(u.balances.totalEarnedPoints || 0).toLocaleString('en-US')} Pts (${((u.balances.availableCents || 0) / 100).toFixed(2)})
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                <div className="inline-flex items-center gap-1.5 justify-end">
                                   <button
                                     type="button"
-                                    onClick={() => setUserToDelete(u)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[11px] transition-colors"
-                                    title="Delete User Account"
+                                    onClick={() => {
+                                      setUserDetailTab('ledger');
+                                      setSelectedUserDetail(u);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                                    title="Inspect user details & points ledger"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                    <span>Delete</span>
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>History &amp; Points</span>
                                   </button>
-                                ) : (
-                                  <span className="px-2 py-1 text-[10px] font-bold text-blue-600 bg-blue-50 rounded-md">
-                                    Active Admin
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                  {adminUser?.id !== u.id && adminUser?.email !== u.email ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setUserToDelete(u)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[11px] transition-colors cursor-pointer"
+                                      title="Delete User Account"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : (
+                                    <span className="px-2 py-1 text-[10px] font-bold text-blue-600 bg-blue-50 rounded-md">
+                                      Admin
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2836,18 +3789,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between">
                   <div className="flex items-start justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Email Verified
+                      Old vs New Cohorts
                     </span>
                     <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
                       <ShieldCheck className="w-4 h-4" />
                     </div>
                   </div>
                   <div className="mt-3">
-                    <div className="text-2xl font-extrabold text-indigo-900 font-mono">
-                      {userAnalytics?.emailVerifiedRate ?? 100}%
+                    <div className="text-xl font-extrabold text-indigo-900 font-mono">
+                      {userAnalytics?.oldUsersCount ?? 0} Old / {userAnalytics?.newUsersCount ?? 0} New
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      Phone/WhatsApp: {userAnalytics?.phoneAttachedRate ?? 0}%
+                      Email Verified: {userAnalytics?.emailVerifiedRate ?? 0}% • Phone: {userAnalytics?.phoneAttachedRate ?? 0}%
                     </div>
                   </div>
                 </div>
@@ -2855,7 +3808,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col justify-between">
                   <div className="flex items-start justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Signups Velocity
+                      Signups Velocity (PKT)
                     </span>
                     <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
                       <Activity className="w-4 h-4" />
@@ -2863,7 +3816,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                   <div className="mt-3">
                     <div className="text-2xl font-extrabold text-violet-900 font-mono">
-                      +{userAnalytics?.signupsLast24h ?? 0} <span className="text-xs font-normal text-slate-400">24h</span>
+                      +{userAnalytics?.signupsToday ?? userAnalytics?.signupsLast24h ?? 0} <span className="text-xs font-normal text-slate-400">today</span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
                       7d: +{userAnalytics?.signupsLast7d ?? 0} • 30d: +{userAnalytics?.signupsLast30d ?? 0}
@@ -3109,10 +4062,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                   <div className="mt-3">
                     <div className="text-xl font-extrabold text-slate-900 font-mono">
-                      {systemHealth?.memory?.heapUsedMb || '38.4'} MB
+                      {systemHealth?.memory?.heapUsedMb ?? '0.0'} MB
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      Of {systemHealth?.memory?.heapTotalMb || '64.0'} MB ({systemHealth?.memory?.percentHeapUsed || 60}% used)
+                      Of {systemHealth?.memory?.heapTotalMb ?? '0.0'} MB ({systemHealth?.memory?.percentHeapUsed ?? 0}% used)
                     </div>
                   </div>
                 </div>
@@ -3128,7 +4081,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                   <div className="mt-3">
                     <div className="text-xl font-extrabold text-slate-900 font-mono">
-                      Node 22
+                      {systemHealth?.nodeVersion || 'Node.js'}
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">Express SPA Middleware Mode</div>
                   </div>
@@ -3148,44 +4101,50 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       {usersList.length} Accounts
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      {overview?.recentLedger?.length || 0} Recent Ledger Entries
+                      {overview?.dashboardStats?.tasks?.completedAllTime ?? overview?.completedSurveysCount ?? 0} Verified Ledger Credits
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Microservices & Integration Matrix */}
+              {/* Microservices & Integration Matrix (100% Real Server Measurements) */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
                 <div className="pb-3 border-b border-slate-100">
                   <h2 className="text-base font-bold text-slate-900">Services &amp; Integrations Health Matrix</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Live latency and verification state across all integrated providers</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Live measured latency and verification state across all integrated providers</p>
                 </div>
 
-                <div className="divide-y divide-slate-100">
-                  {(systemHealth?.services || [
-                    { id: 'node', name: 'Node.js Express Server Engine', status: 'healthy', latencyMs: 1, details: 'PID active • Port 3000 • Event loop latency <1ms' },
-                    { id: 'cpx', name: 'CPX Research Survey Feed & Webhook', status: 'healthy', latencyMs: 135, details: `App ID #${settings?.cpxAppId || '37479'} • HMAC/MD5 secure_hash active` },
-                    { id: 'aoy', name: 'AoyTasks White-Label Feed & Callback', status: 'healthy', latencyMs: 172, details: 'Endpoint /wh/aoytasks • MD5 hash verification active' },
-                    { id: 'usdt', name: 'USDT Price & 1:1 Peg Service', status: 'healthy', latencyMs: 64, details: 'USDT/USD pegged at $1.00 • CoinGecko / Binance feeds active' },
-                    { id: 'db', name: 'Persistent Ledger & User Store', status: 'healthy', latencyMs: 2, details: 'Local JSON / Firestore storage healthy • Zero corrupted records' }
-                  ]).map((svc: any) => (
-                    <div key={svc.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <div>
-                          <div className="font-bold text-slate-900 text-xs">{svc.name}</div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">{svc.details}</div>
+                {loadingSystemHealth && !systemHealth?.services ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    Measuring live service latencies...
+                  </div>
+                ) : !systemHealth?.services || systemHealth.services.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No service telemetry available yet. Click &ldquo;Ping All Services&rdquo; to run live diagnostics.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {systemHealth.services.map((svc: any) => (
+                      <div key={svc.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <CheckCircle2 className={`w-4 h-4 shrink-0 ${svc.status === 'healthy' ? 'text-emerald-600' : 'text-amber-500'}`} />
+                          <div>
+                            <div className="font-bold text-slate-900 text-xs">{svc.name}</div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">{svc.details}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 font-mono text-[11px]">
+                          <span className="text-slate-500">{svc.latencyMs}ms</span>
+                          <span className={`px-2.5 py-0.5 rounded-md font-bold uppercase text-[10px] ${
+                            svc.status === 'healthy' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {svc.status === 'healthy' ? 'Operational' : svc.status}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 font-mono text-[11px]">
-                        <span className="text-slate-400">{svc.latencyMs}ms</span>
-                        <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold uppercase text-[10px]">
-                          Operational
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -3645,7 +4604,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       </div>
 
       {/* Modal: Mark Withdrawal as Paid */}
-      {payoutModal && (
+      {payoutModal && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
@@ -3696,101 +4655,290 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Modal: Inspect Member Detail */}
-      {selectedUserDetail && (
+      {/* Modal: Full User Profile, Task History, Points Ledger & Admin Point Adjustment */}
+      {selectedUserDetail && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-slate-200 shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 bg-slate-50/60">
               <div>
-                <h3 className="text-base font-bold text-slate-900">{selectedUserDetail.displayName}</h3>
-                <p className="text-xs text-slate-500">{selectedUserDetail.email}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-extrabold text-slate-900">{selectedUserDetail.displayName}</h3>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      selectedUserDetail.cohort === 'new'
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {selectedUserDetail.cohort === 'new' ? 'New User (<=7d)' : 'Old User (>7d)'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono font-bold">
+                    Ledger Synced
+                  </span>
+                </div>
+                <p className="text-xs font-mono text-slate-500 mt-0.5">{selectedUserDetail.email}</p>
+                <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono text-slate-500 mt-1">
+                  <span>Permanent ID: <strong className="text-slate-800 select-all">{selectedUserDetail.id}</strong></span>
+                  <span>CPX ID: <strong className="text-slate-800 select-all">{selectedUserDetail.externalOpaqueId}</strong></span>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedUserDetail(null)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 p-1"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
-                <div className="text-slate-400 font-semibold">Available Points Balance</div>
-                <div className="text-sm font-extrabold text-emerald-600 font-mono mt-0.5">
-                  {(selectedUserDetail.balances.availablePoints || 0).toLocaleString('en-US')} Pts
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-5 flex-1">
+              {/* Top Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/70">
+                  <div className="text-emerald-700 font-bold text-[10px] uppercase">Available Points</div>
+                  <div className="text-base font-extrabold text-emerald-900 font-mono mt-0.5">
+                    {(selectedUserDetail.balances.availablePoints || 0).toLocaleString('en-US')} Pts
+                  </div>
+                  <div className="text-[10px] font-mono text-emerald-700">
+                    ${((selectedUserDetail.balances.availableCents || 0) / 100).toFixed(2)} USD
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
+                  <div className="text-slate-400 font-bold text-[10px] uppercase">Total Earned</div>
+                  <div className="text-base font-extrabold text-slate-900 font-mono mt-0.5">
+                    {(selectedUserDetail.balances.totalEarnedPoints || 0).toLocaleString('en-US')} Pts
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-500">
+                    Withdrawn: ${((selectedUserDetail.balances.withdrawnCents || 0) / 100).toFixed(2)}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
+                  <div className="text-slate-400 font-bold text-[10px] uppercase">Tasks Status</div>
+                  <div className="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
+                    {selectedUserDetail.completedSurveysCount} Completed
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-500">
+                    {selectedUserDetail.tasksPendingCount || 0} Pend • {selectedUserDetail.tasksRejectedCount || 0} Rej
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
+                  <div className="text-slate-400 font-bold text-[10px] uppercase">Join / Last Active (PKT)</div>
+                  <div className="text-[11px] font-mono font-bold text-slate-800 mt-0.5 truncate" title={selectedUserDetail.createdAtKarachi}>
+                    Join: {selectedUserDetail.createdAtKarachi || new Date(selectedUserDetail.createdAt).toLocaleDateString()}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-500 truncate" title={selectedUserDetail.lastActiveAtKarachi}>
+                    Act: {selectedUserDetail.lastActiveAtKarachi || 'Recent'}
+                  </div>
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
-                <div className="text-emerald-700 font-semibold">Real Value (USD)</div>
-                <div className="text-sm font-extrabold text-emerald-900 font-mono mt-0.5">
-                  ${(((selectedUserDetail.balances.availableCents || 0) / 100)).toFixed(2)} USD
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
-                <div className="text-slate-400 font-semibold">Completed Surveys</div>
-                <div className="text-sm font-extrabold text-slate-800 mt-0.5">
-                  {selectedUserDetail.completedSurveysCount} Surveys
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
-                <div className="text-slate-400 font-semibold">CPX External User ID</div>
-                <div className="text-[11px] font-mono text-slate-700 truncate mt-0.5">
-                  {selectedUserDetail.externalOpaqueId}
-                </div>
-              </div>
-            </div>
 
-            <div className="space-y-2 pt-1">
-              <div className="text-xs font-bold text-slate-800">
-                Completed Surveys &amp; Points History ({selectedUserDetail.recentEntries?.length || 0})
+              {/* Sub-Navigation Tabs inside Modal */}
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setUserDetailTab('ledger')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                    userDetailTab === 'ledger'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Points Ledger &amp; Task History ({(selectedUserDetail.fullLedger || selectedUserDetail.recentEntries || []).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDetailTab('withdrawals')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                    userDetailTab === 'withdrawals'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Withdrawals ({(selectedUserDetail.withdrawals || []).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDetailTab('adjust')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                    userDetailTab === 'adjust'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  + / - Manual Point Adjustment
+                </button>
               </div>
-              {selectedUserDetail.recentEntries && selectedUserDetail.recentEntries.length > 0 ? (
-                <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 divide-y divide-slate-100 text-xs">
-                  {selectedUserDetail.recentEntries.map((item) => (
-                    <div key={item.id} className="p-2.5 flex items-center justify-between gap-2 bg-slate-50/40">
-                      <div className="min-w-0">
-                        <div className="font-semibold text-slate-800 truncate">{item.description}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">
-                          {new Date(item.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0 font-mono">
-                        <div className="font-extrabold text-emerald-700">
-                          +{(item.points || 0).toLocaleString('en-US')} Pts
-                        </div>
-                        <div className="text-[10px] text-slate-600 font-bold">
-                          ${(((item.amountCents || 0) / 100)).toFixed(2)} USD
-                        </div>
-                      </div>
+
+              {/* Tab 1: Full Points Ledger & Task History */}
+              {userDetailTab === 'ledger' && (
+                <div className="space-y-2">
+                  {(selectedUserDetail.fullLedger || selectedUserDetail.recentEntries || []).length > 0 ? (
+                    <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 text-xs">
+                      {(selectedUserDetail.fullLedger || selectedUserDetail.recentEntries || []).map((item) => {
+                        const isNegative = item.entryType === 'debit' || item.entryType === 'reversal';
+                        return (
+                          <div key={item.id} className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50/70">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono ${
+                                    item.status === 'confirmed'
+                                      ? isNegative
+                                        ? 'bg-rose-50 text-rose-700'
+                                        : 'bg-emerald-50 text-emerald-700'
+                                      : item.status === 'pending'
+                                      ? 'bg-amber-50 text-amber-700'
+                                      : 'bg-rose-50 text-rose-700'
+                                  }`}
+                                >
+                                  {item.entryType} • {item.status}
+                                </span>
+                                <span className="font-mono text-[10px] text-slate-400">
+                                  Task: {item.taskId || item.cpxOfferId || 'task_cpx_survey'}
+                                </span>
+                              </div>
+                              <div className="font-semibold text-slate-800 mt-1">{item.description}</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                Tx: {item.providerTxId} • Approved by: {item.approvedBy || 'System S2S Verification'} • {new Date(item.createdAt).toLocaleString('en-GB', { timeZone: 'Asia/Karachi' })} PKT
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0 font-mono">
+                              <div className={`font-extrabold text-sm ${isNegative ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                {isNegative ? '-' : '+'}{(item.points || 0).toLocaleString('en-US')} Pts
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-bold">
+                                ${((item.amountCents || 0) / 100).toFixed(2)} USD
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="p-8 rounded-xl bg-slate-50 border border-slate-200/70 text-center text-xs text-slate-400">
+                      No task completions or points ledger entries recorded for this user yet.
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70 text-center text-xs text-slate-400">
-                  No completed surveys recorded for this user yet.
+              )}
+
+              {/* Tab 2: Withdrawals History */}
+              {userDetailTab === 'withdrawals' && (
+                <div className="space-y-2">
+                  {(selectedUserDetail.withdrawals || []).length > 0 ? (
+                    <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 text-xs">
+                      {(selectedUserDetail.withdrawals || []).map((w: any) => (
+                        <div key={w.id} className="p-3 flex items-center justify-between gap-3">
+                          <div>
+                            <div className="font-bold text-slate-900">
+                              ${(w.amountCents / 100).toFixed(2)} USD ({Math.round(w.amountCents * 100).toLocaleString('en-US')} Pts)
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-500">
+                              {w.network} • {w.usdtAddress}
+                            </div>
+                            <div className="text-[10px] font-mono text-slate-400">
+                              {new Date(w.createdAt).toLocaleString('en-GB', { timeZone: 'Asia/Karachi' })} PKT
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 font-mono font-bold uppercase text-[10px]">
+                            {w.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 rounded-xl bg-slate-50 border border-slate-200/70 text-center text-xs text-slate-400">
+                      No withdrawal requests submitted by this user yet.
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* Tab 3: Admin Manual Point Adjustment Form (Writes to points_ledger & audit_log) */}
+              {userDetailTab === 'adjust' && (
+                <form onSubmit={handleAdjustUserPoints} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                  <div className="font-bold text-slate-900">
+                    Manual Point Adjustment for {selectedUserDetail.email}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Creates a permanent, signed ledger entry in <code className="font-mono">reward_ledger</code> (<code className="font-mono">points_ledger</code>) and records an audit trail in <code className="font-mono">admin_audit_logs</code>. Use positive numbers to credit points or negative numbers (e.g. <code className="font-mono">-500</code>) to deduct points.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Points Delta (+ Credit / - Debit)
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        value={adjustPointsDelta}
+                        onChange={(e) => setAdjustPointsDelta(e.target.value)}
+                        placeholder="e.g. 1000 or -500"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Associated Task ID
+                      </label>
+                      <input
+                        type="text"
+                        value={adjustPointsTaskId}
+                        onChange={(e) => setAdjustPointsTaskId(e.target.value)}
+                        placeholder="admin_manual_adjustment"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                      Audit Reason (Required)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={adjustPointsReason}
+                      onChange={(e) => setAdjustPointsReason(e.target.value)}
+                      placeholder="e.g. Verified survey completion ticket #402 reconciliation"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={adjustingPoints}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer"
+                    >
+                      {adjustingPoints ? 'Recording Ledger Entry...' : 'Apply Point Adjustment & Log Audit'}
+                    </button>
+                  </div>
+                </form>
               )}
             </div>
 
-            <div className="flex justify-end pt-2">
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/60 flex justify-end">
               <button
                 type="button"
                 onClick={() => setSelectedUserDetail(null)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold cursor-pointer"
               >
-                Close
+                Close Profile
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: Delete User Account Confirmation */}
-      {userToDelete && (
+      {userToDelete && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4">
             <div className="flex items-start gap-3.5">
@@ -3857,7 +5005,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

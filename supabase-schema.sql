@@ -69,6 +69,35 @@ ALTER TABLE public.reward_ledger ADD COLUMN IF NOT EXISTS points BIGINT DEFAULT 
 ALTER TABLE public.reward_ledger ADD COLUMN IF NOT EXISTS gross_cents INTEGER DEFAULT 0;
 ALTER TABLE public.reward_ledger ADD COLUMN IF NOT EXISTS admin_profit_cents INTEGER DEFAULT 0;
 ALTER TABLE public.reward_ledger ADD COLUMN IF NOT EXISTS applied_share_percent INTEGER DEFAULT 50;
+ALTER TABLE public.reward_ledger ADD COLUMN IF NOT EXISTS task_id TEXT;
+ALTER TABLE public.reward_ledger ADD COLUMN IF NOT EXISTS approved_by TEXT DEFAULT 'System Verification';
+
+-- 2B. TASKS TABLE (ADMIN-EDITABLE TASK POINT DEFINITIONS)
+CREATE TABLE IF NOT EXISTS public.tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  task_type TEXT NOT NULL DEFAULT 'survey', -- 'survey' | 'ptc' | 'shortlink' | 'daily_checkin' | 'profile_verification' | 'custom'
+  reward_points INTEGER NOT NULL DEFAULT 100,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  daily_limit INTEGER NOT NULL DEFAULT 10,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2C. TASK COMPLETIONS TABLE (IDEMPOTENT VERIFIED TASK COMPLETION LOG)
+CREATE TABLE IF NOT EXISTS public.task_completions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  task_id TEXT NOT NULL,
+  provider_tx_id TEXT UNIQUE NOT NULL,
+  points BIGINT NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'completed', -- 'completed' | 'pending' | 'rejected' | 'reversed'
+  reason TEXT NOT NULL,
+  approved_by TEXT NOT NULL DEFAULT 'System Verification',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  verified_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- 3. WITHDRAWAL REQUESTS TABLE
 CREATE TABLE IF NOT EXISTS public.withdrawal_requests (
@@ -123,7 +152,7 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   meta_title TEXT DEFAULT 'Reward River - Real Opinions. Real Value.',
   meta_description TEXT DEFAULT 'Discover available research surveys, share verified opinions, and earn rewards paid directly in USDT.',
   meta_keywords TEXT DEFAULT 'paid surveys, earn USDT, crypto rewards, market research, CPX Research, Reward River, TRC20 payouts',
-  og_image_url TEXT DEFAULT 'https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&w=1200&q=80',
+  og_image_url TEXT DEFAULT '/favicon.svg',
   google_search_console_key TEXT DEFAULT '',
   sitemap_enabled BOOLEAN DEFAULT true,
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -155,8 +184,42 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
   target_entity TEXT,
   target_id TEXT,
   details TEXT,
+  ip_address TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.admin_audit_logs ADD COLUMN IF NOT EXISTS ip_address TEXT;
+
+-- 7. STANDARD VIEWS FOR POINTS_LEDGER AND AUDIT_LOG
+CREATE OR REPLACE VIEW public.points_ledger AS
+SELECT
+  id,
+  user_id,
+  COALESCE(task_id, cpx_offer_id, 'task_cpx_survey') AS task_id,
+  provider_tx_id,
+  CASE WHEN entry_type IN ('debit', 'reversal') THEN -ABS(points) ELSE ABS(points) END AS points_delta,
+  points,
+  amount_cents,
+  entry_type,
+  status,
+  description AS reason,
+  COALESCE(approved_by, 'System Verification') AS approved_by,
+  created_at,
+  processed_at
+FROM public.reward_ledger;
+
+CREATE OR REPLACE VIEW public.audit_log AS
+SELECT
+  id,
+  admin_user_id,
+  admin_email,
+  action,
+  target_entity,
+  target_id,
+  details,
+  ip_address,
+  created_at
+FROM public.admin_audit_logs;
 
 -- =============================================================================
 -- INITIAL SEED DATA & INDEXES
@@ -190,20 +253,36 @@ ON CONFLICT (id) DO UPDATE SET
   cpx_app_id = EXCLUDED.cpx_app_id,
   cpx_secure_hash_secret = EXCLUDED.cpx_secure_hash_secret;
 
+INSERT INTO public.tasks (id, title, description, task_type, reward_points, is_active, daily_limit)
+VALUES
+  ('task_cpx_survey', 'CPX Research Verified Survey Completion', 'Full market research survey verified via S2S postback (status=1).', 'survey', 5000, true, 50),
+  ('task_cpx_screenout', 'CPX Research Survey Screenout Bonus', 'Qualification attempt / screenout participation bonus (status=2).', 'survey', 100, true, 10),
+  ('task_aoy_ptc', 'AdsOnYourPTC Sponsored Campaign Visit', 'Verified PTC campaign timer completion.', 'ptc', 150, true, 25),
+  ('task_aoy_shortlink', 'AdsOnYourPTC Verified Shortlink', 'Verified shortlink traversal and anti-bot check completion.', 'shortlink', 250, true, 20),
+  ('task_daily_checkin', 'Daily Verified Earner Check-In', 'Daily active earner verification reward.', 'daily_checkin', 100, true, 1),
+  ('task_profile_verify', 'Research Profile & Phone Verification', 'One-time bonus for completing full demographic and WhatsApp/Phone verification.', 'profile_verification', 250, true, 1)
+ON CONFLICT (id) DO NOTHING;
+
 CREATE INDEX IF NOT EXISTS idx_reward_ledger_user_id ON public.reward_ledger(user_id);
 CREATE INDEX IF NOT EXISTS idx_reward_ledger_provider_tx_id ON public.reward_ledger(provider_tx_id);
+CREATE INDEX IF NOT EXISTS idx_task_completions_user_id ON public.task_completions(user_id);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON public.withdrawal_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
 CREATE INDEX IF NOT EXISTS idx_users_external_opaque_id ON public.users(external_opaque_id);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.task_completions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reward_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.withdrawal_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_treasury ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Allow public read access on system settings
+-- Allow public read access on system settings and active tasks
 DROP POLICY IF EXISTS "Public System Settings Read" ON public.system_settings;
 CREATE POLICY "Public System Settings Read" ON public.system_settings FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Public Tasks Read" ON public.tasks;
+CREATE POLICY "Public Tasks Read" ON public.tasks FOR SELECT USING (true);
+

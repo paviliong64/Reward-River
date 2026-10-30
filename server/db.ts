@@ -5,6 +5,15 @@ import { LedgerEntry, WithdrawalRecord, calculateUserBalances, isDuplicateTransa
 export type { LedgerEntry };
 import { usdCentsToPoints } from '../src/utils/usdt';
 import {
+  TaskDefinitionRecord,
+  TaskCompletionRecord,
+  classifyUserCohort,
+  formatKarachiDateTime,
+  verifyDataIntegrity,
+  DataIntegrityReport
+} from '../src/utils/adminStats';
+export type { TaskDefinitionRecord, TaskCompletionRecord, DataIntegrityReport };
+import {
   getActiveServerSupabase,
   defaultSupabaseUrl,
   defaultSupabaseAnonKey,
@@ -34,6 +43,7 @@ export interface UserAccount {
   countryCode?: string;
   hasPromptedPhone?: boolean;
   provider?: string;
+  storedPoints?: number;
 }
 
 export interface WithdrawalRequestDoc {
@@ -118,6 +128,8 @@ export interface SystemSettings {
 
 export interface DatabaseSchema {
   users: UserAccount[];
+  tasks: TaskDefinitionRecord[];
+  taskCompletions: TaskCompletionRecord[];
   rewardLedger: LedgerEntry[];
   withdrawalRequests: WithdrawalRequestDoc[];
   withdrawalEvents: WithdrawalEvent[];
@@ -140,8 +152,78 @@ class DatabaseStore {
   }
 
   private getDefaultData(): DatabaseSchema {
+    const nowIso = '2026-10-20T00:00:00.000Z';
     return {
       users: [],
+      tasks: [
+        {
+          id: 'task_cpx_survey',
+          title: 'CPX Research Verified Survey Completion',
+          description: 'Full market research survey verified via cryptographic S2S postback (status=1). Point value scales dynamically at 5,000 Pts per $1.00 gross (50% user share).',
+          taskType: 'survey',
+          rewardPoints: 5000,
+          isActive: true,
+          dailyLimit: 50,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        },
+        {
+          id: 'task_cpx_screenout',
+          title: 'CPX Research Survey Screenout Bonus',
+          description: 'Qualification attempt / screenout participation bonus verified via S2S postback (status=2 & payout > 0).',
+          taskType: 'survey',
+          rewardPoints: 100,
+          isActive: true,
+          dailyLimit: 10,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        },
+        {
+          id: 'task_aoy_ptc',
+          title: 'AdsOnYourPTC Sponsored Campaign Visit',
+          description: 'Verified PTC campaign timer completion via AdsOnYourPTC wall.',
+          taskType: 'ptc',
+          rewardPoints: 150,
+          isActive: true,
+          dailyLimit: 25,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        },
+        {
+          id: 'task_aoy_shortlink',
+          title: 'AdsOnYourPTC Verified Shortlink',
+          description: 'Verified shortlink traversal and anti-bot check completion.',
+          taskType: 'shortlink',
+          rewardPoints: 250,
+          isActive: true,
+          dailyLimit: 20,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        },
+        {
+          id: 'task_daily_checkin',
+          title: 'Daily Verified Earner Check-In',
+          description: 'Daily active earner verification reward.',
+          taskType: 'daily_checkin',
+          rewardPoints: 100,
+          isActive: true,
+          dailyLimit: 1,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        },
+        {
+          id: 'task_profile_verify',
+          title: 'Research Profile & Phone Verification',
+          description: 'One-time bonus for completing full demographic and WhatsApp/Phone verification.',
+          taskType: 'profile_verification',
+          rewardPoints: 250,
+          isActive: true,
+          dailyLimit: 1,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        }
+      ],
+      taskCompletions: [],
       rewardLedger: [],
       withdrawalRequests: [],
       withdrawalEvents: [],
@@ -314,6 +396,12 @@ class DatabaseStore {
           users: ((parsed.users || this.getDefaultData().users) as UserAccount[])
             .filter(u => !isMockOrTestUser(u?.email, u?.username))
             .map(normalizeUserRecord),
+          tasks: Array.isArray(parsed.tasks) && parsed.tasks.length > 0
+            ? parsed.tasks
+            : this.getDefaultData().tasks,
+          taskCompletions: Array.isArray(parsed.taskCompletions)
+            ? parsed.taskCompletions
+            : [],
           rewardLedger: (parsed.rewardLedger || [])
             .filter((l: LedgerEntry) => !isMockOrTestTx(l?.providerTxId, l?.description))
             .map(normalizeLedgerRecord),
@@ -500,6 +588,10 @@ class DatabaseStore {
             u => u.id === row.id || u.email.toLowerCase() === emailLower || u.externalOpaqueId === cleanExtId
           );
 
+          const sbRowPoints = typeof row.points === 'number' || (row.points !== null && row.points !== undefined)
+            ? Math.max(0, Number(row.points) || 0)
+            : undefined;
+
           if (existingIdx === -1) {
             this.data.users.push({
               id: String(row.id),
@@ -517,11 +609,16 @@ class DatabaseStore {
               whatsappNumber: row.whatsapp_number || row.phone_number || undefined,
               countryCode: row.country_code || undefined,
               provider: row.provider || 'password',
-              hasPromptedPhone: Boolean(row.has_prompted_phone)
+              hasPromptedPhone: Boolean(row.has_prompted_phone),
+              storedPoints: sbRowPoints
             });
             changed = true;
           } else {
             const current = this.data.users[existingIdx];
+            if (sbRowPoints !== undefined && current.storedPoints !== sbRowPoints) {
+              this.data.users[existingIdx].storedPoints = sbRowPoints;
+              changed = true;
+            }
             if (current.email !== emailLower || current.displayName !== display) {
               this.data.users[existingIdx].email = emailLower;
               this.data.users[existingIdx].displayName = display;
@@ -918,48 +1015,62 @@ class DatabaseStore {
     const sb = this.getSupabaseClient();
     if (!sb) return;
     const displayName = user.username || user.displayName || user.email.split('@')[0];
+    const emailLower = user.email.toLowerCase();
+    const pointsToSync =
+      typeof user.storedPoints === 'number'
+        ? Math.max(0, Math.round(user.storedPoints))
+        : this.getUserBalances(user.id).availablePoints;
+
     try {
-      const { error } = await sb.from('users').upsert(
-        {
+      const fullPayload = {
+        id: user.id,
+        email: emailLower,
+        password_hash: user.passwordHash || '',
+        salt: user.salt || '',
+        display_name: displayName,
+        email_verified: user.emailVerified !== false,
+        role: user.role || 'user',
+        external_opaque_id:
+          user.externalOpaqueId ||
+          `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
+        phone_number: user.phoneNumber || user.whatsappNumber || null,
+        whatsapp_number: user.whatsappNumber || user.phoneNumber || null,
+        country_code: user.countryCode || 'US',
+        provider: user.provider || 'password',
+        has_prompted_phone: Boolean(user.hasPromptedPhone),
+        points: pointsToSync,
+        created_at: user.createdAt || new Date().toISOString(),
+        updated_at: user.updatedAt || new Date().toISOString()
+      };
+
+      const { error } = await sb.from('users').upsert(fullPayload, { onConflict: 'id' });
+      if (error) {
+        const compactPayload = {
           id: user.id,
-          email: user.email.toLowerCase(),
+          username: displayName,
+          email: emailLower,
           password_hash: user.passwordHash || '',
           salt: user.salt || '',
-          display_name: displayName,
-          email_verified: user.emailVerified !== false,
           role: user.role || 'user',
-          external_opaque_id:
-            user.externalOpaqueId ||
-            `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
-          phone_number: user.phoneNumber || user.whatsappNumber || null,
-          whatsapp_number: user.whatsappNumber || user.phoneNumber || null,
-          country_code: user.countryCode || 'US',
-          provider: user.provider || 'password',
+          points: pointsToSync,
           has_prompted_phone: Boolean(user.hasPromptedPhone),
+          phone_number: user.phoneNumber || user.whatsappNumber || null,
           created_at: user.createdAt || new Date().toISOString(),
           updated_at: user.updatedAt || new Date().toISOString()
-        },
-        { onConflict: 'id' }
-      );
-      if (error) {
-        // Fallback if using alternate schema with 'username' column
-        const { error: fallbackErr } = await sb.from('users').upsert(
-          {
-            id: user.id,
-            username: displayName,
-            email: user.email.toLowerCase(),
-            password_hash: user.passwordHash || '',
-            salt: user.salt || '',
-            role: user.role || 'user',
-            has_prompted_phone: Boolean(user.hasPromptedPhone),
-            phone_number: user.phoneNumber || user.whatsappNumber || null,
-            created_at: user.createdAt || new Date().toISOString(),
-            updated_at: user.updatedAt || new Date().toISOString()
-          },
-          { onConflict: 'id' }
-        );
+        };
+
+        const { error: fallbackErr } = await sb.from('users').upsert(compactPayload, { onConflict: 'id' });
         if (fallbackErr) {
-          console.warn('[Supabase Auto Sync] User upsert note:', error.message);
+          // If email already exists under a different primary key ID in Supabase, update by email
+          if (
+            fallbackErr.message?.includes('users_email_key') ||
+            error.message?.includes('users_email_key')
+          ) {
+            const { id: _ignoreId, created_at: _ignoreCreated, ...updateByEmail } = compactPayload;
+            await sb.from('users').update(updateByEmail).eq('email', emailLower);
+          } else {
+            console.warn('[Supabase Auto Sync] User upsert note:', fallbackErr.message || error.message);
+          }
         }
       }
     } catch (err) {
@@ -1019,21 +1130,376 @@ class DatabaseStore {
   getAllUsersWithDetails() {
     return this.data.users.map(({ passwordHash, salt, ...user }) => {
       const balances = this.getUserBalances(user.id);
-      const userLedger = this.data.rewardLedger
-        .filter(l => l.userId === user.id)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      const completedSurveysCount = userLedger.filter(l => l.entryType === 'credit' && l.status === 'confirmed').length;
-      const userWithdrawals = this.data.withdrawalRequests.filter(w => w.userId === user.id);
+      const userLedger = this.getLedgerForUser(user.id);
+      const completedSurveysCount = userLedger.filter(
+        l => l.entryType === 'credit' && l.status === 'confirmed'
+      ).length;
+      const tasksPendingCount = userLedger.filter(
+        l => l.entryType === 'credit' && l.status === 'pending'
+      ).length;
+      const tasksRejectedCount = userLedger.filter(
+        l =>
+          l.entryType === 'reversal' ||
+          l.status === 'reversed' ||
+          l.status === 'rejected'
+      ).length;
+      const userWithdrawals = this.getWithdrawalsForUser(user.id);
+
+      // Compute true lastActiveAt across ledger, withdrawals, and user profile timestamps
+      const candidateTimestamps = [
+        user.updatedAt,
+        user.createdAt,
+        userLedger[0]?.createdAt,
+        userWithdrawals[0]?.createdAt
+      ].filter(Boolean) as string[];
+      let latestMs = new Date(user.createdAt || Date.now()).getTime();
+      let lastActiveAt = user.updatedAt || user.createdAt;
+      for (const ts of candidateTimestamps) {
+        const ms = new Date(ts).getTime();
+        if (!isNaN(ms) && ms >= latestMs) {
+          latestMs = ms;
+          lastActiveAt = ts;
+        }
+      }
+
+      const cohort = classifyUserCohort(user.createdAt);
 
       return {
         ...user,
+        cohort,
+        createdAtKarachi: formatKarachiDateTime(user.createdAt),
+        lastActiveAt,
+        lastActiveAtKarachi: formatKarachiDateTime(lastActiveAt),
         balances,
+        storedPoints: user.storedPoints ?? balances.availablePoints,
         completedSurveysCount,
+        tasksPendingCount,
+        tasksRejectedCount,
         totalTransactionsCount: userLedger.length + userWithdrawals.length,
         recentEntries: userLedger.slice(0, 15),
-        lastActiveAt: user.updatedAt || user.createdAt
+        fullLedger: userLedger,
+        withdrawals: userWithdrawals
       };
     });
+  }
+
+  // --- Admin-Editable Tasks Catalog & Completions ---
+  getTasks(): TaskDefinitionRecord[] {
+    if (!Array.isArray(this.data.tasks) || this.data.tasks.length === 0) {
+      this.data.tasks = this.getDefaultData().tasks;
+    }
+    return [...this.data.tasks];
+  }
+
+  getTaskById(taskId: string): TaskDefinitionRecord | undefined {
+    const clean = String(taskId || '').trim();
+    if (!clean) return undefined;
+    const tasks = this.getTasks();
+    return (
+      tasks.find(t => t.id === clean) ||
+      tasks.find(t => clean.startsWith(t.id) || clean.includes(t.taskType))
+    );
+  }
+
+  async upsertTask(
+    input: Partial<TaskDefinitionRecord> & { id?: string; title: string; rewardPoints: number },
+    adminUserId: string,
+    adminEmail: string
+  ): Promise<TaskDefinitionRecord> {
+    const nowIso = new Date().toISOString();
+    const id = String(input.id || `task_${crypto.randomUUID().slice(0, 8)}`).trim();
+    const rewardPoints = Math.max(1, Math.round(Number(input.rewardPoints) || 100));
+    const existingIdx = this.data.tasks.findIndex(t => t.id === id);
+
+    const record: TaskDefinitionRecord = {
+      id,
+      title: String(input.title || 'Verified Task').trim(),
+      description: String(input.description || 'Verified platform task completion').trim(),
+      taskType: input.taskType || 'custom',
+      rewardPoints,
+      isActive: input.isActive !== undefined ? Boolean(input.isActive) : true,
+      dailyLimit: Math.max(1, Math.round(Number(input.dailyLimit) || 10)),
+      createdAt: existingIdx !== -1 ? this.data.tasks[existingIdx].createdAt : nowIso,
+      updatedAt: nowIso
+    };
+
+    if (existingIdx !== -1) {
+      this.data.tasks[existingIdx] = record;
+    } else {
+      this.data.tasks.push(record);
+    }
+
+    await this.addAuditLog({
+      adminUserId,
+      adminEmail,
+      action: existingIdx !== -1 ? 'UPDATE_TASK_DEFINITION' : 'CREATE_TASK_DEFINITION',
+      targetEntity: 'tasks',
+      targetId: record.id,
+      details: JSON.stringify(record)
+    });
+
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('tasks').upsert({
+          id: record.id,
+          title: record.title,
+          description: record.description,
+          task_type: record.taskType,
+          reward_points: record.rewardPoints,
+          is_active: record.isActive,
+          daily_limit: record.dailyLimit,
+          created_at: record.createdAt,
+          updated_at: record.updatedAt
+        });
+      } catch {
+        // Optional tasks table in Supabase
+      }
+    }
+    return record;
+  }
+
+  async deleteTask(taskId: string, adminUserId: string, adminEmail: string): Promise<boolean> {
+    const before = this.data.tasks.length;
+    this.data.tasks = this.data.tasks.filter(t => t.id !== taskId);
+    if (this.data.tasks.length === before) return false;
+    await this.addAuditLog({
+      adminUserId,
+      adminEmail,
+      action: 'DELETE_TASK_DEFINITION',
+      targetEntity: 'tasks',
+      targetId: taskId,
+      details: `Deleted task definition ${taskId}`
+    });
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('tasks').delete().eq('id', taskId);
+      } catch {
+        // Optional tasks table in Supabase
+      }
+    }
+    return true;
+  }
+
+  getTaskCompletions(): TaskCompletionRecord[] {
+    return [...(this.data.taskCompletions || [])].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  async addTaskCompletion(record: TaskCompletionRecord): Promise<TaskCompletionRecord> {
+    if (!Array.isArray(this.data.taskCompletions)) {
+      this.data.taskCompletions = [];
+    }
+    this.data.taskCompletions.push(record);
+    await this.persist();
+    return record;
+  }
+
+  async adjustUserPoints(params: {
+    userId: string;
+    pointsDelta: number;
+    reason: string;
+    taskId?: string;
+    adminUserId: string;
+    adminEmail: string;
+  }): Promise<{ entry: LedgerEntry; balances: ReturnType<DatabaseStore['getUserBalances']> }> {
+    const user = this.getUserById(params.userId);
+    if (!user) {
+      throw new Error(`User not found: ${params.userId}`);
+    }
+    const delta = Math.round(Number(params.pointsDelta) || 0);
+    if (delta === 0) {
+      throw new Error('Points adjustment delta must be non-zero (+ for credit, - for debit).');
+    }
+    const cleanReason = String(params.reason || '').trim();
+    if (cleanReason.length < 3) {
+      throw new Error('A clear audit reason (minimum 3 characters) is required for manual point adjustments.');
+    }
+
+    const absPoints = Math.abs(delta);
+    const amountCents = Math.max(1, Math.round(absPoints / 100));
+    const grossCents = Math.max(amountCents, Math.round((absPoints / 5000) * 100));
+    const adminProfitCents = Math.max(0, grossCents - amountCents);
+    const nowIso = new Date().toISOString();
+    const txId = `adm_adj_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const entryType: LedgerEntry['entryType'] = delta > 0 ? 'credit' : 'debit';
+    const signStr = delta > 0 ? `+${absPoints.toLocaleString('en-US')}` : `-${absPoints.toLocaleString('en-US')}`;
+
+    const entry: LedgerEntry = {
+      id: `le_${crypto.randomUUID()}`,
+      userId: user.id,
+      providerTxId: txId,
+      taskId: params.taskId || 'admin_manual_adjustment',
+      cpxOfferId: params.taskId || 'admin_adjustment',
+      amountCents,
+      points: absPoints,
+      grossCents: delta > 0 ? grossCents : 0,
+      adminProfitCents: delta > 0 ? adminProfitCents : 0,
+      appliedSharePercent: 50,
+      entryType,
+      status: 'confirmed',
+      approvedBy: params.adminEmail || 'admin@reward-river',
+      description: `Admin Adjustment: ${cleanReason} (${signStr} Pts) [Approved by ${params.adminEmail}]`,
+      createdAt: nowIso,
+      processedAt: nowIso
+    };
+
+    await this.addLedgerEntry(entry);
+    const updatedBalances = this.getUserBalances(user.id);
+    const uIdx = this.data.users.findIndex(u => u.id === user.id);
+    if (uIdx !== -1) {
+      this.data.users[uIdx].storedPoints = updatedBalances.availablePoints;
+      this.data.users[uIdx].updatedAt = nowIso;
+    }
+
+    await this.addAuditLog({
+      adminUserId: params.adminUserId,
+      adminEmail: params.adminEmail,
+      action: 'ADMIN_MANUAL_POINTS_ADJUSTMENT',
+      targetEntity: 'users',
+      targetId: user.id,
+      details: JSON.stringify({
+        userId: user.id,
+        email: user.email,
+        pointsDelta: delta,
+        taskId: params.taskId || 'admin_manual_adjustment',
+        reason: cleanReason,
+        newAvailablePoints: updatedBalances.availablePoints,
+        ledgerEntryId: entry.id
+      })
+    });
+
+    await this.persist();
+    return { entry, balances: updatedBalances };
+  }
+
+  async runDataIntegrityCheck(autoFix = false): Promise<DataIntegrityReport & { autoFixedCount: number }> {
+    await this.syncFromSupabase(true);
+    const sb = this.getSupabaseClient();
+
+    // Refresh storedPoints from Supabase users table so comparison is 100% live
+    if (sb) {
+      try {
+        const { data: sbUsers } = await sb.from('users').select('id, points');
+        if (Array.isArray(sbUsers)) {
+          const ptsMap = new Map<string, number>();
+          for (const r of sbUsers) {
+            if (r && r.id !== undefined) {
+              ptsMap.set(String(r.id), Math.max(0, Number(r.points) || 0));
+            }
+          }
+          for (const u of this.data.users) {
+            if (ptsMap.has(u.id)) {
+              u.storedPoints = ptsMap.get(u.id);
+            }
+          }
+        }
+      } catch {
+        // Proceed with local storedPoints
+      }
+    }
+
+    const initialReport = verifyDataIntegrity({
+      users: this.data.users.map(u => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        username: u.username,
+        role: u.role,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+        externalOpaqueId: u.externalOpaqueId,
+        emailVerified: u.emailVerified,
+        storedPoints: u.storedPoints ?? this.getUserBalances(u.id).availablePoints
+      })),
+      ledger: this.data.rewardLedger,
+      withdrawals: this.data.withdrawalRequests
+    });
+
+    let autoFixedCount = 0;
+    if (autoFix) {
+      // 1. Ensure permanent IDs & externalOpaqueId on all users
+      for (const u of this.data.users) {
+        let modified = false;
+        if (!u.id || u.id.trim().length < 4) {
+          u.id = `usr_${crypto.randomUUID()}`;
+          modified = true;
+        }
+        if (!u.externalOpaqueId || u.externalOpaqueId.trim().length < 6 || u.externalOpaqueId.includes('@')) {
+          const cleanUuid = u.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+          u.externalOpaqueId = `rr_cpx_${cleanUuid || crypto.randomBytes(8).toString('hex')}`;
+          modified = true;
+        }
+        const balances = this.getUserBalances(u.id);
+        if (u.storedPoints !== balances.availablePoints) {
+          u.storedPoints = balances.availablePoints;
+          modified = true;
+        }
+        if (modified) {
+          autoFixedCount++;
+          await this.upsertUserToSupabase(u);
+          if (sb) {
+            try {
+              await sb.from('users').update({
+                points: balances.availablePoints,
+                balance_cents: balances.availableCents,
+                total_earned_points: balances.totalEarnedPoints,
+                external_opaque_id: u.externalOpaqueId,
+                updated_at: new Date().toISOString()
+              }).eq('id', u.id);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+
+      // 2. Deduplicate duplicate providerTxId if any
+      const seenTx = new Set<string>();
+      const dedupedLedger: LedgerEntry[] = [];
+      for (const l of this.data.rewardLedger) {
+        const tx = String(l.providerTxId || '').trim();
+        if (tx && seenTx.has(tx)) {
+          autoFixedCount++;
+          continue;
+        }
+        if (tx) seenTx.add(tx);
+        dedupedLedger.push(l);
+      }
+      this.data.rewardLedger = dedupedLedger;
+      await this.persist();
+
+      const postFixReport = verifyDataIntegrity({
+        users: this.data.users.map(u => ({
+          id: u.id,
+          email: u.email,
+          displayName: u.displayName,
+          username: u.username,
+          role: u.role,
+          createdAt: u.createdAt,
+          updatedAt: u.updatedAt,
+          externalOpaqueId: u.externalOpaqueId,
+          emailVerified: u.emailVerified,
+          storedPoints: u.storedPoints ?? this.getUserBalances(u.id).availablePoints
+        })),
+        ledger: this.data.rewardLedger,
+        withdrawals: this.data.withdrawalRequests
+      });
+
+      return {
+        ...postFixReport,
+        autoFixedCount
+      };
+    }
+
+    return {
+      ...initialReport,
+      autoFixedCount
+    };
   }
 
   // --- Ledger ---

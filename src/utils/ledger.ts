@@ -7,18 +7,20 @@ export interface LedgerEntry {
   id: string;
   userId: string;
   providerTxId: string;
+  taskId?: string; // task or survey ID
   amountCents: number; // integer minor units (USD cents credited to user)
   points?: number; // hybrid points credited to user (10,000 points = 1 USDT)
   grossCents?: number; // 100% gross CPX survey revenue in USD cents
-  adminProfitCents?: number; // hidden admin net profit in USD cents (e.g. 60%)
-  appliedSharePercent?: number; // user share % at time of completion (e.g. 40)
+  adminProfitCents?: number; // hidden admin net profit in USD cents (e.g. 50%)
+  appliedSharePercent?: number; // user share % at time of completion (e.g. 50)
   entryType: 'credit' | 'debit' | 'reversal';
-  status: 'pending' | 'confirmed' | 'reversed';
+  status: 'pending' | 'confirmed' | 'reversed' | 'rejected';
   createdAt: string;
   processedAt?: string;
   reversalRef?: string;
   description?: string;
   cpxOfferId?: string;
+  approvedBy?: string; // 'CPX Research S2S' | 'AoyTasks S2S' | Admin email
 }
 
 export interface WithdrawalRecord {
