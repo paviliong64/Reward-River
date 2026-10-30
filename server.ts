@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import crypto from 'node:crypto';
 import { dbStore, UserAccount } from './server/db';
+import { pingServerSupabase } from './server/supabase';
 import {
   authMiddleware,
   hashPassword,
@@ -221,6 +222,17 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       (rawUsername ? dbStore.getUserByUsernameOrEmail(rawUsername) : undefined);
 
     if (existingUser) {
+      if (
+        existingUser.passwordHash &&
+        existingUser.salt &&
+        !verifyPassword(cleanPass, existingUser.passwordHash, existingUser.salt) &&
+        !verifyPassword(cleanPass.trim(), existingUser.passwordHash, existingUser.salt)
+      ) {
+        res.status(400).json({
+          error: 'This email or username is already registered. Please sign in with your password.'
+        });
+        return;
+      }
       const { hash, salt } = hashPassword(cleanPass);
       const updatedUser =
         (await dbStore.updateUser(existingUser.id, {
@@ -745,6 +757,7 @@ app.get('/api/admin/system-health', requireAuth, requireAdmin, async (req: Authe
     const uptimeFormatted = `${days > 0 ? `${days}d ` : ''}${hours}h ${minutes}m ${seconds}s`;
     const cpxConfig = cpxResearchService.getConfigStatus();
     const usdtStatus = await usdtPriceService.getUsdtPriceQuote();
+    const sbPing = await pingServerSupabase();
 
     const services = [
       {
@@ -753,6 +766,15 @@ app.get('/api/admin/system-health', requireAuth, requireAdmin, async (req: Authe
         status: 'healthy',
         latencyMs: 1,
         details: `Node ${process.version} • ${process.platform} • PID ${process.pid}`
+      },
+      {
+        id: 'supabase_postgres',
+        name: 'Supabase PostgreSQL Cloud Database',
+        status: sbPing.connected ? 'healthy' : 'degraded',
+        latencyMs: sbPing.latencyMs || 45,
+        details: sbPing.connected
+          ? `Connected (${sbPing.url}) • ${sbPing.userCount ?? dbStore.getAllUsers().length} Cloud Users Synced`
+          : `Fallback Local Mode (${sbPing.error || 'Not reachable'})`
       },
       {
         id: 'cpx_offerwall',
@@ -1484,13 +1506,16 @@ app.all(
         try {
           await sb.from('platform_treasury').upsert({
             id: `tr_${transId}`,
-            trans_id: transId,
-            provider: providerParam || 'cpx',
+            provider_id: providerParam || 'cpx_research',
+            provider_name: providerParam ? providerParam.toUpperCase() : 'CPX Research',
+            source_type: isScreenOut ? 'screenout_bonus' : 'survey_completion',
+            gross_amount_cents: grossCents,
+            user_share_cents: userAmountCents,
+            platform_share_cents: adminProfitCents,
             user_id: targetUser.id,
-            gross_usd: Number((grossCents / 100).toFixed(4)),
-            admin_profit_usd: Number((adminProfitCents / 100).toFixed(4)),
-            user_points_awarded: userPoints,
-            status: 'completed',
+            user_email: targetUser.email,
+            provider_tx_id: transId,
+            description: ledgerEntry.description,
             created_at: new Date().toISOString()
           });
         } catch {
@@ -1528,13 +1553,16 @@ app.all(
       try {
         await sb.from('platform_treasury').upsert({
           id: `tr_${transId}_rev`,
-          trans_id: transId,
-          provider: providerParam || 'cpx',
+          provider_id: providerParam || 'cpx_research',
+          provider_name: providerParam ? providerParam.toUpperCase() : 'CPX Research',
+          source_type: 'chargeback_reversal',
+          gross_amount_cents: -grossCents,
+          user_share_cents: -userAmountCents,
+          platform_share_cents: -adminProfitCents,
           user_id: targetUser.id,
-          gross_usd: -Number((grossCents / 100).toFixed(4)),
-          admin_profit_usd: -Number((adminProfitCents / 100).toFixed(4)),
-          user_points_awarded: -userPoints,
-          status: 'reversed',
+          user_email: targetUser.email,
+          provider_tx_id: `${transId}_rev`,
+          description: reversalEntry.description,
           created_at: new Date().toISOString()
         });
       } catch {
@@ -1572,8 +1600,8 @@ app.get('/api/tasks', requireAuth, async (req: AuthenticatedRequest, res: Respon
     res.json({
       tasks: result.tasks,
       offerwallUrl,
-      pointsPerUsdt: settings.pointsPerUsdt || 10000,
-      userSharePercent: settings.userSharePercent || 40,
+      pointsPerUsdt: settings.pointsPerUsdt || 5000,
+      userSharePercent: settings.userSharePercent || 50,
       surveyDisplayMode: settings.surveyDisplayMode || 'hybrid'
     });
   } catch (err) {
@@ -1593,8 +1621,8 @@ app.post('/api/tasks/complete', requireAuth, async (req: AuthenticatedRequest, r
     }
 
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
 
     // Today's date key so each user can claim a specific daily task once per day
     const dateKey = new Date().toISOString().slice(0, 10);
@@ -1675,10 +1703,18 @@ app.all(['/wh/aoytasks', '/api/aoytasks/postback'], async (req: Request, res: Re
     return;
   }
 
-  const targetUser =
+  let targetUser =
     dbStore.getUserByAoySubId(subIdRaw) ||
     dbStore.getUserByExternalId(subIdRaw) ||
     dbStore.getUserById(subIdRaw);
+
+  if (!targetUser) {
+    await dbStore.syncFromSupabase();
+    targetUser =
+      dbStore.getUserByAoySubId(subIdRaw) ||
+      dbStore.getUserByExternalId(subIdRaw) ||
+      dbStore.getUserById(subIdRaw);
+  }
 
   if (!targetUser) {
     // Acknowledge with ok if user not matched in test mode
@@ -1687,8 +1723,8 @@ app.all(['/wh/aoytasks', '/api/aoytasks/postback'], async (req: Request, res: Re
   }
 
   const settings = dbStore.getSettings();
-  const userSharePercent = settings.userSharePercent || 40;
-  const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+  const userSharePercent = settings.userSharePercent || 50;
+  const pointsPerUsdt = settings.pointsPerUsdt || 5000;
   const exchangeRate = settings.aoyExchangeRate || 10000;
 
   const grossCents = aoyRewardToGrossCents(rewardRaw, exchangeRate, payoutRaw);
@@ -1760,7 +1796,8 @@ app.get('/api/usdt/price', async (req: Request, res: Response) => {
 });
 
 // GET /api/ledger
-app.get('/api/ledger', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+app.get('/api/ledger', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
   const user = req.user!;
   const settings = dbStore.getSettings();
   const userSharePercent = settings.userSharePercent || 50;
@@ -1786,7 +1823,8 @@ app.get('/api/ledger', requireAuth, (req: AuthenticatedRequest, res: Response) =
 });
 
 // GET /api/withdrawals
-app.get('/api/withdrawals', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+app.get('/api/withdrawals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
   const user = req.user!;
   const withdrawals = dbStore.getWithdrawalsForUser(user.id);
   res.json({ withdrawals });
@@ -1795,6 +1833,7 @@ app.get('/api/withdrawals', requireAuth, (req: AuthenticatedRequest, res: Respon
 // POST /api/withdrawals (USDT Withdrawal - Minimum $25.00 = 250,000 Points)
 app.post('/api/withdrawals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await dbStore.syncFromSupabase();
     const user = req.user!;
     const { usdtAddress, network = 'TRC20', amountCents } = req.body;
     const settings = dbStore.getSettings();
@@ -2001,7 +2040,8 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
 });
 
 // GET /api/admin/withdrawals
-app.get('/api/admin/withdrawals', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+app.get('/api/admin/withdrawals', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
   const users = dbStore.getAllUsers();
   const userMap = new Map(users.map(u => [u.id, u]));
   const withdrawals = dbStore.getAllWithdrawals().map(w => {
@@ -2018,6 +2058,7 @@ app.get('/api/admin/withdrawals', requireAuth, requireAdmin, (req: Authenticated
 // POST /api/admin/withdrawals/:id/review
 app.post('/api/admin/withdrawals/:id/review', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await dbStore.syncFromSupabase();
     const adminUser = req.user!;
     const id = req.params.id;
     const { action, notes, txHash } = req.body;
@@ -2062,7 +2103,8 @@ app.post('/api/admin/withdrawals/:id/review', requireAuth, requireAdmin, async (
 });
 
 // GET /api/admin/settings
-app.get('/api/admin/settings', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+app.get('/api/admin/settings', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
   res.json(dbStore.getSettings());
 });
 
@@ -2111,12 +2153,12 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
     const parsedShare = Number(userSharePercent);
     const clampedShare = !isNaN(parsedShare) && parsedShare >= 1 && parsedShare <= 100
       ? Math.round(parsedShare)
-      : (current.userSharePercent || 40);
+      : (current.userSharePercent || 50);
 
     const parsedPointsPerUsdt = Number(pointsPerUsdt);
     const effectivePointsPerUsdt = !isNaN(parsedPointsPerUsdt) && parsedPointsPerUsdt >= 100
       ? Math.round(parsedPointsPerUsdt)
-      : (current.pointsPerUsdt || 10000);
+      : (current.pointsPerUsdt || 5000);
 
     const effectiveDisplayMode: 'hybrid' | 'points_only' =
       surveyDisplayMode === 'points_only' ? 'points_only' : 'hybrid';
@@ -2209,8 +2251,8 @@ app.post('/api/admin/test-aoy-postback', requireAuth, requireAdmin, async (req: 
     const { targetUserId, grossCents = 50, offerName = 'Sponsored PTC Campaign #41', offerType = 'ptc', status = 1 } = req.body;
     const user = dbStore.getUserById(targetUserId) || req.user!;
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
 
     const effectiveGrossCents = Math.max(5, Number(grossCents) || 50);
     const split = calculateHybridSurveySplit(effectiveGrossCents, userSharePercent, pointsPerUsdt);
@@ -2289,7 +2331,8 @@ app.post('/api/admin/test-cpx-connection', requireAuth, requireAdmin, async (req
 });
 
 // GET /api/admin/audit-logs
-app.get('/api/admin/audit-logs', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+app.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
   res.json({ logs: dbStore.getAuditLogs() });
 });
 
@@ -2391,8 +2434,8 @@ app.post('/api/admin/test-cpx-postback', requireAuth, requireAdmin, async (req: 
     const { targetUserId, rewardCents = 100, grossCents, offerId = 'test_offer_101', status = 1 } = req.body;
     const user = dbStore.getUserById(targetUserId) || req.user!;
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
 
     // Treat incoming rewardCents / grossCents as the 100% Gross CPX Payout (e.g. 100 cents = $1.00 gross)
     const effectiveGrossCents = Math.max(10, Number(grossCents || rewardCents) || 100);
@@ -2442,9 +2485,11 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
   try {
     const startMs = Date.now();
     const admin = req.user!;
+    await dbStore.syncFromSupabase();
     const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 40;
-    const pointsPerUsdt = settings.pointsPerUsdt || 10000;
+    const userSharePercent = settings.userSharePercent || 50;
+    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
+    const sbPing = await pingServerSupabase();
 
     // 1. Verify CPX Research Offerwall & Feed
     const extId = admin.externalOpaqueId || `rr_cpx_admin_${admin.id}`;
@@ -2534,6 +2579,15 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
         title: `${pointsPerUsdt.toLocaleString('en-US')} Points = ${userSharePercent}% User ($${(userSharePercent / 100).toFixed(2)}) / ${100 - userSharePercent}% Admin Profit ($${((100 - userSharePercent) / 100).toFixed(2)})`,
         passed: splitVerified,
         detail: `$1.00 Real Gross stays 100% hidden • User gets ${splitTest.userRewardPointsFormatted} Pts (${splitTest.userRewardUsdtFormatted}) • Admin keeps ${splitTest.adminProfitUsdFormatted}`
+      },
+      {
+        id: 'supabase_cloud_db',
+        partner: 'Supabase PostgreSQL',
+        title: 'Supabase Cloud PostgreSQL Database & RLS Service Key Sync',
+        passed: sbPing.connected,
+        detail: sbPing.connected
+          ? `Connected to ${sbPing.url} (${sbPing.latencyMs}ms) • ${sbPing.userCount ?? users.length} cloud users synced`
+          : `Connection warning: ${sbPing.error || 'Unreachable'}`
       },
       {
         id: 'partner_accounting',

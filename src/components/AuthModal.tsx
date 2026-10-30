@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserBalances } from '../types';
 import { Logo } from './Logo';
-import { supabase, isSupabaseConfigured } from '../supabase';
 import {
   X,
   Lock,
@@ -129,7 +128,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       ? crypto.randomUUID()
       : Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
     const userId = `usr_${secureHex}`;
-    const extId = `rr_cpx_${secureHex.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+    const extId = `rr_cpx_${userId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
 
     const normalUser: User = {
       id: userId,
@@ -190,28 +189,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setLoading(true);
 
-    // Step 1: Call Supabase auth.signUp directly
-    try {
-      if (isSupabaseConfigured) {
-        const { error: supaErr } = await supabase.auth.signUp({
-          email: targetEmail.trim(),
-          password: targetPassword
-        });
-        if (supaErr) {
-          console.warn('Supabase auth.signUp note:', supaErr.message);
-          // If Supabase returned an explicit user-facing error like email already registered:
-          if (supaErr.message.toLowerCase().includes('already registered')) {
-            setError('This email is already registered. Please sign in instead.');
-            setLoading(false);
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Direct Supabase signup call caught:', e);
-    }
-
-    // Step 2: Register user in app backend & session store
+    // Register user in app backend & Supabase PostgreSQL store
     const derivedUsername = targetEmail.trim().split('@')[0];
     try {
       const res = await fetch('/api/auth/register', {

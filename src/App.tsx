@@ -294,7 +294,7 @@ export default function App() {
     }
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
+      if (session?.user && event === 'SIGNED_IN' && !getAuthToken()) {
         try {
           const res = await fetch('/api/auth/me', {
             headers: { Authorization: `Bearer ${session.access_token}` }

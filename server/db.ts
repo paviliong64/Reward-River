@@ -4,7 +4,17 @@ import crypto from 'node:crypto';
 import { LedgerEntry, WithdrawalRecord, calculateUserBalances, isDuplicateTransaction } from '../src/utils/ledger';
 export type { LedgerEntry };
 import { usdCentsToPoints } from '../src/utils/usdt';
-import { getActiveServerSupabase } from './supabase';
+import {
+  getActiveServerSupabase,
+  defaultSupabaseUrl,
+  defaultSupabaseAnonKey,
+  defaultSupabaseServiceKey
+} from './supabase';
+
+const IS_UNIT_TEST_ENV =
+  process.env.NODE_ENV === 'test' ||
+  process.argv.some(arg => arg === '--test' || arg.endsWith('.test.ts'));
+
 
 export interface UserAccount {
   id: string;
@@ -122,6 +132,7 @@ const TMP_DB_FILE = '/tmp/reward-river-store.json';
 class DatabaseStore {
   private data: DatabaseSchema;
   private initialized = false;
+  private lastSupabaseSyncMs = 0;
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor() {
@@ -135,9 +146,9 @@ class DatabaseStore {
       withdrawalRequests: [],
       withdrawalEvents: [],
       systemSettings: {
-        supabaseUrl: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-        supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '',
-        supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+        supabaseUrl: defaultSupabaseUrl,
+        supabaseAnonKey: defaultSupabaseAnonKey,
+        supabaseServiceKey: defaultSupabaseServiceKey,
         minWithdrawalCents: 2500, // $25.00 min (250,000 Points at 10,000 Pts = $1.00)
         maxWithdrawalCents: 50000, // $500.00 max (5,000,000 Points)
         feeCentsTrc20: 100, // $1.00 USDT fee for TRC-20
@@ -210,12 +221,9 @@ class DatabaseStore {
           if (!clean) return true;
           return (
             clean.startsWith('cpx_survey_') ||
-            clean.startsWith('sim_') ||
-            clean.startsWith('test_') ||
-            clean.startsWith('cpx_test_') ||
+            clean.startsWith('sim_cpx_') ||
             clean.startsWith('factor_test') ||
             clean.startsWith('cpx_verify_') ||
-            clean.startsWith('aoy_sim_') ||
             clean.startsWith('diag_') ||
             d.includes('offer #cpx') ||
             d.includes('#cpx_test_') ||
@@ -233,6 +241,12 @@ class DatabaseStore {
             e === 'fdsgsdfg@gmail.com' ||
             e === 'admin@rewardriver.com' ||
             e === 'admin@rewardriver' ||
+            e === 'survey_tester@example.com' ||
+            e === 'points_user@example.com' ||
+            e === 'river_earner@gmail.com' ||
+            e === 'testmath1@gmail.com' ||
+            e === 'testmath2@gmail.com' ||
+            e === 'freshuser999@gmail.com' ||
             u === 'gojolag383' ||
             u === 'erterrtwe' ||
             u === 'fsegsegs'
@@ -260,22 +274,26 @@ class DatabaseStore {
         };
 
         const normalizeLedgerRecord = (l: LedgerEntry): LedgerEntry => {
-          const rawPoints = Math.max(0, Number(l.points) || 0);
-          // CPX gross cents is preserved from grossCents or original amountCents when appliedSharePercent was 100
-          const rawGross =
-            l.appliedSharePercent === 100
-              ? Number(l.grossCents || l.amountCents)
-              : Number(l.grossCents || Math.round((rawPoints / 5000) * 100));
-          const grossCents = Math.max(1, rawGross || Math.round((rawPoints / 5000) * 100));
-          // Normalize points to the 5,000 Points = $1.00 CPX Currency Factor (50 Pts per 1 gross cent)
-          const points =
-            rawPoints === 0 || rawPoints > grossCents * 55
-              ? Math.max(50, Math.round(grossCents * 50))
-              : rawPoints;
-          // User redemption rate: 10,000 Points = $1.00 USD (100 Points = 1 cent = 50% of CPX gross)
+          const desc = String(l.description || '');
+          const ptsMatch = desc.match(/\+?([\d,]+)\s*(?:Pts|Points)/i);
+          const parsedPts = ptsMatch ? Number(ptsMatch[1].replace(/,/g, '')) : NaN;
+          const rawPoints = Math.max(
+            0,
+            Number(l.points) || (!isNaN(parsedPts) && parsedPts > 0 ? Math.round(parsedPts) : 0)
+          );
+          const rawAmountCents = Math.max(0, Number(l.amountCents) || 0);
+          const points = rawPoints > 0 ? rawPoints : Math.max(50, rawAmountCents * 100);
+          // User redemption rate: 10,000 Points = $1.00 USD (100 Points = 1 cent)
           const userAmountCents = Math.max(1, Math.round(points / 100));
+          // CPX gross cents: 5,000 Points = $1.00 Gross (50 Points = 1 gross cent)
+          const grossCents = Math.max(
+            userAmountCents,
+            Number(l.grossCents) >= userAmountCents
+              ? Number(l.grossCents)
+              : Math.round((points / 5000) * 100)
+          );
           const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-          const cleanDesc = String(l.description || '').replace(
+          const cleanDesc = desc.replace(
             /\+\d[\d,]*\s*Pts/i,
             `+${points.toLocaleString('en-US')} Pts`
           );
@@ -328,11 +346,19 @@ class DatabaseStore {
   }
 
   getSupabaseClient() {
+    if (IS_UNIT_TEST_ENV) return null;
     const s = this.data?.systemSettings;
-    return getActiveServerSupabase(s?.supabaseUrl, s?.supabaseServiceKey || s?.supabaseAnonKey);
+    return getActiveServerSupabase(s?.supabaseUrl, s?.supabaseServiceKey);
   }
 
-  async syncFromSupabase(): Promise<void> {
+  async syncFromSupabase(force = false): Promise<void> {
+    if (IS_UNIT_TEST_ENV) return;
+    const now = Date.now();
+    if (!force && this.lastSupabaseSyncMs > 0 && now - this.lastSupabaseSyncMs < 2500) {
+      return;
+    }
+    this.lastSupabaseSyncMs = now;
+
     const sb = this.getSupabaseClient();
     if (!sb) return;
 
@@ -342,12 +368,9 @@ class DatabaseStore {
       if (!clean) return true;
       return (
         clean.startsWith('cpx_survey_') ||
-        clean.startsWith('sim_') ||
-        clean.startsWith('test_') ||
-        clean.startsWith('cpx_test_') ||
+        clean.startsWith('sim_cpx_') ||
         clean.startsWith('factor_test') ||
         clean.startsWith('cpx_verify_') ||
-        clean.startsWith('aoy_sim_') ||
         clean.startsWith('diag_') ||
         d.includes('offer #cpx') ||
         d.includes('#cpx_test_') ||
@@ -365,6 +388,12 @@ class DatabaseStore {
         e === 'fdsgsdfg@gmail.com' ||
         e === 'admin@rewardriver.com' ||
         e === 'admin@rewardriver' ||
+        e === 'survey_tester@example.com' ||
+        e === 'points_user@example.com' ||
+        e === 'river_earner@gmail.com' ||
+        e === 'testmath1@gmail.com' ||
+        e === 'testmath2@gmail.com' ||
+        e === 'freshuser999@gmail.com' ||
         u === 'gojolag383' ||
         u === 'erterrtwe' ||
         u === 'fsegsegs'
@@ -379,25 +408,11 @@ class DatabaseStore {
 
     try {
       const { data: sbUsers } = await sb.from('users').select('*');
-      
+
       let sbLedger: any[] | null = null;
       const { data: rlData, error: rlError } = await sb.from('reward_ledger').select('*');
       if (!rlError && Array.isArray(rlData)) {
         sbLedger = rlData;
-      } else {
-        const { data: leData } = await sb.from('ledger_entries').select('*');
-        if (Array.isArray(leData)) {
-          sbLedger = leData.map(r => ({
-            id: r.id,
-            user_id: r.user_id,
-            provider_tx_id: r.reference_id || r.id,
-            amount_cents: r.amount_cents,
-            entry_type: r.type || 'credit',
-            status: 'confirmed',
-            description: r.description,
-            created_at: r.created_at
-          }));
-        }
       }
 
       let changed = false;
@@ -406,17 +421,21 @@ class DatabaseStore {
       const { data: sbSettings, error: settingsError } = await sb.from('system_settings').select('*').eq('id', 'global').single();
       if (!settingsError && sbSettings) {
         const current = this.data.systemSettings;
+        const sbMinW = Number(sbSettings.min_withdrawal_cents);
+        const sbPtsRate = Number(sbSettings.points_rate_per_usd);
+        const sbShare = Number(sbSettings.default_user_share_percent);
+
         const newSettings: SystemSettings = {
           ...current,
-          supabaseUrl: current.supabaseUrl, // preserve local supabase connection
-          supabaseAnonKey: current.supabaseAnonKey,
-          supabaseServiceKey: current.supabaseServiceKey,
-          minWithdrawalCents: Number(sbSettings.min_withdrawal_cents) || current.minWithdrawalCents,
-          maxWithdrawalCents: Number(sbSettings.max_withdrawal_cents) || current.maxWithdrawalCents,
+          supabaseUrl: current.supabaseUrl || defaultSupabaseUrl,
+          supabaseAnonKey: current.supabaseAnonKey || defaultSupabaseAnonKey,
+          supabaseServiceKey: current.supabaseServiceKey || defaultSupabaseServiceKey,
+          minWithdrawalCents: sbMinW >= 2500 ? sbMinW : 2500,
+          maxWithdrawalCents: Number(sbSettings.max_withdrawal_cents) || current.maxWithdrawalCents || 50000,
           feeCentsTrc20: Number(sbSettings.fee_cents_trc20) ?? current.feeCentsTrc20,
           feeCentsErc20: Number(sbSettings.fee_cents_erc20) ?? current.feeCentsErc20,
-          pointsPerUsdt: Number(sbSettings.points_rate_per_usd) || current.pointsPerUsdt,
-          userSharePercent: Number(sbSettings.default_user_share_percent) || current.userSharePercent,
+          pointsPerUsdt: sbPtsRate === 5000 ? 5000 : (current.pointsPerUsdt || 5000),
+          userSharePercent: sbShare === 50 ? 50 : (current.userSharePercent || 50),
           maintenanceMode: Boolean(sbSettings.maintenance_mode),
           cpxAppId: sbSettings.cpx_app_id || current.cpxAppId,
           cpxHashKey: sbSettings.cpx_hash_key || current.cpxHashKey,
@@ -435,7 +454,6 @@ class DatabaseStore {
           updatedAt: sbSettings.updated_at || new Date().toISOString()
         };
 
-        // Deep comparison to avoid redundant writes
         if (JSON.stringify(newSettings) !== JSON.stringify(current)) {
           this.data.systemSettings = newSettings;
           changed = true;
@@ -454,7 +472,6 @@ class DatabaseStore {
           if (!row || !row.id || !row.email) continue;
           const rawEmailLower = String(row.email).trim().toLowerCase();
 
-          // Purge mock/test users from Supabase as well
           if (isMockOrTestUser(rawEmailLower, row.display_name || row.username)) {
             await sb.from('reward_ledger').delete().eq('user_id', row.id);
             await sb.from('users').delete().eq('id', row.id);
@@ -465,8 +482,7 @@ class DatabaseStore {
           const isSoleAdmin =
             row.id === 'usr_admin_rewardriver' || rawEmailLower === 'admin@reward-river';
           const effectiveRole: 'user' | 'admin' = isSoleAdmin ? 'admin' : 'user';
-          
-          // Strictly force external_opaque_id to be a clean UUID-derived hex without email handles
+
           const cleanUuid = String(row.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
           const rawExt = String(row.external_opaque_id || '');
           const isEmailText = rawExt.includes('@') || rawExt.includes('gmail.com') || rawExt.length < 6;
@@ -528,7 +544,6 @@ class DatabaseStore {
           }
         }
 
-        // Only push local users up to Supabase if their email does NOT already exist in Supabase
         const sbEmailSet = new Set(sbUsers.map((r: any) => String(r.email || '').trim().toLowerCase()));
         for (const localUser of this.data.users) {
           if (isMockOrTestUser(localUser.email, localUser.username)) continue;
@@ -540,6 +555,7 @@ class DatabaseStore {
         }
       }
 
+      // 3. Sync Reward Ledger from Supabase without halving points!
       const beforeLen = this.data.rewardLedger.length;
       this.data.rewardLedger = this.data.rewardLedger.filter(
         l => !isMockOrTestTx(l.providerTxId, l.description)
@@ -549,7 +565,6 @@ class DatabaseStore {
       }
 
       if (Array.isArray(sbLedger)) {
-        const ptsRate = this.data.systemSettings?.pointsPerUsdt || 5000;
         for (const row of sbLedger) {
           if (!row || !row.id || !row.user_id) continue;
           if (isMockOrTestTx(row.provider_tx_id, row.description)) {
@@ -557,32 +572,28 @@ class DatabaseStore {
             changed = true;
             continue;
           }
-          const exists = this.data.rewardLedger.some(
+
+          const rawAmountCents = Math.max(0, Number(row.amount_cents) || 0);
+          const desc = String(row.description || '');
+          const ptsMatch = desc.match(/[+-]?([\d,]+)\s*(?:Pts|Points)/i);
+          const parsedPts = ptsMatch ? Number(ptsMatch[1].replace(/,/g, '')) : NaN;
+          // In reward_ledger, amount_cents is userAmountCents (where 100 Pts = 1 cent)
+          const points =
+            !isNaN(parsedPts) && parsedPts > 0
+              ? Math.round(parsedPts)
+              : Math.max(50, rawAmountCents * 100);
+          const userAmountCents = Math.max(1, Math.round(points / 100));
+          const grossCents = Math.max(userAmountCents, Math.round((points / 5000) * 100));
+          const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+          const cleanDesc = desc
+            ? desc.replace(/\+\d[\d,]*\s*Pts/i, `+${points.toLocaleString('en-US')} Pts`)
+            : `CPX Research Survey #${row.provider_tx_id || row.id} (+${points.toLocaleString('en-US')} Pts)`;
+
+          const existingIdx = this.data.rewardLedger.findIndex(
             l => l.id === row.id || (row.provider_tx_id && l.providerTxId === row.provider_tx_id)
           );
-          if (!exists) {
-            const rawAmountCents = Math.max(0, Number(row.amount_cents) || 0);
-            const desc = String(row.description || '');
-            // Parse exact points from description if present (e.g. "+1,600 Pts")
-            const ptsMatch = desc.match(/\+?([\d,]+)\s*(?:Pts|Points)/i);
-            const parsedPts = ptsMatch ? Number(ptsMatch[1].replace(/,/g, '')) : NaN;
-            const rawPoints =
-              !isNaN(parsedPts) && parsedPts > 0
-                ? Math.round(parsedPts)
-                : Math.round((rawAmountCents / 100) * ptsRate);
 
-            const grossCents = Math.max(1, rawAmountCents || Math.round((rawPoints / 5000) * 100));
-            const points =
-              rawPoints === 0 || rawPoints > grossCents * 55
-                ? Math.max(50, Math.round(grossCents * 50))
-                : rawPoints;
-            const userAmountCents = Math.max(1, Math.round(points / 100));
-            const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-            const cleanDesc = desc.replace(
-              /\+\d[\d,]*\s*Pts/i,
-              `+${points.toLocaleString('en-US')} Pts`
-            );
-
+          if (existingIdx === -1) {
             this.data.rewardLedger.push({
               id: String(row.id),
               userId: String(row.user_id),
@@ -594,14 +605,29 @@ class DatabaseStore {
               appliedSharePercent: 50,
               entryType: row.entry_type === 'reversal' ? 'reversal' : row.entry_type === 'debit' ? 'debit' : 'credit',
               status: row.status === 'pending' ? 'pending' : row.status === 'reversed' ? 'reversed' : 'confirmed',
-              description: cleanDesc || `CPX Research Survey #${row.provider_tx_id} (+${points.toLocaleString('en-US')} Pts)`,
+              description: cleanDesc,
               createdAt: row.created_at || new Date().toISOString(),
               processedAt: row.created_at || new Date().toISOString()
             });
             changed = true;
+          } else {
+            const cur = this.data.rewardLedger[existingIdx];
+            if (cur.points !== points || cur.amountCents !== userAmountCents || cur.grossCents !== grossCents) {
+              this.data.rewardLedger[existingIdx] = {
+                ...cur,
+                points,
+                amountCents: userAmountCents,
+                grossCents,
+                adminProfitCents,
+                appliedSharePercent: 50,
+                description: cleanDesc
+              };
+              changed = true;
+            }
           }
         }
 
+        // Push any local ledger entries not yet in Supabase up to Supabase
         for (const localEntry of this.data.rewardLedger) {
           if (isMockOrTestTx(localEntry.providerTxId, localEntry.description)) continue;
           const inSb = sbLedger.some(
@@ -624,7 +650,52 @@ class DatabaseStore {
         }
       }
 
-      // Sync withdrawal requests from Supabase if present
+      // 4. Reconcile users who have points > 0 in Supabase users table but 0 ledger entries
+      if (Array.isArray(sbUsers)) {
+        for (const row of sbUsers) {
+          if (!row || !row.id) continue;
+          const sbUserPts = Math.max(0, Number(row.points) || 0);
+          if (sbUserPts > 0 && row.role !== 'admin') {
+            const hasLedgerEntries = this.data.rewardLedger.some(l => l.userId === row.id);
+            if (!hasLedgerEntries) {
+              const syncId = `le_sync_${row.id}`;
+              const syncTxId = `sync_bal_${row.id}`;
+              const userCents = Math.max(1, Math.round(sbUserPts / 100));
+              const grossCents = Math.max(userCents, Math.round((sbUserPts / 5000) * 100));
+              const profitCents = Math.max(0, grossCents - userCents);
+              const syncEntry: LedgerEntry = {
+                id: syncId,
+                userId: String(row.id),
+                providerTxId: syncTxId,
+                amountCents: userCents,
+                points: sbUserPts,
+                grossCents,
+                adminProfitCents: profitCents,
+                appliedSharePercent: 50,
+                entryType: 'credit',
+                status: 'confirmed',
+                description: `Verified Survey Rewards Balance (+${sbUserPts.toLocaleString('en-US')} Pts)`,
+                createdAt: row.updated_at || row.created_at || new Date().toISOString(),
+                processedAt: new Date().toISOString()
+              };
+              this.data.rewardLedger.push(syncEntry);
+              await sb.from('reward_ledger').upsert({
+                id: syncEntry.id,
+                user_id: syncEntry.userId,
+                provider_tx_id: syncEntry.providerTxId,
+                amount_cents: syncEntry.amountCents,
+                entry_type: syncEntry.entryType,
+                status: syncEntry.status,
+                description: syncEntry.description,
+                created_at: syncEntry.createdAt
+              });
+              changed = true;
+            }
+          }
+        }
+      }
+
+      // 5. Sync withdrawal requests from & to Supabase
       const { data: sbWithdrawals, error: sbWError } = await sb.from('withdrawal_requests').select('*');
       if (!sbWError && Array.isArray(sbWithdrawals)) {
         for (const row of sbWithdrawals) {
@@ -656,11 +727,71 @@ class DatabaseStore {
           if (existingIdx === -1) {
             this.data.withdrawalRequests.push(mapped);
             changed = true;
-          } else if (this.data.withdrawalRequests[existingIdx].status !== mapped.status) {
-            this.data.withdrawalRequests[existingIdx] = {
-              ...this.data.withdrawalRequests[existingIdx],
-              ...mapped
-            };
+          } else {
+            const cur = this.data.withdrawalRequests[existingIdx];
+            if (
+              cur.status !== mapped.status ||
+              cur.txHash !== mapped.txHash ||
+              cur.reviewNotes !== mapped.reviewNotes
+            ) {
+              this.data.withdrawalRequests[existingIdx] = {
+                ...cur,
+                ...mapped
+              };
+              changed = true;
+            }
+          }
+        }
+
+        // Push any local withdrawal requests not yet in Supabase
+        for (const localW of this.data.withdrawalRequests) {
+          const inSb = sbWithdrawals.some(r => r && r.id === localW.id);
+          if (!inSb) {
+            await sb.from('withdrawal_requests').upsert({
+              id: localW.id,
+              user_id: localW.userId,
+              user_email: localW.userEmail,
+              usdt_address: localW.usdtAddress,
+              network: localW.network,
+              amount_cents: localW.amountCents,
+              fee_cents: localW.feeCents,
+              net_cents: localW.netCents,
+              gross_usdt: localW.grossUsdt,
+              fee_usdt: localW.feeUsdt,
+              net_usdt: localW.netUsdt,
+              status: localW.status,
+              tx_hash: localW.txHash || null,
+              review_notes: localW.reviewNotes || null,
+              reviewed_by: localW.reviewedBy || null,
+              created_at: localW.createdAt,
+              updated_at: localW.updatedAt
+            });
+          }
+        }
+      }
+
+      // 6. Sync Admin Audit Logs from Supabase
+      const { data: sbLogs, error: sbLogsErr } = await sb
+        .from('admin_audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (!sbLogsErr && Array.isArray(sbLogs)) {
+        for (const row of sbLogs) {
+          if (!row || !row.id) continue;
+          const exists = this.data.adminAuditLogs.some(l => l.id === row.id);
+          if (!exists) {
+            this.data.adminAuditLogs.push({
+              id: String(row.id),
+              adminUserId: String(row.admin_user_id || 'usr_admin_rewardriver'),
+              adminEmail: String(row.admin_email || 'admin@reward-river'),
+              action: String(row.action || 'ADMIN_ACTION'),
+              targetEntity: String(row.target_entity || 'system'),
+              targetId: String(row.target_id || 'global'),
+              details: typeof row.details === 'string' ? row.details : JSON.stringify(row.details || {}),
+              ipAddress: row.ip_address || undefined,
+              createdAt: row.created_at || new Date().toISOString()
+            });
             changed = true;
           }
         }
@@ -675,6 +806,7 @@ class DatabaseStore {
   }
 
   private persist(): Promise<void> {
+    if (IS_UNIT_TEST_ENV) return Promise.resolve();
     this.writeQueue = this.writeQueue.then(async () => {
       const serialized = JSON.stringify(this.data, null, 2);
       try {
@@ -941,16 +1073,18 @@ class DatabaseStore {
     );
     const userExtId = user?.externalOpaqueId;
 
-    const entries = this.data.rewardLedger.filter(
-      l =>
-        l.userId === rawCleanId ||
-        l.userId === cleanNoUsr ||
-        l.userId === cleanWithUsr ||
-        (userExtId && l.userId === userExtId)
-    );
-    const withdrawals = this.data.withdrawalRequests.filter(
-      w => w.userId === rawCleanId || w.userId === cleanNoUsr || w.userId === cleanWithUsr
-    );
+    const entries = this.data.rewardLedger
+      .filter(
+        l =>
+          l.userId === rawCleanId ||
+          l.userId === cleanNoUsr ||
+          l.userId === cleanWithUsr ||
+          (userExtId && l.userId === userExtId)
+      )
+      .map(l => (l.userId === rawCleanId ? l : { ...l, userId: rawCleanId }));
+    const withdrawals = this.data.withdrawalRequests
+      .filter(w => w.userId === rawCleanId || w.userId === cleanNoUsr || w.userId === cleanWithUsr)
+      .map(w => (w.userId === rawCleanId ? w : { ...w, userId: rawCleanId }));
     const pointsPerUsdt = this.data.systemSettings?.pointsPerUsdt || 5000;
     const userSharePercent = this.data.systemSettings?.userSharePercent || 50;
     const balances = calculateUserBalances(rawCleanId, entries, withdrawals, pointsPerUsdt, userSharePercent);
@@ -1113,6 +1247,13 @@ class DatabaseStore {
           created_at: req.createdAt,
           updated_at: req.updatedAt
         });
+        const updatedBalances = this.getUserBalances(req.userId);
+        await sb.from('users').update({
+          points: updatedBalances.availablePoints,
+          balance_cents: updatedBalances.availableCents,
+          total_earned_points: updatedBalances.totalEarnedPoints,
+          updated_at: new Date().toISOString()
+        }).eq('id', req.userId);
       } catch (e) {
         console.warn('[Supabase Auto Sync] Withdrawal create note:', e);
       }
@@ -1181,6 +1322,13 @@ class DatabaseStore {
           created_at: updated.createdAt,
           updated_at: updated.updatedAt
         });
+        const updatedBalances = this.getUserBalances(updated.userId);
+        await sb.from('users').update({
+          points: updatedBalances.availablePoints,
+          balance_cents: updatedBalances.availableCents,
+          total_earned_points: updatedBalances.totalEarnedPoints,
+          updated_at: new Date().toISOString()
+        }).eq('id', updated.userId);
       } catch (e) {
         console.warn('[Supabase Auto Sync] Withdrawal update note:', e);
       }
@@ -1202,7 +1350,7 @@ class DatabaseStore {
     };
     await this.addAuditLog({
       adminUserId,
-      adminEmail: this.getUserById(adminUserId)?.email || 'unknown',
+      adminEmail: this.getUserById(adminUserId)?.email || 'admin@reward-river',
       action: 'UPDATE_SYSTEM_SETTINGS',
       targetEntity: 'systemSettings',
       targetId: 'global',
@@ -1212,8 +1360,8 @@ class DatabaseStore {
 
     const sb = this.getSupabaseClient();
     if (sb) {
-      sb.from('system_settings')
-        .upsert({
+      try {
+        const { error } = await sb.from('system_settings').upsert({
           id: 'global',
           min_withdrawal_cents: this.data.systemSettings.minWithdrawalCents,
           max_withdrawal_cents: this.data.systemSettings.maxWithdrawalCents,
@@ -1225,10 +1373,11 @@ class DatabaseStore {
           maintenance_mode: this.data.systemSettings.maintenanceMode,
           default_network: this.data.systemSettings.defaultNetwork,
           updated_at: this.data.systemSettings.updatedAt
-        })
-        .then(({ error }) => {
-          if (error) console.warn('[Supabase Settings Sync Note]:', error.message);
         });
+        if (error) console.warn('[Supabase Settings Sync Note]:', error.message);
+      } catch (e) {
+        console.warn('[Supabase Settings Sync Error]:', e);
+      }
     }
 
     return this.data.systemSettings;
@@ -1243,6 +1392,25 @@ class DatabaseStore {
     };
     this.data.adminAuditLogs.push(newLog);
     await this.persist();
+
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('admin_audit_logs').upsert({
+          id: newLog.id,
+          admin_user_id: newLog.adminUserId,
+          admin_email: newLog.adminEmail,
+          action: newLog.action,
+          target_entity: newLog.targetEntity,
+          target_id: newLog.targetId,
+          details: newLog.details,
+          ip_address: newLog.ipAddress || null,
+          created_at: newLog.createdAt
+        });
+      } catch (e) {
+        console.warn('[Supabase Audit Log Sync Note]:', e);
+      }
+    }
     return newLog;
   }
 

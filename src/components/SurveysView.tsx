@@ -169,8 +169,8 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
   const effectiveAppId = Number(cpxConfig?.appId || '37699') || 37699;
   const effectiveUserId =
     cpxConfig?.extUserId ||
-    (user?.id && !user.id.includes('@') ? user.id : null) ||
     (user?.externalOpaqueId && !user.externalOpaqueId.includes('@') ? user.externalOpaqueId : null) ||
+    (user?.id && !user.id.includes('@') ? user.id : null) ||
     'rr_member_1';
   const effectiveHash = cpxConfig?.secureHash || '';
   const effectiveAoySubId =
