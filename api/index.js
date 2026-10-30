@@ -2676,7 +2676,53 @@ var DatabaseStore = class {
       ipAddress: params.ipAddress
     });
     await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from("teams").update({
+          name: after.name,
+          is_active: after.isActive
+        }).eq("id", after.id);
+      } catch {
+      }
+    }
     return after;
+  }
+  async deleteTeam(params) {
+    const { teamId, actorUser, ipAddress } = params;
+    const team = this.getTeamById(teamId);
+    if (!team) throw new Error(`Team not found: ${teamId}`);
+    const isActorAdmin = actorUser && (actorUser.role === "admin" || actorUser.id === "usr_admin_rewardriver" || actorUser.email.toLowerCase() === "admin@reward-river");
+    if (!isActorAdmin) {
+      const err = new Error("Forbidden: Only an Administrator can delete a team.");
+      err.statusCode = 403;
+      throw err;
+    }
+    const membersBefore = (this.data.teamMembers || []).filter((tm) => tm.teamId === teamId);
+    const removedMembersCount = membersBefore.length;
+    this.data.teamMembers = (this.data.teamMembers || []).filter((tm) => tm.teamId !== teamId);
+    this.data.teams = (this.data.teams || []).filter((t) => t.id !== teamId);
+    await this.addAuditLog({
+      adminUserId: actorUser.id,
+      adminEmail: actorUser.email,
+      action: "DELETE_TEAM",
+      targetEntity: "teams",
+      targetId: teamId,
+      beforeState: team,
+      afterState: null,
+      details: JSON.stringify({ team, removedMembersCount }),
+      ipAddress
+    });
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from("team_members").delete().eq("team_id", teamId);
+        await sb.from("teams").delete().eq("id", teamId);
+      } catch {
+      }
+    }
+    return { deleted: true, removedMembersCount };
   }
   async regenerateTeamCode(params) {
     const idx = (this.data.teams || []).findIndex((t) => t.id === params.teamId);
@@ -7503,6 +7549,23 @@ app.patch("/api/admin/teams/:id", requireAuth, requireAdmin, async (req, res) =>
     res.json({ success: true, team: updated });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Failed to update team." });
+  }
+});
+app.delete("/api/admin/teams/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const result = await dbStore.deleteTeam({
+      teamId: req.params.id,
+      actorUser: req.user,
+      ipAddress
+    });
+    res.json({
+      success: true,
+      message: `Team deleted successfully (${result.removedMembersCount} member(s) unassigned).`,
+      removedMembersCount: result.removedMembersCount
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to delete team." });
   }
 });
 app.post("/api/admin/teams/:id/regenerate-code", requireAuth, requireAdmin, async (req, res) => {
