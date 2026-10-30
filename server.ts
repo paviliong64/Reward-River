@@ -2736,6 +2736,25 @@ app.patch('/api/admin/teams/:id', requireAuth, requireAdmin, async (req: Authent
   }
 });
 
+// DELETE /api/admin/teams/:id - Delete Team (Admin-Only)
+app.delete('/api/admin/teams/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const result = await dbStore.deleteTeam({
+      teamId: req.params.id,
+      actorUser: req.user!,
+      ipAddress
+    });
+    res.json({
+      success: true,
+      message: `Team deleted successfully (${result.removedMembersCount} member(s) unassigned).`,
+      removedMembersCount: result.removedMembersCount
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to delete team.' });
+  }
+});
+
 // POST /api/admin/teams/:id/regenerate-code - Regenerate Team Code (Admin-Only)
 app.post('/api/admin/teams/:id/regenerate-code', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {

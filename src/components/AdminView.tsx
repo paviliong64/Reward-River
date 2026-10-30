@@ -746,6 +746,53 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
+  const handleEditTeamName = async (teamId: string, currentName: string) => {
+    const newName = window.prompt(`Enter new name for team "${currentName}":`, currentName);
+    if (newName === null || !newName.trim() || newName.trim() === currentName) return;
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: newName.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update team name.');
+      setActionMessage({
+        text: `Team name updated to "${data.team.name || data.team.teamName || newName.trim()}".`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to edit team name.', type: 'error' });
+    }
+  };
+
+  const handleDeleteTeam = async (teamId: string, teamName: string) => {
+    if (!window.confirm(`Are you sure you want to delete team "${teamName}"? Any members in this team will be unassigned from the team.`)) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete team.');
+      setActionMessage({
+        text: data.message || `Team "${teamName}" deleted successfully.`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to delete team.', type: 'error' });
+    }
+  };
+
   const handleReassignTeamManager = async (teamId: string, newManagerId: string) => {
     if (!newManagerId) return;
     try {
@@ -4761,7 +4808,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                 </span>
                               </td>
                               <td className="py-3.5 px-4 text-right">
-                                <div className="inline-flex items-center gap-1.5">
+                                <div className="inline-flex items-center gap-1.5 flex-wrap justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditTeamName(team.id, team.teamName || team.name)}
+                                    className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-bold cursor-pointer"
+                                    title="Edit Team Name"
+                                  >
+                                    Edit Name
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => handleToggleTeamActive(team.id, !team.isActive)}
@@ -4779,6 +4834,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold cursor-pointer"
                                   >
                                     Regen Code
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTeam(team.id, team.teamName || team.name)}
+                                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold cursor-pointer"
+                                    title="Delete Team"
+                                  >
+                                    Delete
                                   </button>
                                 </div>
                               </td>

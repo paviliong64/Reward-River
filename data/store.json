@@ -406,14 +406,14 @@
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "03deac23bdc10cf1fa0920839f1536ba2e600af10053076bf2e1db2a7cbb7e5daa7cc6deb83b2a7c1468ae350ebc8f7a2d311e42272e58b597575ab87bbd8408",
-      "salt": "8c9c380eeb510ecd889256dacac07d3c",
+      "passwordHash": "791b55b2f9314fbd69e4c0807d5fa0777e427e86fb8e6809024fbc93213201a30a99426f15e92bd3909b5817b046e356004e4b8254934156b9f5531ed82958cd",
+      "salt": "411e9391afe499f004f72555f58e5a7f",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-30T14:24:27.045Z",
+      "updatedAt": "2026-10-30T14:30:01.133Z",
       "countryCode": "PK",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -878,7 +878,7 @@
     },
     {
       "id": "usr_mohsin_1793370466883",
-      "username": "Mohsin_1793370466883",
+      "username": "Mohsin 1793370466883",
       "email": "mohsin_1793370466883@rewardriver.online",
       "passwordHash": "hash",
       "salt": "salt",
@@ -904,6 +904,19 @@
       "updatedAt": "2026-10-30T14:27:48.203Z",
       "storedPoints": 0,
       "countryCode": "US"
+    },
+    {
+      "id": "usr_mgr_test_1793370775810",
+      "username": "Manager_1793370775810",
+      "email": "mgr_1793370775810@rewardriver.online",
+      "passwordHash": "hash",
+      "salt": "salt",
+      "displayName": "Manager 1793370775810",
+      "emailVerified": true,
+      "role": "manager",
+      "externalOpaqueId": "rr_cpx_mgr_1793370775810",
+      "createdAt": "2026-10-30T14:32:55.810Z",
+      "updatedAt": "2026-10-30T14:32:55.810Z"
     }
   ],
   "tasks": [
@@ -4620,6 +4633,70 @@
       "details": "{\"before\":null,\"after\":{\"id\":\"team_0bd09e57-7fac-41f3-807f-9ba8a73e4c5e\",\"name\":\"Mohsin Beta Team 1793370466883\",\"managerId\":\"usr_mohsin_1793370466883\",\"teamCode\":\"FD5TXA\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:27:47.722Z\"}}",
       "id": "log_8321f40b-53d0-4923-882d-7449037fbe19",
       "createdAt": "2026-10-30T14:27:47.722Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_7534642f-5644-4277-b3ab-675c4aa43ac3",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_7534642f-5644-4277-b3ab-675c4aa43ac3",
+        "name": "Renamed By Admin Team",
+        "managerId": "usr_mgr_test_1793370775810",
+        "teamCode": "J44D3K",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:32:56.190Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_7534642f-5644-4277-b3ab-675c4aa43ac3\",\"name\":\"Original Team Name\",\"managerId\":\"usr_mgr_test_1793370775810\",\"teamCode\":\"J44D3K\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:32:56.190Z\"}}",
+      "id": "log_03c8f550-9722-4dfa-b79b-6e994afcfa62",
+      "createdAt": "2026-10-30T14:32:56.190Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "UPDATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_7534642f-5644-4277-b3ab-675c4aa43ac3",
+      "beforeState": {
+        "id": "team_7534642f-5644-4277-b3ab-675c4aa43ac3",
+        "name": "Original Team Name",
+        "managerId": "usr_mgr_test_1793370775810",
+        "teamCode": "J44D3K",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:32:56.190Z"
+      },
+      "afterState": {
+        "id": "team_7534642f-5644-4277-b3ab-675c4aa43ac3",
+        "name": "Renamed By Admin Team",
+        "managerId": "usr_mgr_test_1793370775810",
+        "teamCode": "J44D3K",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:32:56.190Z"
+      },
+      "details": "{\"before\":{\"id\":\"team_7534642f-5644-4277-b3ab-675c4aa43ac3\",\"name\":\"Original Team Name\",\"managerId\":\"usr_mgr_test_1793370775810\",\"teamCode\":\"J44D3K\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:32:56.190Z\"},\"after\":{\"id\":\"team_7534642f-5644-4277-b3ab-675c4aa43ac3\",\"name\":\"Renamed By Admin Team\",\"managerId\":\"usr_mgr_test_1793370775810\",\"teamCode\":\"J44D3K\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:32:56.190Z\"}}",
+      "id": "log_c2d10a3d-4e75-4170-924a-1685967ccd66",
+      "createdAt": "2026-10-30T14:32:56.571Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "DELETE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_7534642f-5644-4277-b3ab-675c4aa43ac3",
+      "beforeState": {
+        "id": "team_7534642f-5644-4277-b3ab-675c4aa43ac3",
+        "name": "Renamed By Admin Team",
+        "managerId": "usr_mgr_test_1793370775810",
+        "teamCode": "J44D3K",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:32:56.190Z"
+      },
+      "afterState": null,
+      "details": "{\"team\":{\"id\":\"team_7534642f-5644-4277-b3ab-675c4aa43ac3\",\"name\":\"Renamed By Admin Team\",\"managerId\":\"usr_mgr_test_1793370775810\",\"teamCode\":\"J44D3K\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:32:56.190Z\"},\"removedMembersCount\":0}",
+      "id": "log_90001828-0df5-4a04-9d2b-3c7d531b32b2",
+      "createdAt": "2026-10-30T14:32:56.940Z"
     }
   ],
   "teams": [

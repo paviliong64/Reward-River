@@ -2531,7 +2531,74 @@ class DatabaseStore {
     });
 
     await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('teams').update({
+          name: after.name,
+          is_active: after.isActive
+        }).eq('id', after.id);
+      } catch {
+        // optional
+      }
+    }
     return after;
+  }
+
+  async deleteTeam(params: {
+    teamId: string;
+    actorUser: UserAccount;
+    ipAddress?: string;
+  }): Promise<{ deleted: boolean; removedMembersCount: number }> {
+    const { teamId, actorUser, ipAddress } = params;
+    const team = this.getTeamById(teamId);
+    if (!team) throw new Error(`Team not found: ${teamId}`);
+
+    const isActorAdmin =
+      actorUser &&
+      (actorUser.role === 'admin' ||
+        actorUser.id === 'usr_admin_rewardriver' ||
+        actorUser.email.toLowerCase() === 'admin@reward-river');
+
+    if (!isActorAdmin) {
+      const err = new Error('Forbidden: Only an Administrator can delete a team.');
+      (err as any).statusCode = 403;
+      throw err;
+    }
+
+    const membersBefore = (this.data.teamMembers || []).filter(tm => tm.teamId === teamId);
+    const removedMembersCount = membersBefore.length;
+
+    // Delete members of this team
+    this.data.teamMembers = (this.data.teamMembers || []).filter(tm => tm.teamId !== teamId);
+    // Delete team
+    this.data.teams = (this.data.teams || []).filter(t => t.id !== teamId);
+
+    await this.addAuditLog({
+      adminUserId: actorUser.id,
+      adminEmail: actorUser.email,
+      action: 'DELETE_TEAM',
+      targetEntity: 'teams',
+      targetId: teamId,
+      beforeState: team as unknown as Record<string, unknown>,
+      afterState: null,
+      details: JSON.stringify({ team, removedMembersCount }),
+      ipAddress
+    });
+
+    await this.persist();
+
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('team_members').delete().eq('team_id', teamId);
+        await sb.from('teams').delete().eq('id', teamId);
+      } catch {
+        // optional
+      }
+    }
+
+    return { deleted: true, removedMembersCount };
   }
 
   async regenerateTeamCode(params: {
