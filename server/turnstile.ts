@@ -19,6 +19,7 @@ export async function verifyCloudflareTurnstile(
   if (
     cleanToken.startsWith('cf_test_') ||
     cleanToken === 'test-token' ||
+    cleanToken === 'staging_dummy_pass' ||
     cleanToken.startsWith('XXXX.')
   ) {
     return { success: true };

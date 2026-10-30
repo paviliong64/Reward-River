@@ -305,9 +305,9 @@ class DatabaseStore {
         pointsPerUsdt: 5000, // CPX Currency Factor: 5,000 Points = $1.00 Gross
         newUserDays: 7,
         timezone: 'Asia/Karachi',
-        teamSystemEnabled: false,
-        managersCanCreateTeams: false,
-        maxTeamsPerManager: 5,
+        teamSystemEnabled: true,
+        managersCanCreateTeams: true,
+        maxTeamsPerManager: 10,
         teamBonusEnabled: false,
         teamBonusPercent: 0,
         surveyDisplayMode: 'points_only',
@@ -621,6 +621,13 @@ class DatabaseStore {
           pointsPerUsdt: sbPtsRate === 5000 ? 5000 : (current.pointsPerUsdt || 5000),
           userSharePercent: sbShare === 50 ? 50 : (current.userSharePercent || 50),
           maintenanceMode: Boolean(sbSettings.maintenance_mode),
+          teamSystemEnabled: typeof sbSettings.team_system_enabled === 'boolean' ? sbSettings.team_system_enabled : true,
+          managersCanCreateTeams: typeof sbSettings.managers_can_create_teams === 'boolean' ? sbSettings.managers_can_create_teams : true,
+          maxTeamsPerManager: current.maxTeamsPerManager || 10,
+          teamBonusEnabled: Boolean(current.teamBonusEnabled),
+          teamBonusPercent: current.teamBonusPercent || 0,
+          turnstileSiteKey: current.turnstileSiteKey || process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || '0x4AAAAAAFsriP1bMbtMNkub',
+          turnstileSecretKey: current.turnstileSecretKey || process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw',
           cpxAppId: sbSettings.cpx_app_id || current.cpxAppId,
           cpxHashKey: sbSettings.cpx_hash_key || current.cpxHashKey,
           cpxApiKey: sbSettings.cpx_api_key || current.cpxApiKey,
@@ -2144,6 +2151,18 @@ class DatabaseStore {
       }
       this.data.users[idx].role = 'manager';
       this.data.users[idx].updatedAt = new Date().toISOString();
+
+      // Auto-create an initial team if promoted manager currently has 0 teams
+      const existingTeams = this.getTeamsForManager(target.id);
+      if (existingTeams.length === 0) {
+        const defaultTeamName = `${target.displayName || target.username || target.email.split('@')[0]}'s Team`;
+        await this.createTeam({
+          name: defaultTeamName,
+          managerId: target.id,
+          actorUser,
+          ipAddress
+        });
+      }
     } else if (newRole === 'user') {
       this.data.users[idx].role = 'user';
       this.data.users[idx].updatedAt = new Date().toISOString();
@@ -2256,11 +2275,12 @@ class DatabaseStore {
         actorUser.id === 'usr_admin_rewardriver' ||
         actorUser.email.toLowerCase() === 'admin@reward-river');
 
-    const managersCanCreate = Boolean(this.data.systemSettings?.managersCanCreateTeams);
-    const maxTeams = Number(this.data.systemSettings?.maxTeamsPerManager) || 5;
+    const managersCanCreate = this.data.systemSettings?.managersCanCreateTeams !== false;
+    const maxTeams = Number(this.data.systemSettings?.maxTeamsPerManager) || 10;
 
     if (!isActorAdmin) {
-      if (actorUser?.role !== 'manager' || actorUser.id !== managerId || !managersCanCreate) {
+      const isSelfManager = actorUser && (actorUser.role === 'manager' || (actorUser.role as string) === 'manager') && actorUser.id === managerId;
+      if (!isSelfManager || !managersCanCreate) {
         await this.addAuditLog({
           adminUserId: actorUser?.id || 'unauthorized',
           adminEmail: actorUser?.email || 'unauthorized',
@@ -2654,6 +2674,7 @@ class DatabaseStore {
       return {
         id: team.id,
         name: team.name,
+        teamName: team.name,
         teamCode: team.teamCode,
         managerId: team.managerId,
         isActive: team.isActive,

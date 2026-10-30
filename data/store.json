@@ -406,14 +406,14 @@
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "00fa7de397a8c539b2e52fe485d2d12ad03068784b9cd3f6f21574c937ecc0c20942ccca63de1a67dc343003fa474b46d1fb5446078ca175085ff80c47230d6f",
-      "salt": "ec7c7e92203058d4fc096404f22addf9",
+      "passwordHash": "a7e2011b1dd52fdec07f4ea82eeab0f06bd0d5df426de405492a6a713e73d4f7e0900b25f3326205827c4e5aaea1ef6ce77fa12570b89f574ed581d89c190bf3",
+      "salt": "8ffef869ad856bce56c505b0e3fb6bae",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-30T13:40:30.303Z",
+      "updatedAt": "2026-10-30T14:19:18.253Z",
       "countryCode": "PK",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -792,6 +792,40 @@
       "provider": "password",
       "hasPromptedPhone": false,
       "storedPoints": 7700
+    },
+    {
+      "id": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "username": "mohsin",
+      "email": "mohsin@rewardriver.online",
+      "passwordHash": "36b06423b4b609248ff79f3e7151601ae32b97a8048e3df9bb497bbf8e77716fe6ce079422b02a4c26d55ed959ae0841200a9a84f0c18e40976329e4ab613b35",
+      "salt": "a28b3534fe254c29e1066331c3c50a0c",
+      "displayName": "mohsin",
+      "emailVerified": true,
+      "role": "manager",
+      "externalOpaqueId": "rr_cpx_usrb79985df6cb947b683708",
+      "createdAt": "2026-10-30T14:01:01.891+00:00",
+      "updatedAt": "2026-10-30T14:04:17.508Z",
+      "countryCode": "US",
+      "provider": "password",
+      "hasPromptedPhone": true,
+      "storedPoints": 0
+    },
+    {
+      "id": "usr_7ae26242-691d-4457-929e-0dc3dbec2b26",
+      "username": "danielcarter251",
+      "email": "danielcarter251@gmail.com",
+      "passwordHash": "61346ddf30e8290aa7badb2e8975d07ec201a38b5bf5cfa24c400f8d8053f6a9f776db6f60dabc5cf6b898870b44d93f29fb722ef86389ca5bbfcc1be7343236",
+      "salt": "a72aff26122a29c960e9c68f90604a0f",
+      "displayName": "danielcarter251",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_usr7ae26242691d4457929e0",
+      "createdAt": "2026-10-30T14:09:03.704+00:00",
+      "updatedAt": "2026-10-30T14:09:03.704+00:00",
+      "countryCode": "US",
+      "provider": "password",
+      "hasPromptedPhone": true,
+      "storedPoints": 0
     }
   ],
   "tasks": [
@@ -3276,8 +3310,8 @@
     "pointsPerUsdt": 5000,
     "newUserDays": 7,
     "timezone": "Asia/Karachi",
-    "teamSystemEnabled": false,
-    "managersCanCreateTeams": false,
+    "teamSystemEnabled": true,
+    "managersCanCreateTeams": true,
     "maxTeamsPerManager": 5,
     "teamBonusEnabled": false,
     "teamBonusPercent": 0,
@@ -3502,6 +3536,887 @@
       "details": "Permanently deleted user special.manager@mycompany.org (Bilal Special Manager). Cleared associated ledger entries and withdrawal requests.",
       "id": "log_69147c62-cdf4-4420-bcb5-27c15e352263",
       "createdAt": "2026-10-30T13:26:20.048Z"
+    },
+    {
+      "id": "log_ad6c7743-499c-487d-9129-0adccd5cb518",
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "REGENERATE_TEAM_CODE",
+      "targetEntity": "teams",
+      "targetId": "team_55aa70ab-d048-4eb6-a633-ca43aeae9f03",
+      "details": "{\"before\":{\"id\":\"team_55aa70ab-d048-4eb6-a633-ca43aeae9f03\",\"name\":\"Special Alpha Force\",\"managerId\":\"usr_4494469c-a777-4bb1-ab21-44c718a31ead\",\"teamCode\":\"VD9E8C\",\"isActive\":true,\"createdAt\":\"2026-10-30T13:26:09.908Z\"},\"after\":{\"id\":\"team_55aa70ab-d048-4eb6-a633-ca43aeae9f03\",\"name\":\"Special Alpha Force\",\"managerId\":\"usr_4494469c-a777-4bb1-ab21-44c718a31ead\",\"teamCode\":\"VHGYAV\",\"isActive\":true,\"createdAt\":\"2026-10-30T13:26:09.908Z\"}}",
+      "ipAddress": "39.58.139.238",
+      "createdAt": "2026-10-30T14:00:19.364+00:00"
+    },
+    {
+      "id": "log_ca2ff907-b8f0-4508-97f8-586a37777a66",
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_5a95f11f-badc-44f5-8b77-660add3ebac8",
+      "details": "{\"email\":\"mohsin@rewardriver.online\",\"displayName\":\"Mohsin\",\"initialTeam\":\"mohsin\",\"teamCode\":\"SRG9PM\"}",
+      "createdAt": "2026-10-30T13:58:46.011+00:00"
+    },
+    {
+      "id": "log_61e3cf6d-826e-493d-bf57-3e6ccc395eed",
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_955a7f76-dd7b-4728-a120-616dbb2c7da0",
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_955a7f76-dd7b-4728-a120-616dbb2c7da0\",\"name\":\"mohsin\",\"managerId\":\"usr_5a95f11f-badc-44f5-8b77-660add3ebac8\",\"teamCode\":\"SRG9PM\",\"isActive\":true,\"createdAt\":\"2026-10-30T13:58:45.901Z\"}}",
+      "ipAddress": "39.58.139.238",
+      "createdAt": "2026-10-30T13:58:45.901+00:00"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_cfe1bf93-2ba3-4fb5-9acf-829736d852ae",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_cfe1bf93-2ba3-4fb5-9acf-829736d852ae",
+        "name": "Alpha Mohsin Team",
+        "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+        "teamCode": "VDJNS8",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:04:18.460Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_cfe1bf93-2ba3-4fb5-9acf-829736d852ae\",\"name\":\"Alpha Mohsin Team\",\"managerId\":\"usr_b79985df-6cb9-47b6-8370-8858ba62c02d\",\"teamCode\":\"VDJNS8\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:04:18.460Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_f5bfe002-3190-4da4-a62c-f401b32f9886",
+      "createdAt": "2026-10-30T14:04:18.460Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "details": "{\"email\":\"mohsin@rewardriver.online\",\"displayName\":\"Mohsin Manager\",\"initialTeam\":\"Alpha Mohsin Team\",\"teamCode\":\"VDJNS8\"}",
+      "id": "log_3f8d3dad-c4b6-4127-bc26-a5ce4c068f2c",
+      "createdAt": "2026-10-30T14:04:18.931Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_8e2fda5a-6014-4e02-9e99-4f303833fb92",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_8e2fda5a-6014-4e02-9e99-4f303833fb92",
+        "name": "Tariq Primary Force",
+        "managerId": "usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62",
+        "teamCode": "VSB8D3",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:11:36.428Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_8e2fda5a-6014-4e02-9e99-4f303833fb92\",\"name\":\"Tariq Primary Force\",\"managerId\":\"usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62\",\"teamCode\":\"VSB8D3\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:11:36.428Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_54177133-7071-4efb-9a35-68d1cde6a1fe",
+      "createdAt": "2026-10-30T14:11:36.428Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62",
+      "details": "{\"email\":\"tariq.manager@rewardriver.online\",\"displayName\":\"Tariq Manager\",\"initialTeam\":\"Tariq Primary Force\",\"teamCode\":\"VSB8D3\"}",
+      "id": "log_6dc07369-7857-41af-aa79-37942be7a0d2",
+      "createdAt": "2026-10-30T14:11:37.256Z"
+    },
+    {
+      "adminUserId": "usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62",
+      "adminEmail": "tariq.manager@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62",
+      "details": "{\"attemptedBy\":\"tariq.manager@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Tariq Secondary Squad\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_58ab7ec4-bccf-40cf-9fcc-d9317d4ad729",
+      "createdAt": "2026-10-30T14:11:37.478Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62",
+      "details": "Permanently deleted user tariq.manager@rewardriver.online (Tariq Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_1f18b024-490b-44b8-a14e-53556d0dc0c0",
+      "createdAt": "2026-10-30T14:11:40.604Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "details": "Permanently deleted user member.tariq1@gmail.com (member.tariq1). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_1c749c21-ecc1-4f02-a268-89595677b88f",
+      "createdAt": "2026-10-30T14:11:41.565Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_ac75986a-7a07-4745-b257-478df33e56b7",
+      "createdAt": "2026-10-30T14:11:42.533Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_c6287d31-114c-4831-ab29-0f84e802a143",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_c6287d31-114c-4831-ab29-0f84e802a143",
+        "name": "Tariq Primary Force",
+        "managerId": "usr_2367a112-3e73-444f-8884-a85d42402b23",
+        "teamCode": "ZVT3K3",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:12:23.349Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_c6287d31-114c-4831-ab29-0f84e802a143\",\"name\":\"Tariq Primary Force\",\"managerId\":\"usr_2367a112-3e73-444f-8884-a85d42402b23\",\"teamCode\":\"ZVT3K3\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:12:23.349Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_673f7b40-02ec-4f6a-9720-616f33bff45f",
+      "createdAt": "2026-10-30T14:12:23.349Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_2367a112-3e73-444f-8884-a85d42402b23",
+      "details": "{\"email\":\"tariq.manager@rewardriver.online\",\"displayName\":\"Tariq Manager\",\"initialTeam\":\"Tariq Primary Force\",\"teamCode\":\"ZVT3K3\"}",
+      "id": "log_1b450f1d-6330-4b1c-bfc1-bf78168aee30",
+      "createdAt": "2026-10-30T14:12:24.087Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_2367a112-3e73-444f-8884-a85d42402b23",
+      "details": "Permanently deleted user tariq.manager@rewardriver.online (Tariq Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_69da4cfc-f202-4c6c-b164-57f5ecb20b07",
+      "createdAt": "2026-10-30T14:12:27.040Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "details": "Permanently deleted user member.tariq1@gmail.com (member.tariq1). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_231dee08-422c-4ba4-a872-1737a2fa1e50",
+      "createdAt": "2026-10-30T14:12:27.873Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_75039f4e-ee41-47f8-86a4-835ccf57bd66",
+      "createdAt": "2026-10-30T14:12:28.640Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_9c4d17d6-64d0-42bf-9879-5060a9dca85d",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_9c4d17d6-64d0-42bf-9879-5060a9dca85d",
+        "name": "Tariq Primary Force",
+        "managerId": "usr_41df1a68-e5e7-442a-a559-6beabf3f4b49",
+        "teamCode": "R825TC",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:12:50.187Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_9c4d17d6-64d0-42bf-9879-5060a9dca85d\",\"name\":\"Tariq Primary Force\",\"managerId\":\"usr_41df1a68-e5e7-442a-a559-6beabf3f4b49\",\"teamCode\":\"R825TC\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:12:50.187Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_22a98e3e-5081-465d-9957-a9be24d43433",
+      "createdAt": "2026-10-30T14:12:50.187Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_41df1a68-e5e7-442a-a559-6beabf3f4b49",
+      "details": "{\"email\":\"tariq.manager@rewardriver.online\",\"displayName\":\"Tariq Manager\",\"initialTeam\":\"Tariq Primary Force\",\"teamCode\":\"R825TC\"}",
+      "id": "log_08644192-e3d4-4268-9676-7b7ec024f396",
+      "createdAt": "2026-10-30T14:12:50.633Z"
+    },
+    {
+      "adminUserId": "usr_41df1a68-e5e7-442a-a559-6beabf3f4b49",
+      "adminEmail": "tariq.manager@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_41df1a68-e5e7-442a-a559-6beabf3f4b49",
+      "details": "{\"attemptedBy\":\"tariq.manager@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Tariq Secondary Squad\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_3e0e5b50-35fc-4c9e-958a-f4a583b5a807",
+      "createdAt": "2026-10-30T14:12:50.861Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_41df1a68-e5e7-442a-a559-6beabf3f4b49",
+      "details": "Permanently deleted user tariq.manager@rewardriver.online (Tariq Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_d5f6ef62-c4b5-4a75-a7fe-90925e959181",
+      "createdAt": "2026-10-30T14:12:53.880Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "details": "Permanently deleted user member.tariq1@gmail.com (member.tariq1). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_226f4eb9-4566-45f7-9ccf-b3958e4963ee",
+      "createdAt": "2026-10-30T14:12:55.057Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_4a8a4f64-f11f-4775-8e95-7a10a8da195e",
+      "createdAt": "2026-10-30T14:12:55.902Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_ab367104-be22-4407-89d8-32601aa0ff05",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_ab367104-be22-4407-89d8-32601aa0ff05",
+        "name": "Tariq Primary Force",
+        "managerId": "usr_2ee38f8d-022d-455a-b251-665fb48ed70c",
+        "teamCode": "E3A2RE",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:13:32.093Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_ab367104-be22-4407-89d8-32601aa0ff05\",\"name\":\"Tariq Primary Force\",\"managerId\":\"usr_2ee38f8d-022d-455a-b251-665fb48ed70c\",\"teamCode\":\"E3A2RE\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:13:32.093Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_ad9ebd96-a68e-4578-9da1-bd176cda00b3",
+      "createdAt": "2026-10-30T14:13:32.093Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_2ee38f8d-022d-455a-b251-665fb48ed70c",
+      "details": "{\"email\":\"tariq.manager@rewardriver.online\",\"displayName\":\"Tariq Manager\",\"initialTeam\":\"Tariq Primary Force\",\"teamCode\":\"E3A2RE\"}",
+      "id": "log_aeb873ce-b898-4048-966f-669b0e4d5c5c",
+      "createdAt": "2026-10-30T14:13:32.516Z"
+    },
+    {
+      "adminUserId": "usr_2ee38f8d-022d-455a-b251-665fb48ed70c",
+      "adminEmail": "tariq.manager@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_2ee38f8d-022d-455a-b251-665fb48ed70c",
+      "details": "{\"attemptedBy\":\"tariq.manager@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Tariq Secondary Squad\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_477149a2-78fa-4df5-a3a6-e31b26f53649",
+      "createdAt": "2026-10-30T14:13:32.730Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_2ee38f8d-022d-455a-b251-665fb48ed70c",
+      "details": "Permanently deleted user tariq.manager@rewardriver.online (Tariq Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_d44eb1a1-32e1-4046-9538-295fcc9ca776",
+      "createdAt": "2026-10-30T14:13:35.572Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "details": "Permanently deleted user member.tariq1@gmail.com (member.tariq1). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_6d608e45-9347-40b2-ab39-5736f83b3851",
+      "createdAt": "2026-10-30T14:13:36.425Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_978cc983-6622-447f-890e-8cbd5b3dae95",
+      "createdAt": "2026-10-30T14:13:37.283Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_ee68ea6e-2b49-44ef-bce2-fed2ceca8e90",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_ee68ea6e-2b49-44ef-bce2-fed2ceca8e90",
+        "name": "Primary",
+        "managerId": "usr_f5ec14c4-985f-4926-9479-bce37fc8374f",
+        "teamCode": "MN6BYX",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:13:50.424Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_ee68ea6e-2b49-44ef-bce2-fed2ceca8e90\",\"name\":\"Primary\",\"managerId\":\"usr_f5ec14c4-985f-4926-9479-bce37fc8374f\",\"teamCode\":\"MN6BYX\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:13:50.424Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_52d55557-74e5-4d93-998c-379c4b18fd10",
+      "createdAt": "2026-10-30T14:13:50.424Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_f5ec14c4-985f-4926-9479-bce37fc8374f",
+      "details": "{\"email\":\"debug.mgr@rewardriver.online\",\"displayName\":\"debug.mgr@rewardriver.online\",\"initialTeam\":\"Primary\",\"teamCode\":\"MN6BYX\"}",
+      "id": "log_6e70e33c-3860-4e25-9581-95a54f020f0d",
+      "createdAt": "2026-10-30T14:13:51.225Z"
+    },
+    {
+      "adminUserId": "usr_f5ec14c4-985f-4926-9479-bce37fc8374f",
+      "adminEmail": "debug.mgr@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_f5ec14c4-985f-4926-9479-bce37fc8374f",
+      "details": "{\"attemptedBy\":\"debug.mgr@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Secondary Team\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_a757cc7f-095c-41ca-95bb-969887174a3b",
+      "createdAt": "2026-10-30T14:13:51.438Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_f5ec14c4-985f-4926-9479-bce37fc8374f",
+      "details": "Permanently deleted user debug.mgr@rewardriver.online (debug.mgr@rewardriver.online). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_48acf03a-fcfb-42d0-b87c-7b1d170e1497",
+      "createdAt": "2026-10-30T14:13:52.259Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_f17b3da1-0431-44d7-b1f9-068ccc6c9bbd",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_f17b3da1-0431-44d7-b1f9-068ccc6c9bbd",
+        "name": "Tariq Primary Force",
+        "managerId": "usr_b2f612f6-5e25-4362-b026-cc56a4c169a4",
+        "teamCode": "ENMH2V",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:14:42.352Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_f17b3da1-0431-44d7-b1f9-068ccc6c9bbd\",\"name\":\"Tariq Primary Force\",\"managerId\":\"usr_b2f612f6-5e25-4362-b026-cc56a4c169a4\",\"teamCode\":\"ENMH2V\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:14:42.352Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_c560f971-c387-473c-8589-8d51ef4ef4d7",
+      "createdAt": "2026-10-30T14:14:42.353Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_b2f612f6-5e25-4362-b026-cc56a4c169a4",
+      "details": "{\"email\":\"tariq.manager@rewardriver.online\",\"displayName\":\"Tariq Manager\",\"initialTeam\":\"Tariq Primary Force\",\"teamCode\":\"ENMH2V\"}",
+      "id": "log_e1d5b604-2c40-47a9-8088-269701572fbf",
+      "createdAt": "2026-10-30T14:14:42.740Z"
+    },
+    {
+      "adminUserId": "usr_b2f612f6-5e25-4362-b026-cc56a4c169a4",
+      "adminEmail": "tariq.manager@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_b2f612f6-5e25-4362-b026-cc56a4c169a4",
+      "details": "{\"attemptedBy\":\"tariq.manager@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Tariq Secondary Squad\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_4811389e-aace-4b77-93bb-afe71355a3fa",
+      "createdAt": "2026-10-30T14:14:42.960Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_b2f612f6-5e25-4362-b026-cc56a4c169a4",
+      "details": "Permanently deleted user tariq.manager@rewardriver.online (Tariq Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_4555e044-33bc-4c0b-af2b-d178d445f138",
+      "createdAt": "2026-10-30T14:14:45.830Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "details": "Permanently deleted user member.tariq1@gmail.com (member.tariq1). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_cd913084-2c8e-4fc2-9d31-549784d2c0e2",
+      "createdAt": "2026-10-30T14:14:46.642Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_be99d978-de73-4b89-9078-dfd5188ec40a",
+      "createdAt": "2026-10-30T14:14:47.478Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_a44067af-f312-42e5-8e9c-7cc37ddedc24",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_a44067af-f312-42e5-8e9c-7cc37ddedc24",
+        "name": "Primary",
+        "managerId": "usr_5214b4eb-1613-43db-ba99-77849248c0f5",
+        "teamCode": "FYWAZK",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:14:58.260Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_a44067af-f312-42e5-8e9c-7cc37ddedc24\",\"name\":\"Primary\",\"managerId\":\"usr_5214b4eb-1613-43db-ba99-77849248c0f5\",\"teamCode\":\"FYWAZK\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:14:58.260Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_a4cb8fec-03fc-4ab4-9061-16888c322af8",
+      "createdAt": "2026-10-30T14:14:58.260Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_5214b4eb-1613-43db-ba99-77849248c0f5",
+      "details": "{\"email\":\"direct.test@rewardriver.online\",\"displayName\":\"direct.test@rewardriver.online\",\"initialTeam\":\"Primary\",\"teamCode\":\"FYWAZK\"}",
+      "id": "log_8365d218-7fd3-4a1a-8b2f-3e05bd8f14fe",
+      "createdAt": "2026-10-30T14:14:58.683Z"
+    },
+    {
+      "adminUserId": "usr_5214b4eb-1613-43db-ba99-77849248c0f5",
+      "adminEmail": "direct.test@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_5214b4eb-1613-43db-ba99-77849248c0f5",
+      "details": "{\"attemptedBy\":\"direct.test@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Secondary Team\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_3864cc58-56ff-481f-9830-47cb34811ff4",
+      "createdAt": "2026-10-30T14:14:58.901Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_5214b4eb-1613-43db-ba99-77849248c0f5",
+      "details": "Permanently deleted user direct.test@rewardriver.online (direct.test@rewardriver.online). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_ff65781f-a7b6-45ef-ba83-698aae2e9c59",
+      "createdAt": "2026-10-30T14:15:00.083Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_55962109-8ea8-412b-9fce-b3c8600ec1d0",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_55962109-8ea8-412b-9fce-b3c8600ec1d0",
+        "name": "Primary",
+        "managerId": "usr_869417a6-0d6b-42ff-bfb6-40894ad32447",
+        "teamCode": "4V6WPS",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:15:52.698Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_55962109-8ea8-412b-9fce-b3c8600ec1d0\",\"name\":\"Primary\",\"managerId\":\"usr_869417a6-0d6b-42ff-bfb6-40894ad32447\",\"teamCode\":\"4V6WPS\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:15:52.698Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_40ff3f6f-8b6e-4229-aa11-80b46a90b086",
+      "createdAt": "2026-10-30T14:15:52.698Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_869417a6-0d6b-42ff-bfb6-40894ad32447",
+      "details": "{\"email\":\"debug.mgr@rewardriver.online\",\"displayName\":\"debug.mgr@rewardriver.online\",\"initialTeam\":\"Primary\",\"teamCode\":\"4V6WPS\"}",
+      "id": "log_567403f8-654f-4bdd-b00b-7cb2cdcfc284",
+      "createdAt": "2026-10-30T14:15:53.474Z"
+    },
+    {
+      "adminUserId": "usr_869417a6-0d6b-42ff-bfb6-40894ad32447",
+      "adminEmail": "debug.mgr@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_869417a6-0d6b-42ff-bfb6-40894ad32447",
+      "details": "{\"attemptedBy\":\"debug.mgr@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Secondary Team\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_fa49ddf5-f6fb-40a7-9dff-0d5eba2b1274",
+      "createdAt": "2026-10-30T14:15:53.681Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_869417a6-0d6b-42ff-bfb6-40894ad32447",
+      "details": "Permanently deleted user debug.mgr@rewardriver.online (debug.mgr@rewardriver.online). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_be4b46d6-80d6-4bb8-bf98-dcc2b542df6c",
+      "createdAt": "2026-10-30T14:15:54.530Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_eb664593-359e-4994-99aa-8f8d4267e2b9",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_eb664593-359e-4994-99aa-8f8d4267e2b9",
+        "name": "Primary",
+        "managerId": "usr_74d4af29-0ff1-4127-99e6-ef040dcc567b",
+        "teamCode": "L26AZJ",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:16:16.218Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_eb664593-359e-4994-99aa-8f8d4267e2b9\",\"name\":\"Primary\",\"managerId\":\"usr_74d4af29-0ff1-4127-99e6-ef040dcc567b\",\"teamCode\":\"L26AZJ\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:16:16.218Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_a5dc30cd-a510-4f05-8d80-0cda21923139",
+      "createdAt": "2026-10-30T14:16:16.218Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_74d4af29-0ff1-4127-99e6-ef040dcc567b",
+      "details": "{\"email\":\"test.check@rewardriver.online\",\"displayName\":\"test.check@rewardriver.online\",\"initialTeam\":\"Primary\",\"teamCode\":\"L26AZJ\"}",
+      "id": "log_0ff81491-be8c-424f-af9b-d3fb2cda759c",
+      "createdAt": "2026-10-30T14:16:16.610Z"
+    },
+    {
+      "adminUserId": "usr_74d4af29-0ff1-4127-99e6-ef040dcc567b",
+      "adminEmail": "test.check@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_74d4af29-0ff1-4127-99e6-ef040dcc567b",
+      "details": "{\"attemptedBy\":\"test.check@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Secondary Team\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_42712bc2-8e14-4912-944e-c6daa86683f7",
+      "createdAt": "2026-10-30T14:16:16.806Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_74d4af29-0ff1-4127-99e6-ef040dcc567b",
+      "details": "Permanently deleted user test.check@rewardriver.online (test.check@rewardriver.online). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_87240768-576c-448d-838e-d4a4012b7a2f",
+      "createdAt": "2026-10-30T14:16:17.930Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_72257d00-4406-4413-821c-93c80892b668",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_72257d00-4406-4413-821c-93c80892b668",
+        "name": "Primary",
+        "managerId": "usr_5d1aa15e-83de-4379-887c-3b3e54ed2875",
+        "teamCode": "JCTUHH",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:17:15.123Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_72257d00-4406-4413-821c-93c80892b668\",\"name\":\"Primary\",\"managerId\":\"usr_5d1aa15e-83de-4379-887c-3b3e54ed2875\",\"teamCode\":\"JCTUHH\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:17:15.123Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_d806bc9e-a0dc-4987-baba-04c77b2842f8",
+      "createdAt": "2026-10-30T14:17:15.123Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_5d1aa15e-83de-4379-887c-3b3e54ed2875",
+      "details": "{\"email\":\"debug.mgr@rewardriver.online\",\"displayName\":\"debug.mgr@rewardriver.online\",\"initialTeam\":\"Primary\",\"teamCode\":\"JCTUHH\"}",
+      "id": "log_8abd74ff-8f60-4606-aeca-2d5aa36507d8",
+      "createdAt": "2026-10-30T14:17:15.515Z"
+    },
+    {
+      "adminUserId": "usr_5d1aa15e-83de-4379-887c-3b3e54ed2875",
+      "adminEmail": "debug.mgr@rewardriver.online",
+      "action": "REJECTED_TEAM_CREATION_ATTEMPT",
+      "targetEntity": "teams",
+      "targetId": "usr_5d1aa15e-83de-4379-887c-3b3e54ed2875",
+      "details": "{\"attemptedBy\":\"debug.mgr@rewardriver.online\",\"role\":\"manager\",\"managersCanCreateTeams\":false,\"teamName\":\"Secondary Team\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_537429c8-8963-41a7-95a6-0c5ab1f86eb7",
+      "createdAt": "2026-10-30T14:17:15.730Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_5d1aa15e-83de-4379-887c-3b3e54ed2875",
+      "details": "Permanently deleted user debug.mgr@rewardriver.online (debug.mgr@rewardriver.online). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_f279825c-29a3-4e62-bf65-c7f25e2231f9",
+      "createdAt": "2026-10-30T14:17:16.487Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_5a2f860c-1f86-4ea3-a924-eb24a5168660",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_5a2f860c-1f86-4ea3-a924-eb24a5168660",
+        "name": "Primary",
+        "managerId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
+        "teamCode": "ZS3E7E",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:17:50.276Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_5a2f860c-1f86-4ea3-a924-eb24a5168660\",\"name\":\"Primary\",\"managerId\":\"usr_20423c0b-e235-44c7-9e57-7b2c285b2da1\",\"teamCode\":\"ZS3E7E\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:17:50.276Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_79160835-c9dd-4114-80c8-d58ab6cd4240",
+      "createdAt": "2026-10-30T14:17:50.276Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
+      "details": "{\"email\":\"debug.mgr@rewardriver.online\",\"displayName\":\"debug.mgr@rewardriver.online\",\"initialTeam\":\"Primary\",\"teamCode\":\"ZS3E7E\"}",
+      "id": "log_6ce623ab-1c9b-48a7-b4b8-308d2d75639f",
+      "createdAt": "2026-10-30T14:17:50.670Z"
+    },
+    {
+      "adminUserId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
+      "adminEmail": "debug.mgr@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_dafdacd9-6535-45b6-a5e1-eb840f62dd21",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_dafdacd9-6535-45b6-a5e1-eb840f62dd21",
+        "name": "Secondary Team",
+        "managerId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
+        "teamCode": "93X4XL",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:17:50.888Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_dafdacd9-6535-45b6-a5e1-eb840f62dd21\",\"name\":\"Secondary Team\",\"managerId\":\"usr_20423c0b-e235-44c7-9e57-7b2c285b2da1\",\"teamCode\":\"93X4XL\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:17:50.888Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_a3d125ad-52c3-4816-9637-961ca65a2f46",
+      "createdAt": "2026-10-30T14:17:50.888Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
+      "details": "Permanently deleted user debug.mgr@rewardriver.online (debug.mgr@rewardriver.online). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_7e5e021f-be8e-489b-9189-1393b0aa729a",
+      "createdAt": "2026-10-30T14:17:51.914Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_b46dc75e-c874-4fce-a090-7e14ac8460b8",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_b46dc75e-c874-4fce-a090-7e14ac8460b8",
+        "name": "Tariq Primary Force",
+        "managerId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
+        "teamCode": "GANR6B",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:18:08.890Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_b46dc75e-c874-4fce-a090-7e14ac8460b8\",\"name\":\"Tariq Primary Force\",\"managerId\":\"usr_073cffcb-3fef-4825-b461-67363fa49514\",\"teamCode\":\"GANR6B\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:18:08.890Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_7cedeb43-0ab4-40ad-97c3-1352b827f939",
+      "createdAt": "2026-10-30T14:18:08.890Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
+      "details": "{\"email\":\"tariq.manager@rewardriver.online\",\"displayName\":\"Tariq Manager\",\"initialTeam\":\"Tariq Primary Force\",\"teamCode\":\"GANR6B\"}",
+      "id": "log_1977c3c8-aa12-4532-a39d-0a2f84c5501f",
+      "createdAt": "2026-10-30T14:18:09.280Z"
+    },
+    {
+      "adminUserId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
+      "adminEmail": "tariq.manager@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_af608845-9631-480b-861e-5b6da9d97129",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_af608845-9631-480b-861e-5b6da9d97129",
+        "name": "Tariq Secondary Squad",
+        "managerId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
+        "teamCode": "6TP9X8",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:18:09.510Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_af608845-9631-480b-861e-5b6da9d97129\",\"name\":\"Tariq Secondary Squad\",\"managerId\":\"usr_073cffcb-3fef-4825-b461-67363fa49514\",\"teamCode\":\"6TP9X8\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:18:09.510Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_d0dbaf1d-c203-4d43-b87d-f6313840f804",
+      "createdAt": "2026-10-30T14:18:09.511Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
+      "details": "Permanently deleted user tariq.manager@rewardriver.online (Tariq Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_a84e4ad7-5d37-4674-88bd-a8012941183a",
+      "createdAt": "2026-10-30T14:18:12.577Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "details": "Permanently deleted user member.tariq1@gmail.com (member.tariq1). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_d619377f-7970-480c-99ef-3a92047bb566",
+      "createdAt": "2026-10-30T14:18:13.393Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_57786f7c-9b57-44b2-9213-f93a31e0474a",
+      "createdAt": "2026-10-30T14:18:14.180Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_c0feae0e-b039-41ed-a0ac-6a7131b4a1ec",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_c0feae0e-b039-41ed-a0ac-6a7131b4a1ec",
+        "name": "Tariq Primary Force",
+        "managerId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
+        "teamCode": "ZM8NUT",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:19:20.728Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_c0feae0e-b039-41ed-a0ac-6a7131b4a1ec\",\"name\":\"Tariq Primary Force\",\"managerId\":\"usr_96429f54-47ba-41aa-a50f-5dbb94f53957\",\"teamCode\":\"ZM8NUT\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:19:20.728Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_579e057c-2e34-4f4a-a4ed-e338a59f0cbb",
+      "createdAt": "2026-10-30T14:19:20.728Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
+      "details": "{\"email\":\"tariq.manager@rewardriver.online\",\"displayName\":\"Tariq Manager\",\"initialTeam\":\"Tariq Primary Force\",\"teamCode\":\"ZM8NUT\"}",
+      "id": "log_552247d2-40b1-428e-8d3d-c100ebd28055",
+      "createdAt": "2026-10-30T14:19:21.145Z"
+    },
+    {
+      "adminUserId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
+      "adminEmail": "tariq.manager@rewardriver.online",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_bf0c83ae-3db0-4363-8ba5-3a70181ee67f",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_bf0c83ae-3db0-4363-8ba5-3a70181ee67f",
+        "name": "Tariq Secondary Squad",
+        "managerId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
+        "teamCode": "LS9N6E",
+        "isActive": true,
+        "createdAt": "2026-10-30T14:19:21.386Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_bf0c83ae-3db0-4363-8ba5-3a70181ee67f\",\"name\":\"Tariq Secondary Squad\",\"managerId\":\"usr_96429f54-47ba-41aa-a50f-5dbb94f53957\",\"teamCode\":\"LS9N6E\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:19:21.386Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_e23de76c-69ad-4485-bb1a-d9af52ca71d2",
+      "createdAt": "2026-10-30T14:19:21.387Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
+      "details": "Permanently deleted user tariq.manager@rewardriver.online (Tariq Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_d65fd5f4-9997-4c95-b4b1-869f30e262cd",
+      "createdAt": "2026-10-30T14:19:24.602Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_10ae8004-15c6-4081-a2fd-20b888e87cfb",
+      "details": "Permanently deleted user member.tariq1@gmail.com (member.tariq1). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_0616f784-c8c2-4ae2-ba01-c3651387e8af",
+      "createdAt": "2026-10-30T14:19:25.411Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_a8c87720-c4fe-45ff-8582-8d068d94e794",
+      "details": "Permanently deleted user member.tariq2@gmail.com (member.tariq2). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_b4ceb17f-f5a4-4cf7-934b-88bde93b0cad",
+      "createdAt": "2026-10-30T14:19:26.237Z"
     }
   ],
   "teams": [
@@ -3512,6 +4427,142 @@
       "teamCode": "VD9E8C",
       "isActive": true,
       "createdAt": "2026-10-30T13:26:09.908Z"
+    },
+    {
+      "id": "team_cfe1bf93-2ba3-4fb5-9acf-829736d852ae",
+      "name": "Alpha Mohsin Team",
+      "managerId": "usr_b79985df-6cb9-47b6-8370-8858ba62c02d",
+      "teamCode": "VDJNS8",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:04:18.460Z"
+    },
+    {
+      "id": "team_8e2fda5a-6014-4e02-9e99-4f303833fb92",
+      "name": "Tariq Primary Force",
+      "managerId": "usr_77e8fcb1-bf9a-40bf-8889-7eef5ab8af62",
+      "teamCode": "VSB8D3",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:11:36.428Z"
+    },
+    {
+      "id": "team_c6287d31-114c-4831-ab29-0f84e802a143",
+      "name": "Tariq Primary Force",
+      "managerId": "usr_2367a112-3e73-444f-8884-a85d42402b23",
+      "teamCode": "ZVT3K3",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:12:23.349Z"
+    },
+    {
+      "id": "team_9c4d17d6-64d0-42bf-9879-5060a9dca85d",
+      "name": "Tariq Primary Force",
+      "managerId": "usr_41df1a68-e5e7-442a-a559-6beabf3f4b49",
+      "teamCode": "R825TC",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:12:50.187Z"
+    },
+    {
+      "id": "team_ab367104-be22-4407-89d8-32601aa0ff05",
+      "name": "Tariq Primary Force",
+      "managerId": "usr_2ee38f8d-022d-455a-b251-665fb48ed70c",
+      "teamCode": "E3A2RE",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:13:32.093Z"
+    },
+    {
+      "id": "team_ee68ea6e-2b49-44ef-bce2-fed2ceca8e90",
+      "name": "Primary",
+      "managerId": "usr_f5ec14c4-985f-4926-9479-bce37fc8374f",
+      "teamCode": "MN6BYX",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:13:50.424Z"
+    },
+    {
+      "id": "team_f17b3da1-0431-44d7-b1f9-068ccc6c9bbd",
+      "name": "Tariq Primary Force",
+      "managerId": "usr_b2f612f6-5e25-4362-b026-cc56a4c169a4",
+      "teamCode": "ENMH2V",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:14:42.352Z"
+    },
+    {
+      "id": "team_a44067af-f312-42e5-8e9c-7cc37ddedc24",
+      "name": "Primary",
+      "managerId": "usr_5214b4eb-1613-43db-ba99-77849248c0f5",
+      "teamCode": "FYWAZK",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:14:58.260Z"
+    },
+    {
+      "id": "team_55962109-8ea8-412b-9fce-b3c8600ec1d0",
+      "name": "Primary",
+      "managerId": "usr_869417a6-0d6b-42ff-bfb6-40894ad32447",
+      "teamCode": "4V6WPS",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:15:52.698Z"
+    },
+    {
+      "id": "team_eb664593-359e-4994-99aa-8f8d4267e2b9",
+      "name": "Primary",
+      "managerId": "usr_74d4af29-0ff1-4127-99e6-ef040dcc567b",
+      "teamCode": "L26AZJ",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:16:16.218Z"
+    },
+    {
+      "id": "team_72257d00-4406-4413-821c-93c80892b668",
+      "name": "Primary",
+      "managerId": "usr_5d1aa15e-83de-4379-887c-3b3e54ed2875",
+      "teamCode": "JCTUHH",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:17:15.123Z"
+    },
+    {
+      "id": "team_5a2f860c-1f86-4ea3-a924-eb24a5168660",
+      "name": "Primary",
+      "managerId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
+      "teamCode": "ZS3E7E",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:17:50.276Z"
+    },
+    {
+      "id": "team_dafdacd9-6535-45b6-a5e1-eb840f62dd21",
+      "name": "Secondary Team",
+      "managerId": "usr_20423c0b-e235-44c7-9e57-7b2c285b2da1",
+      "teamCode": "93X4XL",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:17:50.888Z"
+    },
+    {
+      "id": "team_b46dc75e-c874-4fce-a090-7e14ac8460b8",
+      "name": "Tariq Primary Force",
+      "managerId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
+      "teamCode": "GANR6B",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:18:08.890Z"
+    },
+    {
+      "id": "team_af608845-9631-480b-861e-5b6da9d97129",
+      "name": "Tariq Secondary Squad",
+      "managerId": "usr_073cffcb-3fef-4825-b461-67363fa49514",
+      "teamCode": "6TP9X8",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:18:09.510Z"
+    },
+    {
+      "id": "team_c0feae0e-b039-41ed-a0ac-6a7131b4a1ec",
+      "name": "Tariq Primary Force",
+      "managerId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
+      "teamCode": "ZM8NUT",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:19:20.728Z"
+    },
+    {
+      "id": "team_bf0c83ae-3db0-4363-8ba5-3a70181ee67f",
+      "name": "Tariq Secondary Squad",
+      "managerId": "usr_96429f54-47ba-41aa-a50f-5dbb94f53957",
+      "teamCode": "LS9N6E",
+      "isActive": true,
+      "createdAt": "2026-10-30T14:19:21.386Z"
     }
   ],
   "teamMembers": [],

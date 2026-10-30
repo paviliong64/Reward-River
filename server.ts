@@ -2638,11 +2638,13 @@ app.get(['/api/admin/managers', '/api/admin/managers-and-teams'], requireAuth, r
 
     return {
       ...team,
+      teamName: team.name,
       createdAtKarachi: formatKarachiDateTime(team.createdAt),
       managerName: manager?.displayName || manager?.username || 'Manager',
       managerEmail: manager?.email || '',
       memberCount: members.length,
       teamPoints: teamStat ? teamStat.teamPoints : allTimeTeamPoints,
+      totalPoints: teamStat ? teamStat.teamPoints : allTimeTeamPoints,
       completedSurveysCount: teamStat
         ? teamStat.completedSurveysCount
         : members.filter(m => m.userId !== team.managerId).reduce((s, m) => s + m.surveysCompleted, 0),
@@ -2658,6 +2660,7 @@ app.get(['/api/admin/managers', '/api/admin/managers-and-teams'], requireAuth, r
         id: m.id,
         displayName: m.displayName,
         email: m.email,
+        role: m.role || 'manager',
         createdAt: m.createdAt,
         createdAtKarachi: m.createdAtKarachi,
         lastActiveAtKarachi: m.lastActiveAtKarachi,
@@ -2690,19 +2693,25 @@ app.get(['/api/admin/managers', '/api/admin/managers-and-teams'], requireAuth, r
 app.post(['/api/admin/teams', '/api/manager/teams'], requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const actor = req.user!;
-    const { name, managerId, customCode } = req.body || {};
-    const targetManagerId = managerId ? String(managerId).trim() : actor.id;
+    const body = req.body || {};
+    const rawName = String(body.name || body.teamName || '').trim();
+    const targetManagerId = body.managerId ? String(body.managerId).trim() : actor.id;
+    const customCode = body.customCode ? String(body.customCode).trim() : undefined;
     const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+
     const created = await dbStore.createTeam({
-      name: String(name || ''),
+      name: rawName,
       managerId: targetManagerId,
-      customCode: customCode ? String(customCode) : undefined,
+      customCode,
       actorUser: actor,
       ipAddress
     });
     res.status(201).json({
       success: true,
-      team: created
+      team: {
+        ...created,
+        teamName: created.name
+      }
     });
   } catch (err: any) {
     const status = err?.statusCode === 403 ? 403 : 400;
