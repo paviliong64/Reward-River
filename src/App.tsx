@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, UserBalances, UsdtQuote, Survey, Withdrawal, LedgerEntry, CpxConfigStatus } from './types';
+import { User, UserBalances, UsdtQuote, Survey, Withdrawal, LedgerEntry, CpxConfigStatus, ImpersonationSessionInfo } from './types';
 import { UsdtNetwork } from './utils/usdt';
 import { fetchLiveCpxSurveysBrowser } from './utils/cpxClient';
 import { Navbar } from './components/Navbar';
@@ -17,6 +17,7 @@ import { WithdrawalView } from './components/WithdrawalView';
 import { TransactionsView } from './components/TransactionsView';
 import { SettingsView } from './components/SettingsView';
 import { AdminView } from './components/AdminView';
+import { ManagerPortal } from './components/ManagerPortal';
 import { LegalModal } from './components/LegalModal';
 import { ArticleView } from './components/ArticleView';
 import { PhoneOnboardingModal } from './components/PhoneOnboardingModal';
@@ -27,8 +28,10 @@ export default function App() {
   const [balances, setBalances] = useState<UserBalances | null>(null);
   const [usdtQuote, setUsdtQuote] = useState<UsdtQuote | null>(null);
   const [cpxStatus, setCpxStatus] = useState<CpxConfigStatus | null>(null);
+  const [impersonation, setImpersonation] = useState<ImpersonationSessionInfo | null>(null);
+  const [initialTeamCode, setInitialTeamCode] = useState<string>('');
 
-  // Tab navigation: 'landing' (if unauthed), 'dashboard', 'surveys', 'withdraw', 'transactions', 'settings', 'admin'
+  // Tab navigation: 'landing' (if unauthed), 'dashboard', 'surveys', 'withdraw', 'transactions', 'settings', 'manager', 'admin'
   const [currentTab, setCurrentTab] = useState<string>('landing');
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
@@ -120,6 +123,7 @@ export default function App() {
         const data = await res.json();
         setUser(data.user);
         setBalances(data.balances);
+        setImpersonation(data.impersonation || null);
         try {
           localStorage.setItem('rr_auth_user', JSON.stringify(data.user));
         } catch {
@@ -151,17 +155,19 @@ export default function App() {
     localStorage.removeItem('rr_auth_user');
     setUser(null);
     setBalances(null);
+    setImpersonation(null);
     return null;
   }, []);
 
-  // Fetch surveys from CPX API (with direct live-api.cpx-research.com browser fallback)
+  // Fetch surveys from CPX API (secure_hash is always generated server-side)
   const fetchSurveys = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
 
     setSurveysLoading(true);
     setSurveysError(null);
-    const fallbackExtId = user?.externalOpaqueId || (user?.id ? `rr_cpx_${user.id}` : 'rr_cpx_member_1');
+    // Privacy rule: ext_user_id is strictly the user's UUID/opaque ID, never email or name
+    const fallbackExtId = user?.id || user?.externalOpaqueId || 'rr_cpx_member';
 
     try {
       const res = await fetch('/api/surveys', {
@@ -170,6 +176,9 @@ export default function App() {
       const data = await res.json().catch(() => ({}));
       if (data.balances) {
         setBalances(data.balances);
+      }
+      if (data.cpxConfig) {
+        setCpxConfig(data.cpxConfig);
       }
       if (res.ok && Array.isArray(data.surveys) && data.surveys.length > 0) {
         setSurveys(data.surveys);
@@ -185,17 +194,14 @@ export default function App() {
         if (data.usdtQuote) {
           setUsdtQuote(data.usdtQuote);
         }
-        if (data.cpxConfig) {
-          setCpxConfig(data.cpxConfig);
-        }
         return;
       }
 
-      // Direct live-api.cpx-research.com browser fetch if backend route is unreachable or empty
+      // Direct live-api.cpx-research.com browser fetch using server-provided secureHash only
       const liveBrowser = await fetchLiveCpxSurveysBrowser({
         appId: data?.cpxConfig?.appId || '37699',
-        hashKey: '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
         extUserId: data?.cpxConfig?.extUserId || fallbackExtId,
+        secureHash: data?.cpxConfig?.secureHash || '',
         userSharePercent,
         pointsPerUsdt,
         limit: 12
@@ -203,30 +209,12 @@ export default function App() {
       setSurveys(liveBrowser.surveys);
       setCpxConfig({
         appId: liveBrowser.appId,
-        extUserId: fallbackExtId,
+        extUserId: data?.cpxConfig?.extUserId || fallbackExtId,
         secureHash: liveBrowser.secureHash,
         themeColor: '10b981'
       });
     } catch {
-      try {
-        const liveBrowser = await fetchLiveCpxSurveysBrowser({
-          appId: '37699',
-          hashKey: '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
-          extUserId: fallbackExtId,
-          userSharePercent,
-          pointsPerUsdt,
-          limit: 12
-        });
-        setSurveys(liveBrowser.surveys);
-        setCpxConfig({
-          appId: liveBrowser.appId,
-          extUserId: fallbackExtId,
-          secureHash: liveBrowser.secureHash,
-          themeColor: '10b981'
-        });
-      } catch {
-        setSurveysError('Connection to survey server failed. Please refresh or try again.');
-      }
+      setSurveysError('Connection to survey server failed. Please refresh or try again.');
     } finally {
       setSurveysLoading(false);
     }
@@ -269,18 +257,26 @@ export default function App() {
     fetchCpxStatus();
   }, [fetchUserData, fetchSurveys, fetchLedgerAndWithdrawals, fetchUsdtQuote, fetchCpxStatus]);
 
-  // Listen to Session and Supabase Auth state
+  // Listen to Session, URL ?team=CODE invite links, and Supabase Auth state
   useEffect(() => {
     fetchUsdtQuote();
     fetchCpxStatus();
 
     const token = getAuthToken();
     const pathname = typeof window !== 'undefined' ? window.location.pathname.toLowerCase() : '';
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const teamParam = searchParams?.get('team')?.trim().toUpperCase() || '';
+
+    if (teamParam) {
+      setInitialTeamCode(teamParam);
+    }
 
     if (token) {
       fetchUserData(token).then((loadedUser) => {
         if (loadedUser?.role === 'admin') {
           setCurrentTab('admin');
+        } else if (loadedUser?.role === 'manager') {
+          setCurrentTab('manager');
         } else if (pathname === '/admin' || pathname.startsWith('/admin/')) {
           setAuthInitialMode('signin');
           setAuthModalOpen(true);
@@ -290,6 +286,9 @@ export default function App() {
       });
     } else if (pathname === '/admin' || pathname.startsWith('/admin/')) {
       setAuthInitialMode('signin');
+      setAuthModalOpen(true);
+    } else if (pathname === '/signup' || teamParam) {
+      setAuthInitialMode('signup');
       setAuthModalOpen(true);
     }
 
@@ -304,7 +303,13 @@ export default function App() {
             localStorage.setItem('rr_auth_token', session.access_token);
             setUser(data.user);
             setBalances(data.balances);
-            setCurrentTab(data.user?.role === 'admin' ? 'admin' : 'surveys');
+            setCurrentTab(
+              data.user?.role === 'admin'
+                ? 'admin'
+                : data.user?.role === 'manager'
+                ? 'manager'
+                : 'surveys'
+            );
           }
         } catch (e) {
           console.warn('Supabase state sync warning:', e);
@@ -387,6 +392,7 @@ export default function App() {
       // ignore storage errors
     }
     setUser(newUser);
+    setImpersonation(null);
     if (newBalances) {
       setBalances(newBalances);
     } else {
@@ -403,12 +409,82 @@ export default function App() {
         completedSurveysCount: 0
       });
     }
-    setCurrentTab(newUser.role === 'admin' ? 'admin' : 'surveys');
+    setCurrentTab(
+      newUser.role === 'admin'
+        ? 'admin'
+        : newUser.role === 'manager'
+        ? 'manager'
+        : 'surveys'
+    );
     handleRefreshAll();
   };
 
+  // Start Read-Only Impersonation Session ("View as User")
+  const handleStartImpersonation = useCallback(
+    (sessionToken: string, targetUser: User, impersonationInfo: ImpersonationSessionInfo) => {
+      const currentAdminToken = getAuthToken();
+      if (currentAdminToken) {
+        try {
+          sessionStorage.setItem('rr_admin_backup_token', currentAdminToken);
+        } catch {
+          // ignore
+        }
+      }
+      localStorage.setItem('rr_auth_token', sessionToken);
+      setUser(targetUser);
+      setImpersonation(impersonationInfo);
+      setCurrentTab(targetUser.role === 'manager' ? 'manager' : 'surveys');
+      fetchUserData(sessionToken);
+      fetchLedgerAndWithdrawals();
+    },
+    [fetchUserData, fetchLedgerAndWithdrawals]
+  );
+
+  // Exit Read-Only Impersonation Session
+  const handleExitImpersonation = useCallback(async () => {
+    const activeToken = getAuthToken();
+    if (activeToken) {
+      try {
+        await fetch('/api/admin/impersonate/exit', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${activeToken}` }
+        });
+      } catch {
+        // ignore network errors on exit
+      }
+    }
+
+    let backupToken: string | null = null;
+    try {
+      backupToken = sessionStorage.getItem('rr_admin_backup_token');
+      sessionStorage.removeItem('rr_admin_backup_token');
+    } catch {
+      // ignore
+    }
+
+    setImpersonation(null);
+    if (backupToken) {
+      localStorage.setItem('rr_auth_token', backupToken);
+      const adminUser = await fetchUserData(backupToken);
+      if (adminUser) {
+        setCurrentTab('admin');
+        return;
+      }
+    }
+
+    localStorage.removeItem('rr_auth_token');
+    localStorage.removeItem('rr_auth_user');
+    setUser(null);
+    setBalances(null);
+    setCurrentTab('landing');
+  }, [fetchUserData]);
+
   // Sign out
   const handleSignOut = async () => {
+    if (impersonation) {
+      await handleExitImpersonation();
+      return;
+    }
     try {
       await supabase.auth.signOut();
     } catch {
@@ -418,6 +494,7 @@ export default function App() {
     localStorage.removeItem('rr_auth_user');
     setUser(null);
     setBalances(null);
+    setImpersonation(null);
     setCurrentTab('landing');
   };
 
@@ -439,6 +516,9 @@ export default function App() {
 
   // Start Survey Flow
   const handleStartSurvey = async (survey: Survey) => {
+    if (impersonation) {
+      return; // Read-only impersonation mode blocks starting surveys
+    }
     const token = getAuthToken();
     if (!token) {
       setAuthInitialMode('signin');
@@ -474,6 +554,11 @@ export default function App() {
           } catch {
             // Use existing valid directUrl
           }
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        if (res.status === 403 && errData.error) {
+          return;
         }
       }
     } catch (err) {
@@ -646,6 +731,7 @@ export default function App() {
             isOpen={authModalOpen}
             standalone={false}
             initialMode={authInitialMode}
+            initialTeamCode={initialTeamCode}
             onClose={() => setAuthModalOpen(false)}
             onSuccess={handleAuthSuccess}
             onOpenLegal={(page) => {
@@ -662,6 +748,28 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#090d16] text-slate-800 dark:text-slate-100 antialiased selection:bg-sky-500 selection:text-white transition-colors">
+      {/* Persistent Red Read-Only Impersonation Banner */}
+      {impersonation && (
+        <div
+          data-testid="impersonation-banner"
+          className="sticky top-0 z-[100] w-full bg-rose-600 text-white px-4 py-2.5 shadow-md flex items-center justify-between gap-4 text-xs sm:text-sm font-bold"
+        >
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
+            <span>
+              Viewing as <strong className="underline">{impersonation.targetUserEmail || user.email}</strong>. Read-only.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleExitImpersonation}
+            className="px-3 py-1 rounded-lg bg-white text-rose-700 hover:bg-rose-50 font-extrabold text-xs transition-colors cursor-pointer shrink-0"
+          >
+            [Exit]
+          </button>
+        </div>
+      )}
+
       {/* Top Navigation */}
       <Navbar
         user={user}
@@ -719,7 +827,35 @@ export default function App() {
               />
             )}
 
-            {(currentTab === 'surveys' || (currentTab !== 'landing' && currentTab !== 'admin' && currentTab !== 'withdraw')) && (
+            {currentTab === 'transactions' && (
+              <TransactionsView
+                entries={ledgerEntries}
+                withdrawals={withdrawals}
+                usdtQuote={usdtQuote}
+                pointsPerUsdt={pointsPerUsdt}
+              />
+            )}
+
+            {currentTab === 'settings' && (
+              <SettingsView
+                user={user}
+                onVerifyEmail={handleVerifyEmail}
+                onChangePassword={handlePasswordChange}
+                onSignOut={handleSignOut}
+              />
+            )}
+
+            {currentTab === 'manager' && (user?.role === 'manager' || user?.role === 'admin') && (
+              <ManagerPortal token={getAuthToken() || ''} />
+            )}
+
+            {(currentTab === 'surveys' ||
+              (currentTab !== 'landing' &&
+                currentTab !== 'admin' &&
+                currentTab !== 'manager' &&
+                currentTab !== 'withdraw' &&
+                currentTab !== 'transactions' &&
+                currentTab !== 'settings')) && (
               <SurveysView
                 surveys={surveys}
                 loading={surveysLoading}
@@ -745,6 +881,7 @@ export default function App() {
                 cpxStatus={cpxStatus}
                 onDataChanged={handleRefreshAll}
                 onExitAdmin={() => setCurrentTab('surveys')}
+                onStartImpersonation={handleStartImpersonation}
               />
             )}
           </div>

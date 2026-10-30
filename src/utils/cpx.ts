@@ -3,7 +3,7 @@
  * Official documentation: https://www.cpx-research.com/main/en/doc.php
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 export interface CpxRawSurvey {
   id: string | number;
@@ -155,9 +155,24 @@ export function generateCpxTransactionHash(transId: string, hashKey: string): st
   return createHash('md5').update(`${transId}-${hashKey}`).digest('hex');
 }
 
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const cleanA = a.trim().toLowerCase();
+  const cleanB = b.trim().toLowerCase();
+  if (cleanA.length !== cleanB.length) return false;
+  try {
+    const bufA = Buffer.from(cleanA, 'utf8');
+    const bufB = Buffer.from(cleanB, 'utf8');
+    if (bufA.length !== bufB.length) return false;
+    return timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Verifies CPX postback signature against provided hash key.
- * Checks both transaction-based hash and user-based hash formats supported by CPX.
+ * Verifies CPX postback signature against provided hash key using constant-time comparison.
+ * Checks both user-based md5("{ext_user_id}-{secret}") and transaction-based md5("{trans_id}-{secret}") formats.
  */
 export function verifyCpxPostbackSignature(
   transId: string,
@@ -169,16 +184,20 @@ export function verifyCpxPostbackSignature(
   
   const provided = receivedHash.trim().toLowerCase();
   const candidates = [
-    generateCpxTransactionHash(transId, hashKey).toLowerCase(),
     generateCpxSecureHash(extUserId, hashKey).toLowerCase(),
-    createHash('md5').update(`${transId}${hashKey}`).digest('hex').toLowerCase(),
+    generateCpxTransactionHash(transId, hashKey).toLowerCase(),
     createHash('md5').update(`${extUserId}${hashKey}`).digest('hex').toLowerCase(),
-    createHash('md5').update(`${transId}-${extUserId}-${hashKey}`).digest('hex').toLowerCase(),
-    createHash('md5').update(`${hashKey}`).digest('hex').toLowerCase(),
-    hashKey.toLowerCase()
+    createHash('md5').update(`${transId}${hashKey}`).digest('hex').toLowerCase(),
+    createHash('md5').update(`${transId}-${extUserId}-${hashKey}`).digest('hex').toLowerCase()
   ];
 
-  return candidates.includes(provided);
+  let matched = false;
+  for (const candidate of candidates) {
+    if (timingSafeEqualHex(provided, candidate)) {
+      matched = true;
+    }
+  }
+  return matched;
 }
 
 /**

@@ -9,8 +9,11 @@ import {
   hashPassword,
   verifyPassword,
   createSessionToken,
+  createImpersonationToken,
   requireAuth,
   requireAdmin,
+  requireManagerOrAdmin,
+  blockWhenImpersonating,
   requireVerifiedEmail,
   AuthenticatedRequest
 } from './server/auth';
@@ -89,6 +92,19 @@ app.use('/api', (req, res, next) => {
   });
   next();
 });
+
+// Simple per-IP sliding window rate limiter for postback & team join/lookup endpoints
+const rateLimitBuckets = new Map<string, { count: number; windowStart: number }>();
+function checkRateLimit(key: string, maxRequests: number, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || now - bucket.windowStart > windowMs) {
+    rateLimitBuckets.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  bucket.count += 1;
+  return bucket.count <= maxRequests;
+}
 
 // Throttled background auto-synchronization for CPX completes (runs seamlessly on Vercel and Node)
 let lastAutoSyncMs = 0;
@@ -294,12 +310,46 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     };
 
     await dbStore.createUser(newUser);
+
+    // Optional Team Join during Signup (if team_system_enabled is ON and teamCode was provided)
+    let joinedTeam: { id: string; name: string; teamCode: string } | null = null;
+    let teamWarning: string | undefined;
+    const rawTeamCode = String(body.teamCode || body.team_code || '').trim().toUpperCase();
+    const consentAccepted = Boolean(body.teamConsentAccepted ?? body.consentAccepted);
+    const settings = dbStore.getSettings();
+
+    if (rawTeamCode) {
+      if (!settings.teamSystemEnabled) {
+        teamWarning = 'Account created without a team because the Team System is currently disabled.';
+      } else if (!consentAccepted) {
+        teamWarning = 'Account created without a team because the team manager consent disclosure was not checked.';
+      } else {
+        try {
+          const joinRes = await dbStore.joinTeamByCode({
+            userId: newUser.id,
+            teamCode: rawTeamCode,
+            consentAccepted: true
+          });
+          joinedTeam = {
+            id: joinRes.team.id,
+            name: joinRes.team.name,
+            teamCode: joinRes.team.teamCode
+          };
+        } catch (joinErr) {
+          teamWarning = joinErr instanceof Error ? joinErr.message : 'Invalid or inactive team code; signed up without a team.';
+        }
+      }
+    }
+
     const token = createSessionToken(newUser);
     const balances = dbStore.getUserBalances(newUser.id);
 
     res.status(201).json({
-      message: 'Account created instantly!',
+      message: joinedTeam
+        ? `Account created and joined team "${joinedTeam.name}"!`
+        : 'Account created instantly!',
       token,
+      teamWarning,
       user: {
         id: newUser.id,
         username: newUser.username,
@@ -309,7 +359,10 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
         role: newUser.role,
         externalOpaqueId: newUser.externalOpaqueId,
         createdAt: newUser.createdAt,
-        hasPromptedPhone: true
+        hasPromptedPhone: true,
+        teamId: joinedTeam?.id,
+        teamName: joinedTeam?.name,
+        teamCode: joinedTeam?.teamCode
       },
       balances
     });
@@ -406,6 +459,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
     const token = createSessionToken(user);
     const balances = dbStore.getUserBalances(user.id);
+    const membership = dbStore.getTeamMembershipForUser(user.id);
+    const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : undefined;
 
     res.json({
       token,
@@ -415,10 +470,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         email: user.email,
         displayName: user.displayName,
         emailVerified: true,
-        role: 'user',
+        role: user.role,
         externalOpaqueId: user.externalOpaqueId,
         createdAt: user.createdAt,
-        hasPromptedPhone: true
+        hasPromptedPhone: true,
+        teamId: memberTeam?.id,
+        teamName: memberTeam?.name,
+        teamCode: memberTeam?.teamCode
       },
       balances
     });
@@ -443,6 +501,8 @@ app.get('/api/auth/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
   const { totalAdminProfitCents: _a, totalGrossRevenueCents: _g, ...userSafeBalances } = rawBalances;
   const userSharePercent = settings.userSharePercent || 50;
   const pointsPerUsdt = settings.pointsPerUsdt || 5000;
+  const membership = dbStore.getTeamMembershipForUser(user.id);
+  const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : undefined;
 
   res.json({
     user: {
@@ -454,7 +514,16 @@ app.get('/api/auth/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
       role: user.role,
       externalOpaqueId: user.externalOpaqueId,
       createdAt: user.createdAt,
-      hasPromptedPhone: true
+      hasPromptedPhone: true,
+      teamId: memberTeam?.id,
+      teamName: memberTeam?.name,
+      teamCode: memberTeam?.teamCode
+    },
+    impersonation: req.impersonation || null,
+    featureFlags: {
+      teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+      managersCanCreateTeams: Boolean(settings.managersCanCreateTeams),
+      teamBonusEnabled: Boolean(settings.teamBonusEnabled)
     },
     balances: user.role === 'admin' ? rawBalances : userSafeBalances,
     completedSurveysCount: rawBalances.completedSurveysCount || 0,
@@ -465,7 +534,7 @@ app.get('/api/auth/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
 });
 
 // POST /api/auth/verify-email
-app.post('/api/auth/verify-email', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/auth/verify-email', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   await dbStore.updateUser(user.id, { emailVerified: true });
   res.json({
@@ -475,7 +544,7 @@ app.post('/api/auth/verify-email', requireAuth, async (req: AuthenticatedRequest
 });
 
 // POST /api/auth/change-password
-app.post('/api/auth/change-password', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/auth/change-password', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   const { currentPassword, newPassword } = req.body;
 
@@ -572,7 +641,7 @@ app.post('/api/auth/firebase-sync', async (req: Request, res: Response) => {
 });
 
 // POST /api/user/phone - Save WhatsApp / Phone onboarding
-app.post('/api/user/phone', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/user/phone', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { whatsappNumber, countryCode } = req.body;
     const user = req.user!;
@@ -688,10 +757,13 @@ app.get('/api/admin/user-analytics', requireAuth, requireAdmin, async (req: Auth
       users,
       ledger,
       withdrawals,
+      teams: dbStore.getTeams(),
+      teamMembers: dbStore.getTeamMembers(),
       range: 'all',
       groupBy: 'day',
       pointsPerUsdt,
-      userSharePercent
+      userSharePercent,
+      newUserDays: settings.newUserDays || 7
     });
 
     const totalUsers = stats.users.totalUsers;
@@ -750,7 +822,7 @@ app.get('/api/admin/user-analytics', requireAuth, requireAdmin, async (req: Auth
       signupsLast30d: stats.users.newUsers30d,
       topEarners,
       topUsersByPoints: stats.topUsersByPoints,
-      deviceBreakdown: { mobile: 0, desktop: totalUsers, tablet: 0 },
+      teams: stats.teams,
       topCountries
     });
   } catch (err) {
@@ -1001,42 +1073,9 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
       userAgent
     });
 
-    // If CPX Research returned live completed transactions for this user, auto-credit them to the ledger
-    if (Array.isArray(surveyData.transactions) && surveyData.transactions.length > 0) {
-      for (const rawTx of surveyData.transactions) {
-        if (!rawTx || typeof rawTx !== 'object') continue;
-        const tx = rawTx as Record<string, unknown>;
-        const rawId = String(tx.trans_id || tx.transaction_id || '').trim();
-        if (!rawId) continue;
-        if (tx.status !== undefined && String(tx.status) !== '1') continue;
-        const providerTxId = rawId.startsWith('cpx_') ? rawId : `cpx_${rawId}`;
-        const offerId = String(tx.offer_id || tx.survey_id || rawId);
-        const grossCents = normalizeCpxPostbackGrossCents(
-          tx.amount_usd ?? tx.payout_publisher_usd ?? tx.cpi,
-          tx.amount_local ?? tx.payout ?? tx.verdienst ?? tx.points,
-          pointsPerUsdt
-        );
-        if (grossCents <= 0) continue;
-        const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
-        await dbStore.addLedgerEntry({
-          id: `ledg_${crypto.randomUUID()}`,
-          userId: user.id,
-          providerTxId,
-          amountCents: split.userRewardCents,
-          points: split.userRewardPoints,
-          grossCents: split.grossCents,
-          adminProfitCents: split.adminProfitCents,
-          appliedSharePercent: split.userSharePercent,
-          entryType: 'credit',
-          status: 'confirmed',
-          description: `CPX Research Survey #${offerId} Completed (+${split.userRewardPointsFormatted} Pts)`,
-          cpxOfferId: offerId,
-          createdAt: new Date().toISOString(),
-          processedAt: new Date().toISOString()
-        });
-      }
-    }
-
+    // Privacy rule: CPX only gets the user's opaque UUID (`opaqueId`), never email or displayName.
+    // Security rule: Points are NEVER auto-credited on GET /api/surveys or unverified client requests;
+    // points are credited strictly via verified CPX S2S postbacks.
     const usdtQuote = await usdtPriceService.getUsdtPriceQuote().catch(() => null);
 
     // Use 100% genuine live surveys returned from CPX Research API (https://live-api.cpx-research.com/api/get-surveys.php)
@@ -1082,7 +1121,7 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
 });
 
 // POST or GET /api/surveys/start and /api/surveys/start/:surveyId?
-app.all(['/api/surveys/start', '/api/surveys/start/:surveyId?'], requireAuth, (req: AuthenticatedRequest, res: Response) => {
+app.all(['/api/surveys/start', '/api/surveys/start/:surveyId?'], requireAuth, blockWhenImpersonating, (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   const surveyId = req.params.surveyId || req.body?.surveyId || req.query?.surveyId;
   const directUrl = req.body?.directUrl || req.query?.directUrl;
@@ -1113,72 +1152,14 @@ app.all(['/api/surveys/start', '/api/surveys/start/:surveyId?'], requireAuth, (r
 });
 
 // POST /api/cpx/sync-transactions
-// Syncs verified transactions reported directly by the official CPX script_tag_v2.0.js get_transaction(transactions) callback
-app.post('/api/cpx/sync-transactions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+// Client-side sync endpoint NEVER credits points directly (points are awarded strictly via verified S2S postback).
+app.post('/api/cpx/sync-transactions', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const { transactions } = req.body || {};
-    const txList = Array.isArray(transactions)
-      ? transactions
-      : transactions && typeof transactions === 'object'
-      ? Object.values(transactions)
-      : [];
-
-    const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 50;
-    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
-    let newlyCreditedCount = 0;
-
-    for (const rawTx of txList) {
-      if (!rawTx || typeof rawTx !== 'object') continue;
-      const tx = rawTx as Record<string, unknown>;
-      const rawId = String(tx.trans_id || tx.transaction_id || '').trim();
-      if (!rawId) continue;
-
-      // Reject any unverified client-generated IDs
-      const lowerId = rawId.toLowerCase();
-      if (lowerId.startsWith('cpx_survey_') || lowerId.startsWith('sim_cpx_')) continue;
-
-      // If CPX transaction includes status, only credit status === 1 (completed)
-      if (tx.status !== undefined && String(tx.status) !== '1') continue;
-
-      const providerTxId = rawId.startsWith('cpx_') ? rawId : `cpx_${rawId}`;
-      const offerId = String(tx.offer_id || tx.survey_id || rawId);
-      const grossCents = normalizeCpxPostbackGrossCents(
-        tx.amount_usd ?? tx.payout_publisher_usd ?? tx.cpi,
-        tx.amount_local ?? tx.payout ?? tx.verdienst ?? tx.points,
-        pointsPerUsdt
-      );
-      if (grossCents <= 0) continue;
-
-      const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
-
-      const added = await dbStore.addLedgerEntry({
-        id: `ledg_${crypto.randomUUID()}`,
-        userId: user.id,
-        providerTxId,
-        amountCents: split.userRewardCents,
-        points: split.userRewardPoints,
-        grossCents: split.grossCents,
-        adminProfitCents: split.adminProfitCents,
-        appliedSharePercent: split.userSharePercent,
-        entryType: 'credit',
-        status: 'confirmed',
-        description: `CPX Research Survey #${offerId} Completed (+${split.userRewardPointsFormatted} Pts)`,
-        cpxOfferId: offerId,
-        createdAt: new Date().toISOString(),
-        processedAt: new Date().toISOString()
-      });
-
-      if (added.success) {
-        newlyCreditedCount += 1;
-      }
-    }
-
     const balances = dbStore.getUserBalances(user.id);
     res.json({
       success: true,
-      newlyCreditedCount,
+      newlyCreditedCount: 0,
       balances,
       completedSurveysCount: balances.completedSurveysCount
     });
@@ -1189,9 +1170,9 @@ app.post('/api/cpx/sync-transactions', requireAuth, async (req: AuthenticatedReq
 });
 
 // POST /api/surveys/complete
-// Verifies with CPX Research whether the user genuinely completed the survey before crediting any points.
-// Uncompleted or merely opened surveys NEVER award points.
-app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+// Checks the user's verified points ledger to see if CPX S2S Postback confirmed the survey completion.
+// Never credits points from client calls!
+app.post('/api/surveys/complete', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
     const { surveyId, transId } = req.body || {};
@@ -1201,80 +1182,7 @@ app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest,
       return;
     }
 
-    const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 50;
-    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
-    const opaqueId =
-      user.externalOpaqueId ||
-      (user.id ? `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}` : 'rr_cpx_guest_1');
-
-    const rawIp = (
-      (req.headers['cf-connecting-ip'] as string) ||
-      (req.headers['x-real-ip'] as string) ||
-      (req.headers['x-client-ip'] as string) ||
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-      req.ip ||
-      ''
-    ).trim();
-    const isPrivateOrLoopback =
-      !rawIp ||
-      rawIp === '127.0.0.1' ||
-      rawIp === '::1' ||
-      rawIp.startsWith('::ffff:127.') ||
-      rawIp.startsWith('10.') ||
-      rawIp.startsWith('192.168.');
-    const clientIp = isPrivateOrLoopback ? '5.146.176.100' : rawIp;
-    const userAgent =
-      req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-
-    // Auto-sync any fresh CPX completions immediately
-    await triggerThrottledCpxSync(2000).catch(() => {});
-
-    // 1. Poll live CPX Research API to see if CPX reported any real completed transactions for this user
-    const liveData = await cpxResearchService.fetchEligibleSurveys({
-      externalUserId: opaqueId,
-      ipAddress: clientIp,
-      userAgent
-    });
-
-    if (Array.isArray(liveData.transactions) && liveData.transactions.length > 0) {
-      for (const rawTx of liveData.transactions) {
-        if (!rawTx || typeof rawTx !== 'object') continue;
-        const tx = rawTx as Record<string, unknown>;
-        const rawTxId = String(tx.trans_id || tx.transaction_id || '').trim();
-        if (!rawTxId) continue;
-        if (tx.status !== undefined && String(tx.status) !== '1') continue;
-
-        const providerTxId = rawTxId.startsWith('cpx_') ? rawTxId : `cpx_${rawTxId}`;
-        const offerId = String(tx.offer_id || tx.survey_id || rawTxId);
-        const grossCents = normalizeCpxPostbackGrossCents(
-          tx.amount_usd ?? tx.payout_publisher_usd ?? tx.cpi,
-          tx.amount_local ?? tx.payout ?? tx.verdienst ?? tx.points,
-          pointsPerUsdt
-        );
-        if (grossCents <= 0) continue;
-
-        const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
-        await dbStore.addLedgerEntry({
-          id: `ledg_${crypto.randomUUID()}`,
-          userId: user.id,
-          providerTxId,
-          amountCents: split.userRewardCents,
-          points: split.userRewardPoints,
-          grossCents: split.grossCents,
-          adminProfitCents: split.adminProfitCents,
-          appliedSharePercent: split.userSharePercent,
-          entryType: 'credit',
-          status: 'confirmed',
-          description: `CPX Research Survey #${offerId} Completed (+${split.userRewardPointsFormatted} Pts)`,
-          cpxOfferId: offerId,
-          createdAt: new Date().toISOString(),
-          processedAt: new Date().toISOString()
-        });
-      }
-    }
-
-    // 2. Check user's verified ledger to see if CPX Research confirmed this survey (via S2S Postback or CPX API)
+    // Check user's verified ledger to see if CPX Research confirmed this survey via S2S Postback
     const userLedger = dbStore.getLedgerForUser(user.id);
     const verifiedEntry = userLedger.find(l => {
       if (l.entryType !== 'credit' || l.status !== 'confirmed') return false;
@@ -1294,7 +1202,7 @@ app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest,
       res.status(200).json({
         success: false,
         verified: false,
-        error: `Survey #${effectiveSurveyId} completion has not been confirmed yet. Points are credited automatically to your account as soon as you complete the full survey.`,
+        error: `Survey #${effectiveSurveyId} completion has not been confirmed by CPX S2S postback yet. Points are credited automatically to your account as soon as CPX confirms your completed survey.`,
         balances,
         completedSurveysCount: balances.completedSurveysCount
       });
@@ -1381,6 +1289,11 @@ app.all(
       (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
       req.ip ||
       'unknown';
+
+    if (!checkRateLimit(`postback_${clientIp}`, 120, 60_000)) {
+      res.status(429).send('TOO_MANY_REQUESTS');
+      return;
+    }
 
     // Delegate CPX postbacks (default or explicit provider=cpx) to atomic processCpxPostback
     const isCpxRoute =
@@ -1524,7 +1437,7 @@ app.get('/api/tasks', requireAuth, async (req: AuthenticatedRequest, res: Respon
 });
 
 // POST /api/tasks/complete (White-Label in-app PTC & Express Task completion - Server-Side DB Point Lookup Only)
-app.post('/api/tasks/complete', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/tasks/complete', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
     const { taskId, title } = req.body;
@@ -1778,7 +1691,7 @@ app.get('/api/withdrawals', requireAuth, async (req: AuthenticatedRequest, res: 
 });
 
 // POST /api/withdrawals (USDT Withdrawal - Minimum $25.00 = 250,000 Points)
-app.post('/api/withdrawals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/withdrawals', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await dbStore.syncFromSupabase();
     const user = req.user!;
@@ -1889,12 +1802,15 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
     users,
     ledger,
     withdrawals,
+    teams: dbStore.getTeams(),
+    teamMembers: dbStore.getTeamMembers(),
     range,
     startDate,
     endDate,
     groupBy,
     pointsPerUsdt: safePtsRate,
-    userSharePercent: safeSharePercent
+    userSharePercent: safeSharePercent,
+    newUserDays: settings.newUserDays || 7
   });
 
   const entryToPts = (l: typeof ledger[number]) =>
@@ -2112,15 +2028,16 @@ app.post('/api/admin/data-integrity-check', requireAuth, requireAdmin, async (re
   }
 });
 
-// POST /api/admin/backfill-users - Runs Migration & Backfill Script for Existing ("Old") and New Users
+// POST /api/admin/backfill-users - Runs Migration & Backfill Script for Existing ("Old") and New Users (Supports dryRun)
 app.post('/api/admin/backfill-users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const admin = req.user!;
-    const summary = await runUserAndLedgerBackfill();
+    const dryRun = Boolean(req.body?.dryRun);
+    const summary = await runUserAndLedgerBackfill({ dryRun });
     await dbStore.addAuditLog({
       adminUserId: admin.id,
       adminEmail: admin.email,
-      action: 'ADMIN_BACKFILL_MIGRATION',
+      action: dryRun ? 'ADMIN_BACKFILL_DRY_RUN' : 'ADMIN_BACKFILL_MIGRATION',
       targetEntity: 'users',
       targetId: 'global',
       details: JSON.stringify(summary)
@@ -2217,6 +2134,13 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
       feeCentsErc20,
       userSharePercent,
       pointsPerUsdt,
+      newUserDays,
+      timezone,
+      teamSystemEnabled,
+      managersCanCreateTeams,
+      maxTeamsPerManager,
+      teamBonusEnabled,
+      teamBonusPercent,
       surveyDisplayMode,
       cpxAppId,
       cpxHashKey,
@@ -2274,6 +2198,13 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
         feeCentsErc20: Number(feeCentsErc20) >= 0 ? Number(feeCentsErc20) : current.feeCentsErc20,
         userSharePercent: clampedShare,
         pointsPerUsdt: effectivePointsPerUsdt,
+        newUserDays: Number(newUserDays) > 0 ? Math.round(Number(newUserDays)) : (current.newUserDays || 7),
+        timezone: typeof timezone === 'string' && timezone.trim() ? timezone.trim() : 'Asia/Karachi',
+        teamSystemEnabled: teamSystemEnabled !== undefined ? Boolean(teamSystemEnabled) : Boolean(current.teamSystemEnabled),
+        managersCanCreateTeams: managersCanCreateTeams !== undefined ? Boolean(managersCanCreateTeams) : Boolean(current.managersCanCreateTeams),
+        maxTeamsPerManager: Number(maxTeamsPerManager) > 0 ? Math.round(Number(maxTeamsPerManager)) : (current.maxTeamsPerManager || 5),
+        teamBonusEnabled: teamBonusEnabled !== undefined ? Boolean(teamBonusEnabled) : Boolean(current.teamBonusEnabled),
+        teamBonusPercent: teamBonusPercent !== undefined ? Math.max(0, Math.min(100, Number(teamBonusPercent) || 0)) : (current.teamBonusPercent || 0),
         surveyDisplayMode: effectiveDisplayMode,
         cpxAppId: typeof cpxAppId === 'string' && cpxAppId.trim() ? cpxAppId.trim() : (current.cpxAppId || '37479'),
         cpxHashKey: typeof cpxHashKey === 'string' && cpxHashKey.trim() ? cpxHashKey.trim() : (current.cpxHashKey || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY'),
@@ -2308,6 +2239,558 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
     console.error('[Admin Settings Update Error]:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to save settings.' });
   }
+});
+
+// -----------------------------------------------------------------------------
+// Team System, Roles, Manager Portal, Callback Logs & Impersonation Endpoints
+// -----------------------------------------------------------------------------
+
+// GET /api/teams/lookup?code=CODE - Public/Auth Team Lookup for Signup & Profile Join
+app.get('/api/teams/lookup', (req: Request, res: Response) => {
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+  if (!checkRateLimit(`team_lookup_${clientIp}`, 30, 60_000)) {
+    res.status(429).json({ error: 'Too many team code lookup attempts. Please wait a minute.' });
+    return;
+  }
+  const settings = dbStore.getSettings();
+  const code = String(req.query.code || '').trim().toUpperCase();
+  if (!code) {
+    res.status(400).json({ error: 'Team code is required.' });
+    return;
+  }
+  const team = dbStore.lookupTeamByCode(code);
+  if (!team || !team.isActive) {
+    res.status(404).json({
+      found: false,
+      teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+      error: team && !team.isActive
+        ? `Team "${team.name}" is currently inactive.`
+        : `No active team found with code "${code}".`
+    });
+    return;
+  }
+  res.json({
+    found: true,
+    teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+    team: {
+      id: team.id,
+      name: team.name,
+      teamCode: team.teamCode,
+      isActive: team.isActive,
+      managerName: team.managerName
+    }
+  });
+});
+
+// GET /api/user/team - Current user's team membership & feature flag status
+app.get('/api/user/team', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const user = req.user!;
+  const settings = dbStore.getSettings();
+  const membership = dbStore.getTeamMembershipForUser(user.id);
+  const team = membership ? dbStore.getTeamById(membership.teamId) : undefined;
+  const manager = team ? dbStore.getUserById(team.managerId) : undefined;
+  res.json({
+    teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+    canJoinTeam: Boolean(settings.teamSystemEnabled) && !membership && user.role === 'user',
+    membership: membership && team
+      ? {
+          id: membership.id,
+          teamId: team.id,
+          teamName: team.name,
+          teamCode: team.teamCode,
+          managerName: manager?.displayName || manager?.username || 'Manager',
+          managerEmail: manager?.email || '',
+          joinedAt: membership.joinedAt,
+          joinedAtKarachi: formatKarachiDateTime(membership.joinedAt),
+          consentAcceptedAt: membership.consentAcceptedAt
+        }
+      : null
+  });
+});
+
+// POST /api/teams/join - Existing user with no team joins a team once via teamCode + consent checkbox
+app.post('/api/teams/join', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    if (!checkRateLimit(`team_join_${clientIp}_${req.user!.id}`, 10, 60_000)) {
+      res.status(429).json({ error: 'Too many team join attempts. Please wait a minute.' });
+      return;
+    }
+    const { teamCode, consentAccepted } = req.body || {};
+    const result = await dbStore.joinTeamByCode({
+      userId: req.user!.id,
+      teamCode: String(teamCode || ''),
+      consentAccepted: Boolean(consentAccepted)
+    });
+    res.json({
+      success: true,
+      message: `Successfully joined team "${result.team.name}"!`,
+      membership: result.membership,
+      team: result.team
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to join team.' });
+  }
+});
+
+// POST /api/admin/users/:id/role - Promote User to Manager or Demote Manager to User (Admin-Only; logs unauthorized attempts)
+app.post('/api/admin/users/:id/role', requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const targetUserId = req.params.id;
+    const rawRole = String(req.body?.role || '').trim().toLowerCase();
+    if (rawRole !== 'user' && rawRole !== 'manager') {
+      res.status(400).json({ error: 'Role must be "user" or "manager".' });
+      return;
+    }
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const result = await dbStore.setUserRole({
+      targetUserId,
+      newRole: rawRole,
+      actorUser: req.user!,
+      ipAddress
+    });
+    res.json({
+      success: true,
+      user: result.user,
+      deactivatedTeamsCount: result.deactivatedTeamsCount,
+      users: dbStore.getAllUsersWithDetails()
+    });
+  } catch (err: any) {
+    const status = err?.statusCode === 403 ? 403 : 400;
+    res.status(status).json({ error: err instanceof Error ? err.message : 'Failed to update user role.' });
+  }
+});
+
+// GET /api/admin/managers - Admin Managers & Teams hierarchy (Managers -> Teams -> Members)
+app.get('/api/admin/managers', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
+  const settings = dbStore.getSettings();
+  const allUsers = dbStore.getAllUsersWithDetails();
+  const teams = dbStore.getTeams();
+  const teamMembers = dbStore.getTeamMembers();
+  const ledger = dbStore.getAllLedgerEntries();
+
+  const rawRange = String(req.query.range || 'all').trim().toLowerCase();
+  const range: DateRangePreset =
+    rawRange === 'today' || rawRange === '7d' || rawRange === '30d' || rawRange === 'custom'
+      ? rawRange
+      : 'all';
+  const startDate = typeof req.query.startDate === 'string' ? req.query.startDate.trim() : undefined;
+  const endDate = typeof req.query.endDate === 'string' ? req.query.endDate.trim() : undefined;
+
+  const stats = computeAdminDashboardStats({
+    users: dbStore.getAllUsers(),
+    ledger,
+    withdrawals: dbStore.getAllWithdrawals(),
+    teams,
+    teamMembers,
+    range,
+    startDate,
+    endDate,
+    pointsPerUsdt: settings.pointsPerUsdt || 5000,
+    userSharePercent: settings.userSharePercent || 50,
+    newUserDays: settings.newUserDays || 7
+  });
+
+  const userMap = new Map(allUsers.map(u => [u.id, u]));
+  const teamsDetailed = teams.map(team => {
+    const manager = userMap.get(team.managerId);
+    const members = teamMembers
+      .filter(tm => tm.teamId === team.id)
+      .map(tm => {
+        const u = userMap.get(tm.userId);
+        return {
+          id: tm.id,
+          teamId: tm.teamId,
+          userId: tm.userId,
+          displayName: u?.displayName || u?.username || 'Member',
+          email: u?.email || 'unknown',
+          joinedAt: tm.joinedAt,
+          joinedAtKarachi: formatKarachiDateTime(tm.joinedAt),
+          consentAcceptedAt: tm.consentAcceptedAt,
+          surveysCompleted: u?.completedSurveysCount || 0,
+          totalPoints: u?.balances?.totalEarnedPoints || 0,
+          availablePoints: u?.balances?.availablePoints || 0,
+          lastActiveAt: u?.lastActiveAt,
+          lastActiveAtKarachi: u?.lastActiveAtKarachi
+        };
+      });
+    const teamStat = stats.teams.topTeamsByPoints.find(t => t.id === team.id);
+    const allTimeTeamPoints = members
+      .filter(m => m.userId !== team.managerId)
+      .reduce((sum, m) => sum + m.totalPoints, 0);
+
+    return {
+      ...team,
+      createdAtKarachi: formatKarachiDateTime(team.createdAt),
+      managerName: manager?.displayName || manager?.username || 'Manager',
+      managerEmail: manager?.email || '',
+      memberCount: members.length,
+      teamPoints: teamStat ? teamStat.teamPoints : allTimeTeamPoints,
+      completedSurveysCount: teamStat
+        ? teamStat.completedSurveysCount
+        : members.filter(m => m.userId !== team.managerId).reduce((s, m) => s + m.surveysCompleted, 0),
+      members
+    };
+  });
+
+  const managers = allUsers
+    .filter(u => u.role === 'manager')
+    .map(m => {
+      const mTeams = teamsDetailed.filter(t => t.managerId === m.id);
+      return {
+        id: m.id,
+        displayName: m.displayName,
+        email: m.email,
+        createdAt: m.createdAt,
+        createdAtKarachi: m.createdAtKarachi,
+        lastActiveAtKarachi: m.lastActiveAtKarachi,
+        personalPoints: m.balances.totalEarnedPoints,
+        teamsCount: mTeams.length,
+        activeTeamsCount: mTeams.filter(t => t.isActive).length,
+        totalMembersCount: mTeams.reduce((sum, t) => sum + t.memberCount, 0),
+        combinedTeamPoints: mTeams.reduce((sum, t) => sum + t.teamPoints, 0),
+        teams: mTeams
+      };
+    });
+
+  res.json({
+    success: true,
+    timezone: ASIA_KARACHI_TZ,
+    settings: {
+      teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+      managersCanCreateTeams: Boolean(settings.managersCanCreateTeams),
+      maxTeamsPerManager: settings.maxTeamsPerManager || 5,
+      teamBonusEnabled: Boolean(settings.teamBonusEnabled),
+      teamBonusPercent: settings.teamBonusPercent || 0
+    },
+    summary: stats.teams,
+    managers,
+    teams: teamsDetailed
+  });
+});
+
+// POST /api/admin/teams - Create Team (Admin or authorized Manager when managers_can_create_teams=true)
+app.post(['/api/admin/teams', '/api/manager/teams'], requireAuth, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const actor = req.user!;
+    const { name, managerId, customCode } = req.body || {};
+    const targetManagerId = managerId ? String(managerId).trim() : actor.id;
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const created = await dbStore.createTeam({
+      name: String(name || ''),
+      managerId: targetManagerId,
+      customCode: customCode ? String(customCode) : undefined,
+      actorUser: actor,
+      ipAddress
+    });
+    res.status(201).json({
+      success: true,
+      team: created
+    });
+  } catch (err: any) {
+    const status = err?.statusCode === 403 ? 403 : 400;
+    res.status(status).json({ error: err instanceof Error ? err.message : 'Failed to create team.' });
+  }
+});
+
+// PATCH /api/admin/teams/:id - Enable/Disable or Rename Team (Admin-Only)
+app.patch('/api/admin/teams/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const updated = await dbStore.updateTeam({
+      teamId: req.params.id,
+      name: req.body?.name,
+      isActive: req.body?.isActive,
+      actorUser: req.user!,
+      ipAddress
+    });
+    res.json({ success: true, team: updated });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to update team.' });
+  }
+});
+
+// POST /api/admin/teams/:id/regenerate-code - Regenerate Team Code (Admin-Only)
+app.post('/api/admin/teams/:id/regenerate-code', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const updated = await dbStore.regenerateTeamCode({
+      teamId: req.params.id,
+      actorUser: req.user!,
+      ipAddress
+    });
+    res.json({ success: true, team: updated });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to regenerate team code.' });
+  }
+});
+
+// POST /api/admin/teams/:id/reassign - Reassign Team to Another Manager (Admin-Only)
+app.post('/api/admin/teams/:id/reassign', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const updated = await dbStore.reassignTeamManager({
+      teamId: req.params.id,
+      newManagerId: String(req.body?.newManagerId || ''),
+      actorUser: req.user!,
+      ipAddress
+    });
+    res.json({ success: true, team: updated });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to reassign team manager.' });
+  }
+});
+
+// POST /api/admin/team-members/move - Move or Remove Member Between Teams (Admin-Only)
+app.post('/api/admin/team-members/move', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const result = await dbStore.moveTeamMember({
+      userId: String(req.body?.userId || ''),
+      targetTeamId: req.body?.targetTeamId ? String(req.body.targetTeamId) : null,
+      actorUser: req.user!,
+      ipAddress
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to move team member.' });
+  }
+});
+
+// GET /api/admin/callback-logs - CPX Postback Callback Logs (Admin-Only)
+app.get('/api/admin/callback-logs', requireAuth, requireAdmin, (_req: AuthenticatedRequest, res: Response) => {
+  const logs = dbStore.getCallbackLogs(300).map(l => ({
+    ...l,
+    createdAtKarachi: formatKarachiDateTime(l.createdAt)
+  }));
+  res.json({
+    success: true,
+    timezone: ASIA_KARACHI_TZ,
+    logs
+  });
+});
+
+// GET /api/admin/completions - Survey Completions Side-by-Side (Our User + Team + CPX Data with Filters)
+app.get('/api/admin/completions', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
+  const users = dbStore.getAllUsers();
+  const teams = dbStore.getTeams();
+  const teamMembers = dbStore.getTeamMembers();
+  const ledger = dbStore.getAllLedgerEntries();
+  const settings = dbStore.getSettings();
+  const pointsPerUsdt = settings.pointsPerUsdt || 5000;
+
+  const userMap = new Map(users.map(u => [u.id, u]));
+  const teamMap = new Map(teams.map(t => [t.id, t]));
+  const memberTeamMap = new Map<string, { teamId: string; teamName: string; teamCode: string }>();
+  for (const tm of teamMembers) {
+    const t = teamMap.get(tm.teamId);
+    if (t) memberTeamMap.set(tm.userId, { teamId: t.id, teamName: t.name, teamCode: t.teamCode });
+  }
+
+  const statusFilter = String(req.query.status || 'all').trim().toLowerCase();
+  const teamFilter = String(req.query.teamId || 'all').trim();
+  const search = String(req.query.search || '').trim().toLowerCase();
+
+  const completions = ledger
+    .filter(l => l.entryType === 'credit' || l.entryType === 'reversal')
+    .map(l => {
+      const u = userMap.get(l.userId);
+      const tInfo = memberTeamMap.get(l.userId);
+      const pts = Math.abs(Math.round(Number(l.points) || Number(l.amountCents) * 100));
+      const grossCents =
+        typeof l.grossCents === 'number' && l.grossCents > 0
+          ? l.grossCents
+          : Math.max(1, Math.round((pts / pointsPerUsdt) * 100));
+      const isRev = l.entryType === 'reversal' || l.status === 'reversed';
+      return {
+        id: l.id,
+        transId: l.providerTxId,
+        offerId: l.cpxOfferId || l.taskId || 'cpx_survey',
+        userId: l.userId,
+        extUserId: u?.externalOpaqueId || l.userId,
+        userEmail: u?.email || 'Unknown',
+        userDisplayName: u?.displayName || u?.username || 'Member',
+        teamId: tInfo?.teamId || null,
+        teamName: tInfo?.teamName || null,
+        teamCode: tInfo?.teamCode || null,
+        amountUsd: Number((grossCents / 100).toFixed(2)),
+        pointsAwarded: isRev ? -pts : pts,
+        status: isRev ? 'reversed' : 'completed',
+        approvedBy: l.approvedBy || 'CPX S2S Postback',
+        description: l.description,
+        createdAt: l.createdAt,
+        createdAtKarachi: formatKarachiDateTime(l.createdAt)
+      };
+    })
+    .filter(row => {
+      if (statusFilter !== 'all' && row.status !== statusFilter) return false;
+      if (teamFilter !== 'all') {
+        if (teamFilter === 'no_team' && row.teamId) return false;
+        if (teamFilter !== 'no_team' && row.teamId !== teamFilter) return false;
+      }
+      if (search) {
+        const hay = `${row.transId} ${row.offerId} ${row.userId} ${row.extUserId} ${row.userEmail} ${row.userDisplayName} ${row.teamName || ''} ${row.teamCode || ''}`.toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+
+  res.json({
+    success: true,
+    timezone: ASIA_KARACHI_TZ,
+    totalCount: completions.length,
+    totalCompletedCount: completions.filter(c => c.status === 'completed').length,
+    totalReversedCount: completions.filter(c => c.status === 'reversed').length,
+    totalUsd: Number(
+      completions
+        .reduce((sum, c) => sum + (c.status === 'reversed' ? -c.amountUsd : c.amountUsd), 0)
+        .toFixed(2)
+    ),
+    totalPoints: completions.reduce((sum, c) => sum + c.pointsAwarded, 0),
+    completions
+  });
+});
+
+// POST /api/admin/impersonate/:userId - Start 15-minute Read-Only "View as User" Session (Admin-Only)
+app.post('/api/admin/impersonate/:userId', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const admin = req.user!;
+    const targetUserId = req.params.userId;
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    const sessionRecord = await dbStore.createImpersonationSession({
+      adminUser: admin,
+      targetUserId,
+      ipAddress,
+      userAgent
+    });
+
+    const targetUser = dbStore.getUserById(targetUserId)!;
+    const claim = {
+      sessionId: sessionRecord.id,
+      adminId: admin.id,
+      adminEmail: admin.email,
+      targetUserId: targetUser.id,
+      targetEmail: targetUser.email,
+      startedAt: sessionRecord.startedAt,
+      expiresAt: sessionRecord.expiresAt,
+      readOnly: true as const
+    };
+    const impersonationToken = createImpersonationToken(targetUser, claim);
+    const balances = dbStore.getUserBalances(targetUser.id);
+    const membership = dbStore.getTeamMembershipForUser(targetUser.id);
+    const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : undefined;
+
+    res.json({
+      success: true,
+      token: impersonationToken,
+      impersonation: claim,
+      user: {
+        id: targetUser.id,
+        username: targetUser.username || targetUser.displayName,
+        email: targetUser.email,
+        displayName: targetUser.displayName,
+        emailVerified: true,
+        role: targetUser.role,
+        externalOpaqueId: targetUser.externalOpaqueId,
+        createdAt: targetUser.createdAt,
+        hasPromptedPhone: true,
+        teamId: memberTeam?.id,
+        teamName: memberTeam?.name,
+        teamCode: memberTeam?.teamCode
+      },
+      balances
+    });
+  } catch (err: any) {
+    const status = err?.statusCode === 403 ? 403 : 400;
+    res.status(status).json({ error: err instanceof Error ? err.message : 'Failed to start View-as-User session.' });
+  }
+});
+
+// POST /api/admin/impersonate/exit - End Impersonation Session
+app.post('/api/admin/impersonate/exit', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const sessionId = req.impersonation?.sessionId || req.body?.sessionId;
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    if (sessionId) {
+      await dbStore.endImpersonationSession(String(sessionId), req.user!.id, ipAddress);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to exit impersonation session.' });
+  }
+});
+
+// GET /api/manager/dashboard - Read-Only Manager Dashboard (Strictly Scoped to Manager's Own Teams)
+app.get('/api/manager/dashboard', requireAuth, requireManagerOrAdmin, (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const actor = req.user!;
+    // Admin can optionally inspect a specific managerId; a Manager is strictly locked to their own actor.id
+    const targetManagerId =
+      actor.role === 'admin' && typeof req.query.managerId === 'string' && req.query.managerId.trim()
+        ? req.query.managerId.trim()
+        : actor.id;
+
+    const rawRange = String(req.query.range || 'all').trim().toLowerCase();
+    const range: DateRangePreset =
+      rawRange === 'today' || rawRange === '7d' || rawRange === '30d' || rawRange === 'custom'
+        ? rawRange
+        : 'all';
+    const teamId = typeof req.query.teamId === 'string' ? req.query.teamId.trim() : 'all';
+    const startDate = typeof req.query.startDate === 'string' ? req.query.startDate.trim() : undefined;
+    const endDate = typeof req.query.endDate === 'string' ? req.query.endDate.trim() : undefined;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
+    const rawSort = String(req.query.sortBy || 'points').trim();
+    const sortBy: 'points' | 'surveys' | 'joinedAt' =
+      rawSort === 'surveys' || rawSort === 'joinedAt' ? rawSort : 'points';
+
+    const data = dbStore.getManagerDashboardData({
+      managerId: targetManagerId,
+      teamId,
+      range,
+      startDate,
+      endDate,
+      search,
+      sortBy
+    });
+
+    res.json({
+      success: true,
+      ...data
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to load Manager Dashboard.' });
+  }
+});
+
+// GET /api/manager/members/:userId - Read-Only Member Detail (Strictly Scoped to Manager's Own Teams)
+app.get('/api/manager/members/:userId', requireAuth, requireManagerOrAdmin, (req: AuthenticatedRequest, res: Response) => {
+  const actor = req.user!;
+  const memberUserId = req.params.userId;
+  const targetManagerId =
+    actor.role === 'admin' && typeof req.query.managerId === 'string' && req.query.managerId.trim()
+      ? req.query.managerId.trim()
+      : actor.id;
+
+  const detail = dbStore.getManagerMemberDetail({
+    managerId: targetManagerId,
+    memberUserId
+  });
+
+  if (!detail) {
+    res.status(403).json({
+      error: 'Access forbidden: This user is not a member of any team managed by you.'
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    member: detail
+  });
 });
 
 // POST /api/admin/test-aoy-connection

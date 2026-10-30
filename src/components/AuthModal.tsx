@@ -16,6 +16,7 @@ import {
 interface AuthModalProps {
   isOpen: boolean;
   initialMode: 'signin' | 'signup';
+  initialTeamCode?: string;
   onClose?: () => void;
   onSuccess: (token: string, user: User, balances?: UserBalances) => void;
   onOpenLegal?: (page: string) => void;
@@ -27,6 +28,7 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   initialMode,
+  initialTeamCode = '',
   onClose,
   onSuccess,
   standalone = false,
@@ -39,6 +41,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Team invite code & consent state
+  const [teamCode, setTeamCode] = useState<string>(initialTeamCode);
+  const [teamLookup, setTeamLookup] = useState<{
+    checking: boolean;
+    found: boolean;
+    teamSystemEnabled: boolean;
+    teamName?: string;
+    managerName?: string;
+    message?: string;
+  }>({ checking: false, found: false, teamSystemEnabled: false });
+  const [teamConsentAccepted, setTeamConsentAccepted] = useState(false);
 
   // Human Math Verification state (Anti-bot)
   const [num1, setNum1] = useState(3);
@@ -59,7 +73,58 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setMode(initialMode);
     setError(null);
     generateNewMathQuestion();
-  }, [initialMode, isOpen]);
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeFromUrl = (urlParams.get('team') || initialTeamCode || '').trim().toUpperCase();
+    if (codeFromUrl) {
+      setTeamCode(codeFromUrl);
+    }
+  }, [initialMode, initialTeamCode, isOpen]);
+
+  useEffect(() => {
+    const clean = teamCode.trim().toUpperCase();
+    if (!clean || mode !== 'signup') {
+      setTeamLookup({ checking: false, found: false, teamSystemEnabled: false });
+      return;
+    }
+    let cancelled = false;
+    setTeamLookup((prev) => ({ ...prev, checking: true }));
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/teams/lookup?code=${encodeURIComponent(clean)}`);
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (data && data.found && data.team) {
+          setTeamLookup({
+            checking: false,
+            found: true,
+            teamSystemEnabled: Boolean(data.teamSystemEnabled),
+            teamName: data.team.teamName,
+            managerName: data.team.managerName
+          });
+        } else {
+          setTeamLookup({
+            checking: false,
+            found: false,
+            teamSystemEnabled: Boolean(data?.teamSystemEnabled),
+            message: data?.error || 'Invalid or inactive team code (you can still sign up without a team).'
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setTeamLookup({
+            checking: false,
+            found: false,
+            teamSystemEnabled: false,
+            message: 'Unable to verify team code right now.'
+          });
+        }
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [teamCode, mode]);
 
   if (!isOpen && !standalone) return null;
 
@@ -187,6 +252,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
+    if (teamCode.trim() && teamLookup.found && !teamConsentAccepted) {
+      setError('Please accept the team manager visibility consent to join this team.');
+      return;
+    }
+
     setLoading(true);
 
     // Register user in app backend & Supabase PostgreSQL store
@@ -199,7 +269,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           username: derivedUsername,
           displayName: derivedUsername,
           email: targetEmail.trim(),
-          password: targetPassword
+          password: targetPassword,
+          teamCode: teamLookup.found ? teamCode.trim().toUpperCase() : '',
+          teamConsentAccepted
         })
       });
 
@@ -462,7 +534,57 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           </div>
 
+          {/* Optional Team Invite Code & Consent on Signup */}
+          {mode === 'signup' && (
+            <div className="space-y-2.5">
+              <div>
+                <label htmlFor="auth-team-code" className="block text-xs font-bold text-[#192F40] dark:text-slate-200 mb-1">
+                  Team Invite Code <span className="font-normal text-slate-400">(Optional)</span>
+                </label>
+                <input
+                  id="auth-team-code"
+                  type="text"
+                  value={teamCode}
+                  onChange={(e) => {
+                    setTeamCode(e.target.value.toUpperCase());
+                    setError(null);
+                  }}
+                  placeholder="e.g. RVR7K9M2"
+                  maxLength={12}
+                  className="w-full px-3.5 py-2 text-xs font-mono uppercase rounded-xl bg-[#F0FBF5]/80 dark:bg-slate-800/80 border border-[#D9EFE3] dark:border-slate-700 focus:border-[#079B55] focus:outline-none text-[#192F40] dark:text-white"
+                />
+              </div>
 
+              {teamCode.trim() && (
+                <div className="p-3 rounded-xl border border-[#D9EFE3] dark:border-slate-700 bg-[#F0FBF5]/70 dark:bg-slate-800/70 space-y-2">
+                  {teamLookup.checking ? (
+                    <p className="text-[11px] font-semibold text-slate-500">Checking team invite code...</p>
+                  ) : teamLookup.found ? (
+                    <>
+                      <p className="text-xs font-extrabold text-[#079B55] dark:text-[#4CC65A]">
+                        You are joining: {teamLookup.teamName}
+                      </p>
+                      <label className="flex items-start gap-2 cursor-pointer text-[11px] text-[#192F40] dark:text-slate-200 font-medium leading-snug">
+                        <input
+                          type="checkbox"
+                          checked={teamConsentAccepted}
+                          onChange={(e) => setTeamConsentAccepted(e.target.checked)}
+                          className="mt-0.5 rounded border-slate-300 text-[#079B55] focus:ring-[#079B55]"
+                        />
+                        <span>
+                          Your team manager will be able to see your email, survey activity and points.
+                        </span>
+                      </label>
+                    </>
+                  ) : (
+                    <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                      {teamLookup.message || 'Invalid or inactive team code. You can still sign up without a team.'}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Human Math Verification (Bot protection - lightweight & fast) */}
           {mode === 'signup' && (

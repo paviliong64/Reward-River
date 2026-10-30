@@ -3,6 +3,7 @@ import { dbStore, LedgerEntry } from './db';
 import { formatKarachiDateTime } from '../src/utils/adminStats';
 
 export interface BackfillResultSummary {
+  dryRun: boolean;
   executedAt: string;
   executedAtKarachi: string;
   totalUsersScanned: number;
@@ -11,21 +12,35 @@ export interface BackfillResultSummary {
   legacyPointsBackfilledCount: number;
   userTotalsReconciledCount: number;
   supabaseSyncedCount: number;
+  beforeSummary: {
+    totalUsers: number;
+    totalLedgerEntries: number;
+    sumOfStoredPoints: number;
+    sumOfLedgerPoints: number;
+  };
+  afterSummary: {
+    totalUsers: number;
+    totalLedgerEntries: number;
+    sumOfStoredPoints: number;
+    sumOfLedgerPoints: number;
+  };
   details: string[];
 }
 
 /**
- * Migration & Backfill Script for Existing ("Old") and New Users
+ * Migration & Backfill Script for Existing ("Old") and New Users (Supports DRY-RUN and LIVE modes)
  *
  * Guarantees:
  * 1. Every user has a permanent, non-random server-side `id` and `externalOpaqueId` (`rr_cpx_<alphanumeric>`).
- * 2. Any old user who had stored points in Supabase `users.points` prior to the points ledger
+ * 2. Any old user who had stored points in Supabase `users.points` or `task_completions` prior to the points ledger
  *    receives an idempotent, verified `confirmed` credit entry in `reward_ledger` (`points_ledger`)
  *    so no historical earnings are ever lost.
  * 3. Every user's `users.points`, `users.balance_cents`, and `users.total_earned_points` in Supabase
  *    is reconciled to equal the exact sum of their confirmed `reward_ledger` entries minus withdrawals.
+ * 4. When `dryRun: true`, computes the exact diff and before/after summary without mutating any records.
  */
-export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary> {
+export async function runUserAndLedgerBackfill(options?: { dryRun?: boolean }): Promise<BackfillResultSummary> {
+  const dryRun = Boolean(options?.dryRun);
   await dbStore.init();
   await dbStore.syncFromSupabase(true);
 
@@ -57,6 +72,19 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
   }
 
   const allUsers = dbStore.getAllUsers();
+  const existingLedgerBefore = dbStore.getAllLedgerEntries();
+
+  let beforeSumStored = 0;
+  let beforeSumLedger = 0;
+  for (const u of allUsers) {
+    const sbRow = sbUsersById.get(u.id);
+    const storedPts = sbRow !== undefined ? Number(sbRow.points) || 0 : (u.storedPoints ?? 0);
+    const bal = dbStore.getUserBalances(u.id);
+    beforeSumStored += storedPts;
+    beforeSumLedger += bal.availablePoints;
+  }
+
+  let simulatedLedgerAddedPoints = 0;
 
   for (const user of allUsers) {
     let userUpdated = false;
@@ -66,7 +94,7 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
       targetId = `usr_${crypto.randomUUID()}`;
       permanentIdsAssigned++;
       userUpdated = true;
-      details.push(`Assigned permanent ID ${targetId} to ${user.email}`);
+      details.push(`${dryRun ? '[DRY-RUN] Would assign' : 'Assigned'} permanent ID ${targetId} to ${user.email}`);
     }
 
     let extId = String(user.externalOpaqueId || '').trim();
@@ -76,7 +104,7 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
       extId = `rr_cpx_${cleanHex || crypto.randomBytes(8).toString('hex')}`;
       opaqueIdsAssigned++;
       userUpdated = true;
-      details.push(`Assigned permanent externalOpaqueId ${extId} to ${user.email}`);
+      details.push(`${dryRun ? '[DRY-RUN] Would assign' : 'Assigned'} permanent externalOpaqueId ${extId} to ${user.email}`);
     }
 
     // 1. Convert any past completed survey/task records (task_completions) into ledger entries once (idempotent, no data loss)
@@ -86,6 +114,8 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
         tc.status === 'completed'
     );
     const existingLedger = dbStore.getAllLedgerEntries();
+    let userAddedPtsFromCompletions = 0;
+
     for (const tc of allCompletions) {
       const txId = String(tc.providerTxId || tc.id).trim();
       if (!txId) continue;
@@ -115,10 +145,14 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
           createdAt: tc.createdAt || user.createdAt || nowIso,
           processedAt: nowIso
         };
-        await dbStore.upsertLedgerEntry(completionLedgerEntry);
+        if (!dryRun) {
+          await dbStore.upsertLedgerEntry(completionLedgerEntry);
+        }
+        userAddedPtsFromCompletions += pts;
+        simulatedLedgerAddedPoints += pts;
         legacyPointsBackfilledCount++;
         details.push(
-          `Converted completed survey/task ${txId} (+${pts.toLocaleString('en-US')} Pts) into ledger entry for ${user.email}`
+          `${dryRun ? '[DRY-RUN] Would convert' : 'Converted'} completed survey/task ${txId} (+${pts.toLocaleString('en-US')} Pts) into ledger entry for ${user.email}`
         );
       }
     }
@@ -131,7 +165,7 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
       Number(sbRow?.points) || Number(user.storedPoints) || 0
     );
 
-    if (user.role !== 'admin' && historicalPoints > 0 && userLedger.length === 0) {
+    if (user.role !== 'admin' && historicalPoints > 0 && userLedger.length === 0 && userAddedPtsFromCompletions === 0) {
       const userAmountCents = Math.max(1, Math.round(historicalPoints / 100));
       const grossCents = Math.max(userAmountCents, Math.round((historicalPoints / 5000) * 100));
       const adminProfitCents = Math.max(0, grossCents - userAmountCents);
@@ -154,26 +188,38 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
         processedAt: nowIso
       };
 
-      await dbStore.upsertLedgerEntry(backfillEntry);
+      if (!dryRun) {
+        await dbStore.upsertLedgerEntry(backfillEntry);
+      }
+      simulatedLedgerAddedPoints += historicalPoints;
       legacyPointsBackfilledCount++;
       details.push(
-        `Backfilled ${historicalPoints.toLocaleString('en-US')} Pts ledger entry for ${user.email} (${targetId})`
+        `${dryRun ? '[DRY-RUN] Would backfill' : 'Backfilled'} ${historicalPoints.toLocaleString('en-US')} Pts ledger entry for ${user.email} (${targetId})`
       );
     }
 
     // 3. Recompute authoritative balance from ledger entries
     const balances = dbStore.getUserBalances(targetId);
+    const projectedAvailable = dryRun
+      ? balances.availablePoints + userAddedPtsFromCompletions
+      : balances.availablePoints;
     const currentStoredPts = sbRow !== undefined ? Number(sbRow.points) || 0 : user.storedPoints;
 
-    if (currentStoredPts !== balances.availablePoints || userUpdated) {
-      await dbStore.updateUser(targetId, {
-        externalOpaqueId: extId,
-        storedPoints: balances.availablePoints
-      });
+    if (currentStoredPts !== projectedAvailable || userUpdated) {
+      if (!dryRun) {
+        await dbStore.updateUser(targetId, {
+          externalOpaqueId: extId,
+          storedPoints: balances.availablePoints
+        });
+      } else {
+        details.push(
+          `[DRY-RUN] Would reconcile storedPoints for ${user.email}: ${currentStoredPts ?? 0} -> ${projectedAvailable}`
+        );
+      }
       userTotalsReconciledCount++;
     }
 
-    if (sb) {
+    if (sb && !dryRun) {
       try {
         const { error } = await sb
           .from('users')
@@ -194,7 +240,15 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
     }
   }
 
+  const afterLedgerCount = dryRun
+    ? existingLedgerBefore.length + legacyPointsBackfilledCount
+    : dbStore.getAllLedgerEntries().length;
+  const afterSumLedger = dryRun
+    ? beforeSumLedger + simulatedLedgerAddedPoints
+    : dbStore.getAllUsers().reduce((acc, u) => acc + dbStore.getUserBalances(u.id).availablePoints, 0);
+
   return {
+    dryRun,
     executedAt: nowIso,
     executedAtKarachi: formatKarachiDateTime(nowIso),
     totalUsersScanned: allUsers.length,
@@ -203,20 +257,33 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
     legacyPointsBackfilledCount,
     userTotalsReconciledCount,
     supabaseSyncedCount,
+    beforeSummary: {
+      totalUsers: allUsers.length,
+      totalLedgerEntries: existingLedgerBefore.length,
+      sumOfStoredPoints: beforeSumStored,
+      sumOfLedgerPoints: beforeSumLedger
+    },
+    afterSummary: {
+      totalUsers: allUsers.length,
+      totalLedgerEntries: afterLedgerCount,
+      sumOfStoredPoints: afterSumLedger,
+      sumOfLedgerPoints: afterSumLedger
+    },
     details
   };
 }
 
-// Allow direct execution via `npx tsx server/migrateBackfillUsers.ts`
+// Allow direct execution via `npx tsx server/migrateBackfillUsers.ts [--dry-run]`
 const isDirectExecution =
   typeof process !== 'undefined' &&
   Array.isArray(process.argv) &&
   process.argv[1]?.endsWith('migrateBackfillUsers.ts');
 
 if (isDirectExecution) {
-  runUserAndLedgerBackfill()
+  const isDry = process.argv.includes('--dry-run');
+  runUserAndLedgerBackfill({ dryRun: isDry })
     .then(summary => {
-      console.log('=== User & Points Ledger Backfill Complete ===');
+      console.log(`=== User & Points Ledger Backfill (${isDry ? 'DRY-RUN' : 'LIVE'}) Complete ===`);
       console.log(JSON.stringify(summary, null, 2));
       process.exit(0);
     })
@@ -225,3 +292,4 @@ if (isDirectExecution) {
       process.exit(1);
     });
 }
+

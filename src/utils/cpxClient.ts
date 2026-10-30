@@ -252,7 +252,7 @@ export function normalizeBrowserCpxSurveys(
 
 export async function fetchLiveCpxSurveysBrowser(params: {
   appId?: string;
-  hashKey?: string;
+  secureHash?: string;
   extUserId: string;
   userSharePercent?: number;
   pointsPerUsdt?: number;
@@ -264,18 +264,18 @@ export async function fetchLiveCpxSurveysBrowser(params: {
   appId: string;
 }> {
   const appId = (params.appId || '37699').trim();
-  const hashKey = (params.hashKey || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ').trim();
   const extUserId = params.extUserId || 'rr_cpx_member';
   const limit = Math.max(1, Math.min(50, params.limit || 12));
-  const secureHash = generateCpxSecureHashBrowser(extUserId, hashKey);
+  const secureHash = (params.secureHash || '').trim();
 
   const url = new URL('https://live-api.cpx-research.com/api/get-surveys.php');
   url.searchParams.set('app_id', appId);
   url.searchParams.set('ext_user_id', extUserId);
   url.searchParams.set('output_method', 'api');
-  url.searchParams.set('ip_user', '142.250.190.46');
   url.searchParams.set('limit', String(limit));
-  url.searchParams.set('secure_hash', secureHash);
+  if (secureHash) {
+    url.searchParams.set('secure_hash', secureHash);
+  }
   if (typeof navigator !== 'undefined' && navigator.userAgent) {
     url.searchParams.set('user_agent', navigator.userAgent);
   }

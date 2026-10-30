@@ -61,14 +61,18 @@ interface AdminViewProps {
   onRefreshAll?: () => void;
   onDataChanged?: () => void;
   onExitAdmin?: () => void;
+  onStartImpersonation?: (sessionToken: string, targetUser: User, impersonationInfo: any) => void;
 }
 
 type AdminSection =
   | 'overview'
+  | 'users'
+  | 'managers_teams'
+  | 'completions'
+  | 'callback_logs'
   | 'cpx_manager'
   | 'aoy_manager'
   | 'withdrawals'
-  | 'users'
   | 'user_analytics'
   | 'system_health'
   | 'seo_analytics'
@@ -79,7 +83,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
   adminUser,
   onRefreshAll,
   onDataChanged,
-  onExitAdmin
+  onExitAdmin,
+  onStartImpersonation
 }) => {
   const triggerRefresh = onRefreshAll || onDataChanged || (() => {});
   const [activeSection, setActiveSection] = useState<AdminSection>('overview');
@@ -89,6 +94,23 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [usersList, setUsersList] = useState<AdminUserDetail[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [managersData, setManagersData] = useState<{
+    managers: any[];
+    teams: any[];
+    summary: any;
+  } | null>(null);
+  const [adminCompletions, setAdminCompletions] = useState<any[]>([]);
+  const [callbackLogs, setCallbackLogs] = useState<any[]>([]);
+  const [newTeamManagerId, setNewTeamManagerId] = useState('');
+  const [newTeamNameInput, setNewTeamNameInput] = useState('');
+  const [selectedManagerFilter, setSelectedManagerFilter] = useState<string>('all');
+  const [selectedTeamInspectId, setSelectedTeamInspectId] = useState<string | null>(null);
+  const [adminCompletionStatusFilter, setAdminCompletionStatusFilter] = useState<string>('all');
+  const [adminCompletionTeamFilter, setAdminCompletionTeamFilter] = useState<string>('all');
+  const [adminCompletionSearch, setAdminCompletionSearch] = useState<string>('');
+  const [callbackLogFilter, setCallbackLogFilter] = useState<string>('all');
+  const [moveTargetTeamId, setMoveTargetTeamId] = useState<string>('');
+
   const defaultAdminSettings: SystemSettings = {
     supabaseUrl: '',
     supabaseAnonKey: '',
@@ -101,8 +123,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
     pointsPerUsdt: 5000,
     surveyDisplayMode: 'points_only',
     cpxAppId: '37699',
-    cpxHashKey: '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
-    cpxApiKey: '2578500163e1998b3c8929e261a3e095',
+    cpxHashKey: '',
+    cpxApiKey: '',
     cpxIntegrationMode: 'hybrid_api',
     cpxMaxSurveys: 12,
     cpxThemeColor: '10b981',
@@ -124,6 +146,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
     ogImageUrl: '/favicon.svg',
     googleSearchConsoleKey: '',
     sitemapEnabled: true,
+    newUserDays: 7,
+    timezone: 'Asia/Karachi',
+    teamSystemEnabled: false,
+    managersCanCreateTeams: false,
+    maxTeamsPerManager: 5,
+    teamBonusEnabled: false,
+    teamBonusPercent: 0,
     updatedAt: new Date().toISOString()
   };
 
@@ -309,7 +338,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setCpxConnectionResult(null);
     const startMs = Date.now();
     const appIdToTest = (settings?.cpxAppId || '37699').trim();
-    const hashKeyToTest = (settings?.cpxHashKey || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ').trim();
     const extId = adminUser?.externalOpaqueId || 'rr_cpx_admin_test';
 
     try {
@@ -326,13 +354,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
         return;
       }
 
-      // Direct browser verification against https://live-api.cpx-research.com/api/get-surveys.php
       const liveBrowser = await fetchLiveCpxSurveysBrowser({
         appId: appIdToTest,
-        hashKey: hashKeyToTest,
         extUserId: extId,
-        userSharePercent: settings?.userSharePercent || 40,
-        pointsPerUsdt: settings?.pointsPerUsdt || 10000,
+        userSharePercent: settings?.userSharePercent || 50,
+        pointsPerUsdt: settings?.pointsPerUsdt || 5000,
         limit: Number(settings?.cpxMaxSurveys) || 12
       });
       setCpxConnectionResult({
@@ -340,28 +366,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
         latencyMs: Date.now() - startMs,
         cpxAppId: liveBrowser.appId,
         liveSurveysReturned: liveBrowser.surveys.length,
-        offerwallUrlSample: `https://offers.cpx-research.com/index.php?app_id=${liveBrowser.appId}&ext_user_id=${encodeURIComponent(extId)}&secure_hash=${liveBrowser.secureHash}`
+        offerwallUrlSample: `https://offers.cpx-research.com/index.php?app_id=${liveBrowser.appId}&ext_user_id=${encodeURIComponent(extId)}`
       });
     } catch {
-      try {
-        const liveBrowser = await fetchLiveCpxSurveysBrowser({
-          appId: appIdToTest,
-          hashKey: hashKeyToTest,
-          extUserId: extId,
-          userSharePercent: settings?.userSharePercent || 40,
-          pointsPerUsdt: settings?.pointsPerUsdt || 10000,
-          limit: Number(settings?.cpxMaxSurveys) || 12
-        });
-        setCpxConnectionResult({
-          success: true,
-          latencyMs: Date.now() - startMs,
-          cpxAppId: liveBrowser.appId,
-          liveSurveysReturned: liveBrowser.surveys.length,
-          offerwallUrlSample: `https://offers.cpx-research.com/index.php?app_id=${liveBrowser.appId}&ext_user_id=${encodeURIComponent(extId)}&secure_hash=${liveBrowser.secureHash}`
-        });
-      } catch {
-        setCpxConnectionResult({ error: 'Failed to test CPX Research connection.' });
-      }
+      setCpxConnectionResult({ error: 'Failed to test CPX Research connection.' });
     } finally {
       setTestingCpxConnection(false);
     }
@@ -411,12 +419,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
         if (overrideEnd) qs.set('endDate', overrideEnd);
       }
 
-      const [ovRes, wRes, sRes, lRes, uRes] = await Promise.all([
+      const [ovRes, wRes, sRes, lRes, uRes, mRes, compRes, cbRes] = await Promise.all([
         fetch(`/api/admin/overview?${qs.toString()}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/admin/withdrawals', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/admin/settings', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/admin/audit-logs', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/admin/managers', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/admin/completions', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/admin/callback-logs', { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
       if (!ovRes.ok) {
@@ -448,11 +459,187 @@ export const AdminView: React.FC<AdminViewProps> = ({
           if (updatedSelected) setSelectedUserDetail(updatedSelected);
         }
       }
+      if (mRes.ok) {
+        setManagersData(await mRes.json());
+      }
+      if (compRes.ok) {
+        const cData = await compRes.json();
+        setAdminCompletions(cData.completions || []);
+      }
+      if (cbRes.ok) {
+        const cbData = await cbRes.json();
+        setCallbackLogs(cbData.logs || []);
+      }
     } catch (err: any) {
       console.error('Failed to load admin data:', err);
       setFetchError(err?.message || 'Database query error while loading Admin Portal statistics.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSetUserRole = async (userId: string, newRole: 'user' | 'manager', reason = '') => {
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ role: newRole, reason })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update user role.');
+      setActionMessage({
+        text: `Role updated: ${data.user?.email || userId} is now "${newRole}".`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to update user role.', type: 'error' });
+    }
+  };
+
+  const handleAdminCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeamManagerId || !newTeamNameInput.trim()) return;
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/teams', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          managerId: newTeamManagerId,
+          teamName: newTeamNameInput.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create team.');
+      setNewTeamNameInput('');
+      setActionMessage({
+        text: `Created team "${data.team.teamName}" (Invite Code: ${data.team.teamCode})`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to create team.', type: 'error' });
+    }
+  };
+
+  const handleToggleTeamActive = async (teamId: string, isActive: boolean) => {
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ isActive })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update team.');
+      setActionMessage({
+        text: `Team "${data.team.teamName}" is now ${isActive ? 'Active' : 'Disabled'}.`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to update team.', type: 'error' });
+    }
+  };
+
+  const handleRegenerateTeamCode = async (teamId: string) => {
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}/regenerate-code`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to regenerate code.');
+      setActionMessage({
+        text: `Regenerated team code for "${data.team.teamName}": ${data.oldCode} -> ${data.team.teamCode}`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to regenerate code.', type: 'error' });
+    }
+  };
+
+  const handleReassignTeamManager = async (teamId: string, newManagerId: string) => {
+    if (!newManagerId) return;
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}/reassign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ managerId: newManagerId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to reassign team.');
+      setActionMessage({
+        text: `Reassigned team "${data.team.teamName}" to manager ${newManagerId}.`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to reassign team.', type: 'error' });
+    }
+  };
+
+  const handleMoveUserTeam = async (userId: string, targetTeamId: string | null) => {
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/team-members/move', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId,
+          targetTeamId: targetTeamId || null,
+          reason: 'Admin team assignment update'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to move user team.');
+      setActionMessage({
+        text: targetTeamId
+          ? `Moved user ${userId} to team ${targetTeamId}.`
+          : `Removed user ${userId} from their team.`,
+        type: 'success'
+      });
+      await fetchAdminData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to move user team.', type: 'error' });
+    }
+  };
+
+  const handleImpersonateUser = async (targetUserId: string) => {
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/impersonate/${encodeURIComponent(targetUserId)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start impersonation.');
+      if (onStartImpersonation) {
+        setSelectedUserDetail(null);
+        onStartImpersonation(data.token, data.user, data.impersonation);
+      }
+    } catch (err: any) {
+      setActionMessage({ text: err.message || 'Failed to view as user.', type: 'error' });
     }
   };
 
@@ -489,7 +676,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
-  const handleRunUserBackfill = async () => {
+  const handleRunUserBackfill = async (dryRun = false) => {
     setRunningBackfill(true);
     try {
       const token = localStorage.getItem('rr_auth_token');
@@ -498,18 +685,21 @@ export const AdminView: React.FC<AdminViewProps> = ({
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({ dryRun })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to run user backfill.');
       setBackfillSummary(data.summary);
       setActionMessage({
-        text: `Backfill & Reconciliation Complete: Scanned ${data.summary.totalUsersScanned} users • ${data.summary.legacyPointsBackfilledCount} historical ledger records backfilled • ${data.summary.userTotalsReconciledCount} balances reconciled • ${data.summary.supabaseSyncedCount} Supabase records synced.`,
+        text: `${dryRun ? '[DRY-RUN PREVIEW] ' : '[LIVE BACKFILL] '}Scanned ${data.summary.totalUsersScanned} users • ${data.summary.legacyPointsBackfilledCount} historical ledger records ${dryRun ? 'would be ' : ''}backfilled • ${data.summary.userTotalsReconciledCount} balances ${dryRun ? 'would be ' : ''}reconciled.`,
         type: 'success'
       });
-      await fetchAdminData();
-      await fetchUserAnalytics();
-      triggerRefresh();
+      if (!dryRun) {
+        await fetchAdminData();
+        await fetchUserAnalytics();
+        triggerRefresh();
+      }
     } catch (err: any) {
       setActionMessage({ text: err.message || 'User backfill failed.', type: 'error' });
     } finally {
@@ -959,6 +1149,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
   }[] = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutGrid },
     { id: 'users', label: 'Users & Earnings', icon: Users },
+    { id: 'managers_teams', label: 'Managers & Teams', icon: Award, badge: managersData?.summary?.totalTeams || undefined },
+    { id: 'completions', label: 'Survey Completions', icon: FileCheck2, badge: adminCompletions.length || undefined },
+    { id: 'callback_logs', label: 'Callback Logs', icon: Server, badge: callbackLogs.length || undefined },
     { id: 'cpx_manager', label: 'CPX Research Manager', icon: Megaphone },
     { id: 'withdrawals', label: 'USDT Withdrawals', icon: FilePlus2, badge: pendingCount > 0 ? pendingCount : undefined },
     { id: 'aoy_manager', label: 'AoyTasks Manager', icon: Zap },
@@ -1604,6 +1797,100 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 )}
               </div>
 
+              {/* Row 1D-2: Team Metrics & Top Teams by Points */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div>
+                    <h2 className="text-sm font-extrabold text-slate-900">
+                      Team System Metrics &amp; Top Teams by Member Points
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Team points strictly sum member points_ledger entries within the selected date filter (Asia/Karachi) and exclude manager personal surveys or team_bonus.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection('managers_teams')}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold self-start sm:self-auto cursor-pointer"
+                  >
+                    Manage Teams &amp; Managers &rarr;
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
+                    <div className="text-[10px] font-bold uppercase text-slate-400">Total Teams</div>
+                    <div className="text-base font-extrabold font-mono text-slate-900 mt-0.5">
+                      {overview?.dashboardStats?.teams?.totalTeams ?? managersData?.summary?.totalTeams ?? 0}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/70">
+                    <div className="text-[10px] font-bold uppercase text-emerald-700">Active Teams</div>
+                    <div className="text-base font-extrabold font-mono text-emerald-900 mt-0.5">
+                      {overview?.dashboardStats?.teams?.activeTeams ?? managersData?.summary?.activeTeams ?? 0}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/70">
+                    <div className="text-[10px] font-bold uppercase text-blue-700">Managers</div>
+                    <div className="text-base font-extrabold font-mono text-blue-900 mt-0.5">
+                      {overview?.dashboardStats?.teams?.totalManagers ?? managersData?.summary?.totalManagers ?? 0}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/70">
+                    <div className="text-[10px] font-bold uppercase text-indigo-700">Users in Teams</div>
+                    <div className="text-base font-extrabold font-mono text-indigo-900 mt-0.5">
+                      {overview?.dashboardStats?.teams?.totalTeamMembers ?? managersData?.summary?.totalTeamMembers ?? 0}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
+                    <div className="text-[10px] font-bold uppercase text-slate-400">Without a Team</div>
+                    <div className="text-base font-extrabold font-mono text-slate-900 mt-0.5">
+                      {overview?.dashboardStats?.teams?.usersWithoutTeam ?? managersData?.summary?.usersWithoutTeam ?? 0}
+                    </div>
+                  </div>
+                </div>
+
+                {overview?.dashboardStats?.teams?.topTeamsByPoints?.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400 bg-slate-50/70">
+                          <th className="py-2 px-3">Rank</th>
+                          <th className="py-2 px-3">Team Name &amp; Code</th>
+                          <th className="py-2 px-3">Manager</th>
+                          <th className="py-2 px-3">Members</th>
+                          <th className="py-2 px-3 text-right">Team Points (PKT Range)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {overview.dashboardStats.teams.topTeamsByPoints.map((tt: any) => (
+                          <tr key={tt.teamId}>
+                            <td className="py-2 px-3 font-mono font-bold">#{tt.rank}</td>
+                            <td className="py-2 px-3">
+                              <span className="font-bold text-slate-900">{tt.teamName}</span>
+                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-900 text-white font-mono text-[10px] font-bold">
+                                {tt.teamCode}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-slate-600">
+                              {tt.managerName} ({tt.managerEmail})
+                            </td>
+                            <td className="py-2 px-3 font-mono font-bold">{tt.memberCount}</td>
+                            <td className="py-2 px-3 text-right font-mono font-extrabold text-emerald-700">
+                              {(tt.totalPoints || 0).toLocaleString('en-US')} Pts
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-xs text-slate-400">
+                    No teams created yet. Use the &ldquo;Managers &amp; Teams&rdquo; tab to appoint managers and create teams.
+                  </div>
+                )}
+              </div>
+
               {/* Row 1E: Data Integrity Check & Historical User Backfill Console */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -1640,10 +1927,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     <button
                       type="button"
                       disabled={runningBackfill}
-                      onClick={handleRunUserBackfill}
+                      onClick={() => handleRunUserBackfill(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <span>{runningBackfill ? 'Running...' : 'Dry-Run Backfill (Preview)'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={runningBackfill}
+                      onClick={() => handleRunUserBackfill(false)}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition-colors cursor-pointer"
                     >
-                      <span>{runningBackfill ? 'Running Backfill...' : 'Run Old Users Backfill Script'}</span>
+                      <span>{runningBackfill ? 'Running Backfill...' : 'Run Live Backfill'}</span>
                     </button>
                   </div>
                 </div>
@@ -1700,8 +1995,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 )}
 
                 {backfillSummary && (
-                  <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200 text-xs text-blue-900 font-mono">
-                    Backfill executed at {backfillSummary.executedAtKarachi}: Scanned {backfillSummary.totalUsersScanned} users • Permanent IDs assigned: {backfillSummary.permanentIdsAssigned} • Opaque IDs assigned: {backfillSummary.opaqueIdsAssigned} • Legacy points backfilled: {backfillSummary.legacyPointsBackfilledCount} • Balances reconciled: {backfillSummary.userTotalsReconciledCount}
+                  <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200 text-xs text-blue-900 font-mono space-y-1">
+                    <div>
+                      <strong>{backfillSummary.dryRun ? '[DRY-RUN PREVIEW]' : '[LIVE BACKFILL]'}</strong> executed at {backfillSummary.executedAtKarachi}: Scanned {backfillSummary.totalUsersScanned} users • Permanent IDs: {backfillSummary.permanentIdsAssigned} • Opaque IDs: {backfillSummary.opaqueIdsAssigned} • Legacy points backfilled: {backfillSummary.legacyPointsBackfilledCount} • Balances reconciled: {backfillSummary.userTotalsReconciledCount}
+                    </div>
+                    {backfillSummary.beforeSummary && backfillSummary.afterSummary && (
+                      <div className="text-[11px] text-slate-700">
+                        Before: {backfillSummary.beforeSummary.totalUsers} users ({backfillSummary.beforeSummary.totalLedgerEntries} ledger rows, {backfillSummary.beforeSummary.mismatchedBalancesCount} mismatches) &rarr; After: {backfillSummary.afterSummary.totalUsers} users ({backfillSummary.afterSummary.totalLedgerEntries} ledger rows, {backfillSummary.afterSummary.mismatchedBalancesCount} mismatches)
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -3772,24 +4074,37 @@ export const AdminView: React.FC<AdminViewProps> = ({
                               </td>
                               <td className="py-3.5 px-4">
                                 <div className="flex flex-col items-start gap-1">
-                                  <span
-                                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                      isActiveEarner
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                        : 'bg-slate-100 text-slate-600'
-                                    }`}
-                                  >
-                                    {isActiveEarner ? 'Active Earner' : 'Registered'}
-                                  </span>
-                                  <span
-                                    className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                      u.cohort === 'new'
-                                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                        : 'bg-slate-100 text-slate-600'
-                                    }`}
-                                  >
-                                    {u.cohort === 'new' ? 'New (<=7d)' : 'Old (>7d)'}
-                                  </span>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                        u.role === 'admin'
+                                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                          : u.role === 'manager'
+                                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                          : isActiveEarner
+                                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                          : 'bg-slate-100 text-slate-600'
+                                      }`}
+                                    >
+                                      {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : isActiveEarner ? 'Active Earner' : 'User'}
+                                    </span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                        u.cohort === 'new'
+                                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                          : 'bg-slate-100 text-slate-600'
+                                      }`}
+                                    >
+                                      {u.cohort === 'new' ? 'New (<=7d)' : 'Old (>7d)'}
+                                    </span>
+                                  </div>
+                                  {u.team ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-mono font-bold">
+                                      Team: {u.team.teamName} ({u.team.teamCode})
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] text-slate-400 font-mono">No Team</span>
+                                  )}
                                 </div>
                               </td>
                               <td className="py-3.5 px-4 font-mono">
@@ -3824,6 +4139,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                     <Eye className="w-3.5 h-3.5" />
                                     <span>History &amp; Points</span>
                                   </button>
+                                  {adminUser?.id !== u.id && adminUser?.email !== u.email && u.role !== 'admin' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleImpersonateUser(u.id)}
+                                      disabled={startingImpersonation}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                      title="View as User (15-min Read-Only Impersonation)"
+                                    >
+                                      <span>View as User</span>
+                                    </button>
+                                  )}
                                   {adminUser?.id !== u.id && adminUser?.email !== u.email ? (
                                     <button
                                       type="button"
@@ -3843,6 +4169,477 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             </tr>
                           );
                         })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              SECTION: MANAGERS & TEAMS (ONE MANAGER -> MANY TEAMS)
+             ===================================================================== */}
+          {activeSection === 'managers_teams' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
+                    Managers &amp; Teams Management
+                  </h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Appoint managers, create multiple teams per manager, manage invite codes, and audit team member points.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchManagersAndTeams}
+                  disabled={loadingManagersTeams}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors self-start sm:self-auto cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingManagersTeams ? 'animate-spin' : ''}`} />
+                  <span>{loadingManagersTeams ? 'Refreshing...' : 'Refresh Teams'}</span>
+                </button>
+              </div>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Appointed Managers</div>
+                  <div className="text-2xl font-extrabold text-purple-900 font-mono mt-1">{managersList.length}</div>
+                </div>
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Total Teams</div>
+                  <div className="text-2xl font-extrabold text-slate-900 font-mono mt-1">{teamsList.length}</div>
+                </div>
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Active Teams</div>
+                  <div className="text-2xl font-extrabold text-emerald-700 font-mono mt-1">
+                    {teamsList.filter((t: any) => t.isActive).length}
+                  </div>
+                </div>
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Total Team Members</div>
+                  <div className="text-2xl font-extrabold text-indigo-700 font-mono mt-1">
+                    {teamsList.reduce((acc: number, t: any) => acc + (t.memberCount || 0), 0)}
+                  </div>
+                </div>
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Feature Flag Status</div>
+                  <div className="text-sm font-extrabold font-mono mt-2">
+                    <span className={`px-2 py-0.5 rounded ${settings?.teamSystemEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {settings?.teamSystemEnabled ? 'ENABLED' : 'DEFAULT OFF'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Admin Create Team for Manager Form */}
+              <form
+                onSubmit={handleAdminCreateTeam}
+                className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs space-y-4"
+              >
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">Create New Team for a Manager</h2>
+                    <p className="text-xs text-slate-500">
+                      Generates a collision-safe 6-8 character uppercase invite code (<code className="font-mono">/signup?team=CODE</code>).
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Select Manager</label>
+                    <select
+                      required
+                      value={newTeamManagerId}
+                      onChange={(e) => setNewTeamManagerId(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                    >
+                      <option value="">-- Choose Manager or Admin --</option>
+                      {usersList
+                        .filter((u) => u.role === 'manager' || u.role === 'admin')
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.displayName} ({m.email}) [{m.role}]
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Team Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={newTeamName}
+                      onChange={(e) => setNewTeamName(e.target.value)}
+                      placeholder="e.g. Karachi Alpha Team"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Description (Optional)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newTeamDesc}
+                        onChange={(e) => setNewTeamDesc(e.target.value)}
+                        placeholder="Optional team notes"
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                      />
+                      <button
+                        type="submit"
+                        disabled={creatingTeam}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer"
+                      >
+                        {creatingTeam ? 'Creating...' : '+ Create Team'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+
+              {/* Teams & Members Table */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-slate-900">All Teams &amp; Invite Codes ({teamsList.length})</h2>
+                  <span className="text-xs text-slate-500">
+                    To promote a user to Manager, open their profile in <strong>Users &amp; Earnings</strong>.
+                  </span>
+                </div>
+                {teamsList.length === 0 ? (
+                  <div className="p-10 text-center text-xs text-slate-400">
+                    No teams created yet. Promote a user to Manager and create a team above.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                          <th className="py-3 px-4">Team Name &amp; Code</th>
+                          <th className="py-3 px-4">Manager</th>
+                          <th className="py-3 px-4">Members</th>
+                          <th className="py-3 px-4">Team Points (Excl. Manager)</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Admin Controls</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {teamsList.map((team: any) => {
+                          const inviteUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://rewardriver.online'}/signup?team=${team.teamCode}`;
+                          return (
+                            <tr key={team.id} className="hover:bg-slate-50/70">
+                              <td className="py-3.5 px-4">
+                                <div className="font-bold text-slate-900">{team.teamName}</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[11px] font-bold">
+                                    {team.teamCode}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (navigator.clipboard) {
+                                        navigator.clipboard.writeText(inviteUrl);
+                                        showFeedback('success', `Copied invite link: ${inviteUrl}`);
+                                      }
+                                    }}
+                                    className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                                  >
+                                    Copy Link
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="font-semibold text-slate-800">{team.managerName || 'Manager'}</div>
+                                <div className="text-[10px] font-mono text-slate-500">{team.managerEmail}</div>
+                                <div className="mt-1">
+                                  <select
+                                    value={team.managerId}
+                                    onChange={(e) => handleReassignTeamManager(team.id, e.target.value)}
+                                    className="px-2 py-1 rounded bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-700"
+                                    title="Reassign Team Manager"
+                                  >
+                                    {usersList
+                                      .filter((u) => u.role === 'manager' || u.role === 'admin' || u.id === team.managerId)
+                                      .map((m) => (
+                                        <option key={m.id} value={m.id}>
+                                          Reassign: {m.displayName} ({m.email})
+                                        </option>
+                                      ))}
+                                  </select>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
+                                {team.memberCount || 0} Members
+                                <div className="text-[10px] text-slate-500 font-normal">
+                                  {team.completedSurveys || 0} Surveys
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono">
+                                <div className="font-extrabold text-emerald-700">
+                                  {(team.totalPoints || 0).toLocaleString('en-US')} Pts
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    team.isActive
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  }`}
+                                >
+                                  {team.isActive ? 'Active' : 'Disabled'}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleTeamActive(team.id, !team.isActive)}
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${
+                                      team.isActive
+                                        ? 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+                                        : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                                    }`}
+                                  >
+                                    {team.isActive ? 'Disable' : 'Enable'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRegenerateTeamCode(team.id)}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold cursor-pointer"
+                                  >
+                                    Regen Code
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              SECTION: SURVEY COMPLETIONS (SIDE-BY-SIDE USER + CPX DATA)
+             ===================================================================== */}
+          {activeSection === 'completions' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
+                    Survey Completions (Side-by-Side)
+                  </h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Our database user &amp; team records matched side-by-side with CPX Research <code className="font-mono">trans_id</code>, <code className="font-mono">offer_id</code>, USD payout, and points.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchSurveyCompletions}
+                  disabled={loadingCompletions}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors self-start sm:self-auto cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingCompletions ? 'animate-spin' : ''}`} />
+                  <span>{loadingCompletions ? 'Refreshing...' : 'Refresh Completions'}</span>
+                </button>
+              </div>
+
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-wrap items-center gap-3">
+                <input
+                  type="text"
+                  value={completionsSearch}
+                  onChange={(e) => setCompletionsSearch(e.target.value)}
+                  placeholder="Search by trans_id, offer_id, user email, name, or UUID..."
+                  className="flex-1 min-w-[240px] px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                />
+                <select
+                  value={completionsFilterStatus}
+                  onChange={(e) => setCompletionsFilterStatus(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="completed">Completed (Status 1)</option>
+                  <option value="reversed">Reversed (Status 2)</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={fetchSurveyCompletions}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Apply Filter
+                </button>
+              </div>
+
+              <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
+                {loadingCompletions ? (
+                  <div className="p-12 text-center text-xs text-slate-400">Loading survey completions...</div>
+                ) : completionsList.length === 0 ? (
+                  <div className="p-12 text-center text-xs text-slate-400">No survey completions found matching filters.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                          <th className="py-3 px-4">Our User (UUID / Email)</th>
+                          <th className="py-3 px-4">Team</th>
+                          <th className="py-3 px-4">CPX Trans ID</th>
+                          <th className="py-3 px-4">Offer ID</th>
+                          <th className="py-3 px-4 text-right">CPX Payout (USD)</th>
+                          <th className="py-3 px-4 text-right">Points Awarded</th>
+                          <th className="py-3 px-4 text-center">Status</th>
+                          <th className="py-3 px-4 text-right">Time (Asia/Karachi)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        {completionsList.map((c: any) => (
+                          <tr key={c.id} className="hover:bg-slate-50/70">
+                            <td className="py-3 px-4 font-sans">
+                              <div className="font-bold text-slate-900">{c.userDisplayName}</div>
+                              <div className="text-[10px] font-mono text-slate-500">{c.userEmail}</div>
+                              <div className="text-[9px] font-mono text-slate-400 select-all">UUID: {c.userId}</div>
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              {c.teamName ? (
+                                <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold">
+                                  {c.teamName} ({c.teamCode})
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">No Team</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-slate-900 select-all">{c.transId}</td>
+                            <td className="py-3 px-4 text-slate-600 select-all">#{c.offerId}</td>
+                            <td className="py-3 px-4 text-right font-bold text-slate-800">${Number(c.amountUsd || 0).toFixed(2)}</td>
+                            <td className={`py-3 px-4 text-right font-extrabold ${c.status === 'reversed' ? 'text-rose-600' : 'text-emerald-700'}`}>
+                              {(c.pointsAwarded || 0).toLocaleString('en-US')} Pts
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  c.status === 'reversed' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                                }`}
+                              >
+                                {c.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right text-[11px] text-slate-500 whitespace-nowrap">
+                              {c.createdAtKarachi} PKT
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              SECTION: CPX S2S CALLBACK LOGS
+             ===================================================================== */}
+          {activeSection === 'callback_logs' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
+                    CPX S2S Postback Callback Logs
+                  </h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Audit log of every incoming CPX postback request (<code className="font-mono">credited</code>, <code className="font-mono">duplicate</code>, <code className="font-mono">bad_hash</code>, <code className="font-mono">unknown_user</code>, <code className="font-mono">reversed</code>).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={callbackFilterResult}
+                    onChange={(e) => setCallbackFilterResult(e.target.value)}
+                    className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                  >
+                    <option value="all">All Results</option>
+                    <option value="credited">Credited</option>
+                    <option value="duplicate">Duplicate</option>
+                    <option value="bad_hash">Bad Hash</option>
+                    <option value="unknown_user">Unknown User</option>
+                    <option value="reversed">Reversed</option>
+                    <option value="error">Error</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={fetchCallbackLogs}
+                    disabled={loadingCallbackLogs}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingCallbackLogs ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
+                {loadingCallbackLogs ? (
+                  <div className="p-12 text-center text-xs text-slate-400">Loading callback logs...</div>
+                ) : callbackLogs.length === 0 ? (
+                  <div className="p-12 text-center text-xs text-slate-400">No CPX callback logs recorded yet.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                          <th className="py-3 px-4">Time (PKT)</th>
+                          <th className="py-3 px-4">Result</th>
+                          <th className="py-3 px-4">Trans ID</th>
+                          <th className="py-3 px-4">ext_user_id / Matched User</th>
+                          <th className="py-3 px-4">Hash Valid</th>
+                          <th className="py-3 px-4 text-right">Points Delta</th>
+                          <th className="py-3 px-4">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        {callbackLogs
+                          .filter((log) => callbackFilterResult === 'all' || log.result === callbackFilterResult)
+                          .map((log) => (
+                            <tr key={log.id} className="hover:bg-slate-50/70">
+                              <td className="py-3 px-4 text-[11px] text-slate-500 whitespace-nowrap">
+                                {log.createdAtKarachi || new Date(log.createdAt).toLocaleString('en-GB', { timeZone: 'Asia/Karachi' })}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    log.result === 'credited'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : log.result === 'duplicate'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : log.result === 'reversed'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-rose-100 text-rose-800'
+                                  }`}
+                                >
+                                  {log.result}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 font-bold text-slate-900 select-all">{log.transId || 'N/A'}</td>
+                              <td className="py-3 px-4">
+                                <div className="text-slate-800 select-all">{log.extUserId || 'N/A'}</div>
+                                {log.matchedUserEmail && (
+                                  <div className="text-[10px] text-emerald-700 font-sans">{log.matchedUserEmail}</div>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={log.hashValid ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                                  {log.hashValid ? 'VALID' : 'INVALID'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right font-bold">
+                                {(log.pointsDelta || 0).toLocaleString('en-US')} Pts
+                              </td>
+                              <td className="py-3 px-4 font-sans text-slate-600">{log.notes}</td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>
@@ -4658,6 +5455,113 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                 </div>
 
+                {/* Live-Site Safety Feature Flags & Points Conversion Settings */}
+                <div className="p-4 rounded-xl bg-purple-50/60 border border-purple-200/80 space-y-4">
+                  <div>
+                    <div className="text-sm font-bold text-purple-950">
+                      🛡️ Live-Site Feature Flags &amp; Team System Configuration
+                    </div>
+                    <p className="text-xs text-purple-800 mt-0.5">
+                      New features are behind feature flags (default OFF) so you can enable them one at a time after testing. Every change is logged in <code className="font-mono">audit_log</code>.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-purple-200/80 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(settings.teamSystemEnabled)}
+                        onChange={(e) => setSettings({ ...settings, teamSystemEnabled: e.target.checked })}
+                        className="mt-0.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">team_system_enabled</div>
+                        <div className="text-[10px] text-slate-500">Allow users to join teams via invite link or profile code</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-purple-200/80 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(settings.managersCanCreateTeams)}
+                        onChange={(e) => setSettings({ ...settings, managersCanCreateTeams: e.target.checked })}
+                        className="mt-0.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">managers_can_create_teams</div>
+                        <div className="text-[10px] text-slate-500">Allow managers to self-create teams up to max limit</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-purple-200/80 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(settings.teamBonusEnabled)}
+                        onChange={(e) => setSettings({ ...settings, teamBonusEnabled: e.target.checked })}
+                        className="mt-0.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">team_bonus_enabled</div>
+                        <div className="text-[10px] text-slate-500">Credit manager bonus on member survey completions</div>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        max_teams_per_manager
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={settings.maxTeamsPerManager ?? 5}
+                        onChange={(e) => setSettings({ ...settings, maxTeamsPerManager: Number(e.target.value) })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        team_bonus_percent (%)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={settings.teamBonusPercent ?? 0}
+                        onChange={(e) => setSettings({ ...settings, teamBonusPercent: Number(e.target.value) })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        points_per_usd (CPX Rate)
+                      </label>
+                      <input
+                        type="number"
+                        min={100}
+                        value={settings.pointsPerUsdt ?? 5000}
+                        onChange={(e) => setSettings({ ...settings, pointsPerUsdt: Number(e.target.value) })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        new_user_days (Cohort)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={90}
+                        value={settings.newUserDays ?? 7}
+                        onChange={(e) => setSettings({ ...settings, newUserDays: Number(e.target.value) })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                   <label className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer">
                     <input
@@ -4800,6 +5704,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   <h3 className="text-base font-extrabold text-slate-900">{selectedUserDetail.displayName}</h3>
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      selectedUserDetail.role === 'admin'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                        : selectedUserDetail.role === 'manager'
+                        ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    Role: {selectedUserDetail.role || 'user'}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                       selectedUserDetail.cohort === 'new'
                         ? 'bg-blue-50 text-blue-700 border border-blue-200'
                         : 'bg-slate-200 text-slate-700'
@@ -4816,6 +5731,62 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   <span>Permanent ID: <strong className="text-slate-800 select-all">{selectedUserDetail.id}</strong></span>
                   <span>CPX ID: <strong className="text-slate-800 select-all">{selectedUserDetail.externalOpaqueId}</strong></span>
                 </div>
+                {/* Admin Role, Team & Impersonation Actions Bar */}
+                {selectedUserDetail.role !== 'admin' && (
+                  <div className="flex flex-wrap items-center gap-2 mt-3 pt-2.5 border-t border-slate-200/70">
+                    {selectedUserDetail.role === 'manager' ? (
+                      <button
+                        type="button"
+                        disabled={updatingUserRole}
+                        onClick={() => handleSetUserRole(selectedUserDetail.id, 'user')}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold cursor-pointer"
+                      >
+                        {updatingUserRole ? 'Updating...' : 'Remove Manager (Demote to User)'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={updatingUserRole || Boolean(selectedUserDetail.team)}
+                        onClick={() => handleSetUserRole(selectedUserDetail.id, 'manager')}
+                        title={selectedUserDetail.team ? 'Remove user from their current team before promoting to Manager' : 'Promote to Manager'}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${
+                          selectedUserDetail.team
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            : 'bg-purple-600 hover:bg-purple-500 text-white cursor-pointer'
+                        }`}
+                      >
+                        {updatingUserRole ? 'Updating...' : 'Make Manager'}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={startingImpersonation}
+                      onClick={() => handleImpersonateUser(selectedUserDetail.id)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold cursor-pointer"
+                    >
+                      {startingImpersonation ? 'Starting...' : 'View as User (Read-Only)'}
+                    </button>
+
+                    {selectedUserDetail.role !== 'manager' && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Team:</span>
+                        <select
+                          value={selectedUserDetail.team?.teamId || ''}
+                          onChange={(e) => handleMoveUserTeam(selectedUserDetail.id, e.target.value || null)}
+                          className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-800"
+                        >
+                          <option value="">No Team</option>
+                          {teamsList.map((t: any) => (
+                            <option key={t.id} value={t.id}>
+                              {t.teamName} ({t.teamCode})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <button
                 type="button"

@@ -65,6 +65,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navItems: { id: string; label: string; icon: typeof ShieldCheck }[] = [];
 
+  if (user?.role === 'manager' || user?.role === 'admin') {
+    navItems.push({ id: 'manager', label: 'Manager Portal', icon: ClipboardList });
+  }
   if (user?.role === 'admin') {
     navItems.push({ id: 'admin', label: 'Admin Portal', icon: ShieldCheck });
   }
@@ -96,19 +99,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     setMobileMenuOpen(false);
   };
 
-  const searchSuggestions = [
-    { title: 'Amazon Gift Cards', type: 'Reward', points: '10,000 Pts' },
-    { title: 'Reward River Consumer Survey', type: 'Survey', points: '6,700 Pts' },
-    { title: 'PayPal Cash Redemptions', type: 'Reward', points: '25,000 Pts' },
-    { title: 'Google Play eGift Code', type: 'Reward', points: '10,000 Pts' },
-    { title: 'Quick Daily Check-in Task', type: 'Task', points: '500 Pts' },
-    { title: 'Visa Prepaid Card', type: 'Reward', points: '50,000 Pts' }
-  ].filter(
-    (item) =>
-      !searchQuery ||
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.type.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const searchSuggestions: { title: string; type: string; points: string }[] = [];
 
   return (
     <>
@@ -312,6 +303,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <span>Withdraw Funds ($25 Min)</span>
                   <span>${availableUsdFormatted}</span>
+                </button>
+              )}
+              {(user?.role === 'manager' || user?.role === 'admin') && (
+                <button
+                  type="button"
+                  onClick={() => handleNavClick('manager')}
+                  className="w-full text-left px-3 py-2 text-sm font-bold text-[#192F40] dark:text-slate-200 hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg"
+                >
+                  Manager Portal
                 </button>
               )}
               {user?.role === 'admin' && (

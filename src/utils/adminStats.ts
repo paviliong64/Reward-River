@@ -203,19 +203,29 @@ export function isWithinKarachiDateRange(isoTimestamp: string | undefined, filte
 }
 
 /**
- * Classifies whether a user is "new" (registered within the last 7 days in Asia/Karachi)
- * or "old" (registered earlier than 7 days ago).
+ * Classifies whether a user is "new" (registered within the last N days in Asia/Karachi, default 7)
+ * or "old" (registered earlier than N days ago).
  */
-export function classifyUserCohort(createdAtIso: string | undefined, nowIso?: string): 'new' | 'old' {
+export function classifyUserCohort(
+  createdAtIso: string | undefined,
+  nowIso?: string,
+  newUserDays = 7
+): 'new' | 'old' {
   if (!createdAtIso) return 'old';
   const createdKey = toKarachiDateKey(createdAtIso);
-  const { startKey } = resolveKarachiDateBounds({ range: '7d', nowIso });
+  const safeDays = Math.max(1, Math.min(365, Number(newUserDays) || 7));
+  const nowKd = toKarachiShiftedDate(nowIso);
+  const startKd = new Date(nowKd.getTime() - (safeDays - 1) * 24 * 60 * 60 * 1000);
+  const y = startKd.getUTCFullYear();
+  const m = String(startKd.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(startKd.getUTCDate()).padStart(2, '0');
+  const startKey = `${y}-${m}-${d}`;
   return createdKey >= startKey ? 'new' : 'old';
 }
 
 /**
  * Runs a full server-side Data Integrity Check comparing ledger totals vs stored user totals,
- * checking permanent user IDs, duplicate transaction IDs, and orphaned ledger entries.
+ * checking permanent user IDs, duplicate transaction IDs, orphaned ledger entries, and CPX completions sum.
  */
 export function verifyDataIntegrity(params: {
   users: Array<{
@@ -395,13 +405,28 @@ export function computeAdminDashboardStats(params: {
     whatsappNumber?: string;
     countryCode?: string;
     emailVerified: boolean;
-    role: 'user' | 'admin';
+    role: 'user' | 'manager' | 'admin';
     createdAt: string;
     updatedAt?: string;
   }>;
   ledger: LedgerEntry[];
   withdrawals: WithdrawalRecord[];
   taskCompletions?: TaskCompletionRecord[];
+  teams?: Array<{
+    id: string;
+    name: string;
+    managerId: string;
+    teamCode: string;
+    isActive: boolean;
+    createdAt: string;
+  }>;
+  teamMembers?: Array<{
+    id: string;
+    teamId: string;
+    userId: string;
+    joinedAt: string;
+    consentAcceptedAt: string;
+  }>;
   filter?: DateFilterOptions;
   range?: DateRangePreset;
   startDate?: string;
@@ -410,14 +435,18 @@ export function computeAdminDashboardStats(params: {
   nowIso?: string;
   pointsPerUsdt?: number;
   userSharePercent?: number;
+  newUserDays?: number;
 }) {
   const {
     users,
     ledger,
     withdrawals,
     taskCompletions = [],
+    teams = [],
+    teamMembers = [],
     pointsPerUsdt = 5000,
-    userSharePercent = 50
+    userSharePercent = 50,
+    newUserDays = 7
   } = params;
 
   const filter: DateFilterOptions = params.filter || {
@@ -440,6 +469,7 @@ export function computeAdminDashboardStats(params: {
   let newUsersToday = 0;
   let newUsers7d = 0;
   let newUsers30d = 0;
+  let newUsersCohortCount = 0;
   let oldUsersCount = 0;
   let newUsersInFilter = 0;
 
@@ -448,6 +478,9 @@ export function computeAdminDashboardStats(params: {
     if (joinedKey === todayKey) newUsersToday += 1;
     if (joinedKey >= bounds7d.startKey && joinedKey <= bounds7d.endKey) {
       newUsers7d += 1;
+    }
+    if (classifyUserCohort(u.createdAt, nowIso, newUserDays) === 'new') {
+      newUsersCohortCount += 1;
     } else {
       oldUsersCount += 1;
     }
@@ -585,6 +618,16 @@ export function computeAdminDashboardStats(params: {
   const userRewardCents = Math.round((netFilteredPointsAwarded / pointsPerUsdt) * shareRatio * 100);
   const adminProfitCents = Math.max(0, grossRevenueCents - userRewardCents);
 
+  // Map userId -> team membership
+  const userTeamMap = new Map<string, { teamId: string; teamName: string; teamCode: string }>();
+  const teamById = new Map(teams.map(t => [t.id, t]));
+  for (const tm of teamMembers) {
+    const t = teamById.get(tm.teamId);
+    if (t) {
+      userTeamMap.set(tm.userId, { teamId: t.id, teamName: t.name, teamCode: t.teamCode });
+    }
+  }
+
   // 5. Active Users & Top 10 Users by Points
   const userSummaries = users.map(u => {
     const rawCleanId = u.id;
@@ -624,14 +667,20 @@ export function computeAdminDashboardStats(params: {
     const activeInFilter = uEntries.some(e => isWithinKarachiDateRange(e.createdAt, { ...filter, nowIso })) ||
       uWithdrawals.some(w => isWithinKarachiDateRange(w.createdAt, { ...filter, nowIso }));
 
+    const teamInfo = userTeamMap.get(u.id);
+
     return {
       id: u.id,
       externalOpaqueId: u.externalOpaqueId || '',
       displayName: u.displayName || u.username || u.email.split('@')[0],
       email: u.email,
+      role: u.role,
+      teamId: teamInfo?.teamId,
+      teamName: teamInfo?.teamName,
+      teamCode: teamInfo?.teamCode,
       phoneNumber: u.phoneNumber || u.whatsappNumber || '',
       countryCode: u.countryCode || '',
-      cohort: classifyUserCohort(u.createdAt, nowIso),
+      cohort: classifyUserCohort(u.createdAt, nowIso, newUserDays),
       createdAt: u.createdAt,
       joinedAt: u.createdAt,
       createdAtKarachi: formatKarachiDateTime(u.createdAt),
@@ -665,6 +714,51 @@ export function computeAdminDashboardStats(params: {
       rank: idx + 1,
       ...u
     }));
+
+  // 5b. Team aggregations (excluding team_bonus and manager's personal survey points)
+  const teamSummaries = teams.map(team => {
+    const membersOfTeam = teamMembers.filter(tm => tm.teamId === team.id);
+    const memberIdSet = new Set(
+      membersOfTeam
+        .map(tm => tm.userId)
+        .filter(uid => uid !== team.managerId)
+    );
+    let teamPointsInRange = 0;
+    let completedSurveysInRange = 0;
+
+    for (const l of filteredLedger) {
+      if (!memberIdSet.has(l.userId)) continue;
+      const isTeamBonus = (l as { reason?: string }).reason === 'team_bonus' || (l.description || '').toLowerCase().includes('team bonus');
+      if (isTeamBonus) continue;
+      const pts = entryToPts(l);
+      if (l.status === 'confirmed' && l.entryType === 'credit') {
+        teamPointsInRange += pts;
+        completedSurveysInRange += 1;
+      } else if ((l.status === 'confirmed' || l.status === 'reversed') && l.entryType === 'reversal') {
+        teamPointsInRange = Math.max(0, teamPointsInRange - pts);
+      }
+    }
+
+    const managerUser = userLookup.get(team.managerId);
+    return {
+      id: team.id,
+      name: team.name,
+      teamCode: team.teamCode,
+      managerId: team.managerId,
+      managerEmail: managerUser?.email || '',
+      managerName: managerUser?.displayName || managerUser?.email || 'Manager',
+      isActive: team.isActive,
+      memberCount: membersOfTeam.length,
+      teamPoints: teamPointsInRange,
+      completedSurveysCount: completedSurveysInRange,
+      createdAt: team.createdAt
+    };
+  });
+
+  const topTeamsByPoints = [...teamSummaries]
+    .sort((a, b) => b.teamPoints - a.teamPoints || b.memberCount - a.memberCount)
+    .slice(0, 10)
+    .map((t, idx) => ({ rank: idx + 1, ...t }));
 
   // 6. Build Daily / Weekly / Monthly Time-Series Chart Data in Asia/Karachi
   const periodKeyFor = (iso: string): string => {
@@ -763,8 +857,8 @@ export function computeAdminDashboardStats(params: {
       newUsersToday,
       newUsers7d,
       newUsers30d,
-      newUsersCount: newUsers7d, // New = registered in last 7 days
-      oldUsersCount,             // Old = registered earlier than 7 days ago
+      newUsersCount: newUsersCohortCount,
+      oldUsersCount,
       activeUsersCount,
       activeUsersInRange,
       activeUsersAllTime: activeUsersCount,
@@ -798,7 +892,16 @@ export function computeAdminDashboardStats(params: {
       allTimeUserRewardCents,
       allTimeAdminProfitCents
     },
+    teams: {
+      totalTeams: teams.length,
+      activeTeams: teams.filter(t => t.isActive).length,
+      totalManagers: users.filter(u => u.role === 'manager').length,
+      totalTeamMembers: teamMembers.length,
+      usersWithoutTeam: Math.max(0, totalUsers - teamMembers.length),
+      topTeamsByPoints
+    },
     topUsersByPoints,
     timeSeries
   };
 }
+

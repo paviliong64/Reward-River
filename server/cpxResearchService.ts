@@ -364,9 +364,31 @@ export class CpxResearchService {
       };
     }
 
+    const rawQuerySnapshot: Record<string, unknown> = {
+      trans_id: transId,
+      ext_user_id: extUserId,
+      offer_id: offerId,
+      status: rawStatus,
+      amount_usd: input.amountUsd,
+      amount_local: input.amountLocal,
+      secure_hash: input.secureHash ? '[PRESENT]' : '[MISSING]'
+    };
+
     // 1. Verify secure_hash strictly before crediting (Bad hash = no credit, log it)
     const isValidSignature = this.verifyPostback(transId, extUserId, input.secureHash);
     if (!isValidSignature) {
+      await dbStore.addCallbackLog({
+        provider: 'cpx',
+        transId,
+        extUserId,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || 'unknown',
+        hashValid: false,
+        result: 'bad_hash',
+        pointsDelta: 0,
+        amountUsd: Number(input.amountUsd) || 0,
+        notes: 'Invalid or missing CPX secure_hash signature — zero points credited'
+      });
       await dbStore.addAuditLog({
         adminUserId: 'system_cpx_guard',
         adminEmail: 'security@reward-river',
@@ -405,6 +427,18 @@ export class CpxResearchService {
     }
 
     if (!targetUser) {
+      await dbStore.addCallbackLog({
+        provider: 'cpx',
+        transId,
+        extUserId,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || 'unknown',
+        hashValid: true,
+        result: 'unknown_user',
+        pointsDelta: 0,
+        amountUsd: Number(input.amountUsd) || 0,
+        notes: `No matching user found for ext_user_id=${extUserId}`
+      });
       await dbStore.addAuditLog({
         adminUserId: 'system_cpx_postback',
         adminEmail: 'system@reward-river',
@@ -475,6 +509,20 @@ export class CpxResearchService {
 
       // Canceled/reversed status = negative ledger entry ONLY if it was credited before
       if (!originalCredit) {
+        await dbStore.addCallbackLog({
+          provider: 'cpx',
+          transId,
+          extUserId,
+          matchedUserId: targetUser.id,
+          matchedUserEmail: targetUser.email,
+          rawQuery: rawQuerySnapshot,
+          ipAddress: input.ipAddress || 'unknown',
+          hashValid: true,
+          result: 'duplicate',
+          pointsDelta: 0,
+          amountUsd: effectiveAmountUsd,
+          notes: 'Reversal ignored: transaction was not previously credited'
+        });
         return {
           httpStatus: 200,
           responseText: 'OK',
@@ -491,6 +539,20 @@ export class CpxResearchService {
         e => e.providerTxId === reversalTxId || (e.entryType === 'reversal' && e.reversalRef === originalCredit.providerTxId)
       );
       if (existingReversal) {
+        await dbStore.addCallbackLog({
+          provider: 'cpx',
+          transId,
+          extUserId,
+          matchedUserId: targetUser.id,
+          matchedUserEmail: targetUser.email,
+          rawQuery: rawQuerySnapshot,
+          ipAddress: input.ipAddress || 'unknown',
+          hashValid: true,
+          result: 'duplicate',
+          pointsDelta: 0,
+          amountUsd: effectiveAmountUsd,
+          notes: 'Duplicate reversal callback ignored'
+        });
         return {
           httpStatus: 200,
           responseText: 'OK',
@@ -557,8 +619,54 @@ export class CpxResearchService {
         processedAt: nowIso
       });
 
+      // Also reverse any team_bonus that was credited for this transaction
+      const originalBonusTxId = `${originalCredit.providerTxId}_tbonus`;
+      const originalBonusEntry = allEntries.find(
+        e => e.providerTxId === originalBonusTxId && e.entryType === 'credit' && e.status === 'confirmed'
+      );
+      if (originalBonusEntry) {
+        const bonusPts = originalBonusEntry.points || 0;
+        const bonusRevEntry: LedgerEntry = {
+          id: `le_cpx_${transId}_tbonus_rev`,
+          userId: originalBonusEntry.userId,
+          providerTxId: `${originalBonusTxId}_rev`,
+          taskId: 'team_bonus',
+          cpxOfferId: offerId,
+          reversalRef: originalBonusTxId,
+          amountCents: originalBonusEntry.amountCents || Math.max(1, Math.round(bonusPts / 100)),
+          points: bonusPts,
+          grossCents: 0,
+          adminProfitCents: 0,
+          appliedSharePercent: 50,
+          entryType: 'reversal',
+          status: 'confirmed',
+          approvedBy: 'CPX S2S Reversal Postback',
+          description: `Team Bonus Reversed for Tx #${transId} (-${bonusPts.toLocaleString('en-US')} Pts)`,
+          createdAt: nowIso,
+          processedAt: nowIso
+        };
+        await dbStore.addLedgerEntry(bonusRevEntry);
+        const mgrBal = dbStore.getUserBalances(originalBonusEntry.userId);
+        await dbStore.updateUser(originalBonusEntry.userId, { storedPoints: mgrBal.availablePoints });
+      }
+
       const updatedBalances = dbStore.getUserBalances(targetUser.id);
       await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances.availablePoints });
+
+      await dbStore.addCallbackLog({
+        provider: 'cpx',
+        transId,
+        extUserId,
+        matchedUserId: targetUser.id,
+        matchedUserEmail: targetUser.email,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || 'unknown',
+        hashValid: true,
+        result: 'reversed',
+        pointsDelta: -deductPoints,
+        amountUsd: effectiveAmountUsd,
+        notes: `Reversed ${deductPoints} Pts for offer #${offerId}`
+      });
 
       return {
         httpStatus: 200,
@@ -577,6 +685,20 @@ export class CpxResearchService {
       e => e.providerTxId === transId || e.providerTxId === `cpx_${transId}`
     );
     if (alreadyExists) {
+      await dbStore.addCallbackLog({
+        provider: 'cpx',
+        transId,
+        extUserId,
+        matchedUserId: targetUser.id,
+        matchedUserEmail: targetUser.email,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || 'unknown',
+        hashValid: true,
+        result: 'duplicate',
+        pointsDelta: 0,
+        amountUsd: effectiveAmountUsd,
+        notes: 'Duplicate trans_id ignored (idempotent)'
+      });
       return {
         httpStatus: 200,
         responseText: 'OK',
@@ -625,6 +747,20 @@ export class CpxResearchService {
 
     const added = await dbStore.addLedgerEntry(creditEntry);
     if (!added.success) {
+      await dbStore.addCallbackLog({
+        provider: 'cpx',
+        transId,
+        extUserId,
+        matchedUserId: targetUser.id,
+        matchedUserEmail: targetUser.email,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || 'unknown',
+        hashValid: true,
+        result: 'duplicate',
+        pointsDelta: 0,
+        amountUsd: effectiveAmountUsd,
+        notes: 'Duplicate trans_id ignored (idempotent)'
+      });
       return {
         httpStatus: 200,
         responseText: 'OK',
@@ -649,8 +785,60 @@ export class CpxResearchService {
       processedAt: nowIso
     });
 
+    // Optional Team Bonus to active team's manager (when teamBonusEnabled=true and teamBonusPercent > 0)
+    const teamBonusEnabled = Boolean(settings.teamBonusEnabled);
+    const teamBonusPercent = Math.max(0, Number(settings.teamBonusPercent) || 0);
+    if (teamBonusEnabled && teamBonusPercent > 0) {
+      const membership = dbStore.getTeamMembershipForUser(targetUser.id);
+      const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : undefined;
+      if (memberTeam && memberTeam.isActive && memberTeam.managerId !== targetUser.id) {
+        const managerUser = dbStore.getUserById(memberTeam.managerId);
+        if (managerUser && managerUser.role === 'manager') {
+          const bonusPoints = Math.round(computedPoints * (teamBonusPercent / 100));
+          if (bonusPoints > 0) {
+            const bonusEntry: LedgerEntry = {
+              id: `le_cpx_${transId}_tbonus`,
+              userId: managerUser.id,
+              providerTxId: `${transId}_tbonus`,
+              taskId: 'team_bonus',
+              cpxOfferId: offerId,
+              amountCents: Math.max(1, Math.round(bonusPoints / 100)),
+              points: bonusPoints,
+              grossCents: 0,
+              adminProfitCents: 0,
+              appliedSharePercent: 50,
+              entryType: 'credit',
+              status: 'confirmed',
+              approvedBy: 'System Team Bonus',
+              description: `Team Bonus (${teamBonusPercent}%) from ${memberTeam.name} member completion #${transId} (+${bonusPoints.toLocaleString('en-US')} Pts)`,
+              createdAt: nowIso,
+              processedAt: nowIso
+            };
+            await dbStore.addLedgerEntry(bonusEntry);
+            const mgrBal = dbStore.getUserBalances(managerUser.id);
+            await dbStore.updateUser(managerUser.id, { storedPoints: mgrBal.availablePoints });
+          }
+        }
+      }
+    }
+
     const updatedBalances = dbStore.getUserBalances(targetUser.id);
     await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances.availablePoints });
+
+    await dbStore.addCallbackLog({
+      provider: 'cpx',
+      transId,
+      extUserId,
+      matchedUserId: targetUser.id,
+      matchedUserEmail: targetUser.email,
+      rawQuery: rawQuerySnapshot,
+      ipAddress: input.ipAddress || 'unknown',
+      hashValid: true,
+      result: 'credited',
+      pointsDelta: computedPoints,
+      amountUsd: effectiveAmountUsd,
+      notes: `Credited +${computedPoints} Pts for offer #${offerId}`
+    });
 
     return {
       httpStatus: 200,
@@ -1040,26 +1228,9 @@ export class CpxResearchService {
           }
         }
 
-        // If user genuinely not found in database, provision unique non-colliding profile
+        // If user is not found in our database, do NOT invent fake users — skip and log unlinked completion
         if (!user) {
-          const safePrefix = stripped.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) || crypto.randomUUID().slice(0, 12);
-          const safeEmail = `cpx_${safePrefix}@rewardriver.online`;
-          const safeDisplay = `RiverEarner_${safePrefix.slice(0, 6)}`;
-          user = await dbStore.createUser({
-            id: `usr_${crypto.randomUUID()}`,
-            username: safeDisplay,
-            email: safeEmail,
-            passwordHash: '',
-            salt: '',
-            displayName: safeDisplay,
-            emailVerified: true,
-            role: 'user',
-            externalOpaqueId: extUserId,
-            countryCode: item.country_code || 'US',
-            createdAt: createdAtDate,
-            updatedAt: new Date().toISOString(),
-            provider: 'password'
-          });
+          continue;
         }
 
         const entryId = existingEntry?.id || `le_cpx_${txId}`;

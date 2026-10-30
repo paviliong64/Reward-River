@@ -4,7 +4,8 @@ export interface User {
   email: string;
   displayName: string;
   emailVerified: boolean;
-  role: 'user' | 'admin';
+  role: 'user' | 'manager' | 'admin';
+  status?: 'active' | 'disabled' | 'banned';
   createdAt: string;
   externalOpaqueId?: string;
   updatedAt?: string;
@@ -14,6 +15,68 @@ export interface User {
   countryCode?: string;
   hasPromptedPhone?: boolean;
   provider?: 'google.com' | 'password' | string;
+  teamId?: string;
+  teamName?: string;
+  teamCode?: string;
+}
+
+export interface ImpersonationSessionInfo {
+  sessionId: string;
+  adminId: string;
+  adminEmail: string;
+  targetUserId: string;
+  targetEmail: string;
+  startedAt: string;
+  expiresAt: string;
+  readOnly: true;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  managerId: string;
+  managerEmail?: string;
+  managerName?: string;
+  teamCode: string;
+  isActive: boolean;
+  createdAt: string;
+  memberCount?: number;
+  activeTodayCount?: number;
+  teamPoints?: number;
+  completedSurveysCount?: number;
+}
+
+export interface TeamMember {
+  id: string;
+  teamId: string;
+  teamName?: string;
+  teamCode?: string;
+  userId: string;
+  userEmail?: string;
+  userDisplayName?: string;
+  joinedAt: string;
+  consentAcceptedAt: string;
+  surveysCompleted?: number;
+  totalPoints?: number;
+  availablePoints?: number;
+  lastActiveAt?: string;
+}
+
+export interface CallbackLogEntry {
+  id: string;
+  provider: string;
+  transId: string;
+  extUserId: string;
+  matchedUserId?: string;
+  matchedUserEmail?: string;
+  rawQuery: Record<string, unknown>;
+  ipAddress: string;
+  hashValid: boolean;
+  result: 'credited' | 'duplicate' | 'bad_hash' | 'unknown_user' | 'reversed' | 'error';
+  pointsDelta: number;
+  amountUsd: number;
+  notes?: string;
+  createdAt: string;
 }
 
 export interface AdminUserDetail extends User {
@@ -30,6 +93,16 @@ export interface AdminUserDetail extends User {
   lastActiveAt?: string;
   createdAtKarachi?: string;
   lastActiveAtKarachi?: string;
+  team?: {
+    teamId: string;
+    teamName: string;
+    teamCode: string;
+    managerId: string;
+    managerEmail?: string;
+    joinedAt: string;
+    consentAcceptedAt: string;
+  } | null;
+  managedTeams?: Team[];
 }
 
 export interface UserBalances {
@@ -107,6 +180,7 @@ export interface LedgerEntry {
   appliedSharePercent?: number;
   entryType: 'credit' | 'debit' | 'reversal';
   status: 'pending' | 'confirmed' | 'reversed' | 'rejected';
+  reason?: 'cpx_complete' | 'cpx_reversal' | 'team_bonus' | 'manual_adjustment' | 'backfill' | string;
   createdAt: string;
   processedAt?: string;
   description?: string;
@@ -124,6 +198,13 @@ export interface SystemSettings {
   feeCentsErc20: number;
   userSharePercent: number;
   pointsPerUsdt: number;
+  newUserDays?: number;
+  timezone?: string;
+  teamSystemEnabled?: boolean;
+  managersCanCreateTeams?: boolean;
+  maxTeamsPerManager?: number;
+  teamBonusEnabled?: boolean;
+  teamBonusPercent?: number;
   surveyDisplayMode?: 'hybrid' | 'points_only';
   cpxAppId?: string;
   cpxHashKey?: string;
@@ -178,4 +259,5 @@ export interface CpxConfigStatus {
   integrationMode?: 'hybrid_api' | 'direct_wall' | 'paused';
   mode: 'live' | 'demo' | 'unconfigured';
 }
+
 

@@ -4,14 +4,26 @@ import { dbStore, UserAccount } from './db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'reward-river-production-secure-hmac-key-2026';
 
+export interface ImpersonationClaim {
+  sessionId: string;
+  adminId: string;
+  adminEmail: string;
+  targetUserId: string;
+  targetEmail: string;
+  startedAt: string;
+  expiresAt: string;
+  readOnly: true;
+}
+
 export interface AuthSession {
   userId: string;
   email: string;
   username?: string;
   displayName?: string;
   externalOpaqueId?: string;
-  role: 'user' | 'admin';
+  role: 'user' | 'manager' | 'admin';
   exp: number;
+  impersonation?: ImpersonationClaim;
 }
 
 export function hashPassword(password: string): { hash: string; salt: string } {
@@ -48,6 +60,26 @@ export function createSessionToken(user: UserAccount): string {
   return `${payload}.${signature}`;
 }
 
+export function createImpersonationToken(
+  targetUser: UserAccount,
+  impersonation: ImpersonationClaim
+): string {
+  const expMs = new Date(impersonation.expiresAt).getTime();
+  const session: AuthSession = {
+    userId: targetUser.id,
+    email: targetUser.email,
+    username: targetUser.username || targetUser.displayName,
+    displayName: targetUser.displayName || targetUser.username || targetUser.email.split('@')[0],
+    externalOpaqueId: targetUser.externalOpaqueId,
+    role: targetUser.role,
+    exp: expMs,
+    impersonation
+  };
+  const payload = Buffer.from(JSON.stringify(session)).toString('base64url');
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
 export function verifySessionToken(token: string): AuthSession | null {
   if (!token) return null;
 
@@ -75,6 +107,10 @@ export function verifySessionToken(token: string): AuthSession | null {
     try {
       const session: AuthSession = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8'));
       if (session.exp && Date.now() > session.exp) return null;
+      if (session.impersonation) {
+        if (!isSigMatch) return null;
+        if (new Date(session.impersonation.expiresAt).getTime() <= Date.now()) return null;
+      }
       if (isSigMatch || session.userId) {
         return session;
       }
@@ -99,7 +135,7 @@ export function verifySessionToken(token: string): AuthSession | null {
         email: payload.email || '',
         username: payload.username || payload.user_metadata?.username,
         displayName: payload.displayName || payload.user_metadata?.full_name,
-        role: isAdmin ? 'admin' : 'user',
+        role: isAdmin ? 'admin' : payload.role === 'manager' ? 'manager' : 'user',
         exp: (payload.exp || Math.floor(Date.now() / 1000) + 86400) * 1000
       };
     } catch {
@@ -113,6 +149,7 @@ export function verifySessionToken(token: string): AuthSession | null {
 // Extends Express Request
 export interface AuthenticatedRequest extends Request {
   user?: UserAccount;
+  impersonation?: ImpersonationClaim;
 }
 
 export async function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -121,6 +158,15 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
     const token = authHeader.substring(7).trim();
     const session = verifySessionToken(token);
     if (session) {
+      if (session.impersonation) {
+        const activeImp = dbStore.getImpersonationSession(session.impersonation.sessionId);
+        if (!activeImp) {
+          res.status(401).json({ error: 'View-as-User impersonation session has expired or ended.' });
+          return;
+        }
+        req.impersonation = session.impersonation;
+      }
+
       let user = dbStore.getUserById(session.userId);
       if (!user && session.email) {
         user = dbStore.getUserByUsernameOrEmail(session.email);
@@ -135,10 +181,11 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
       }
 
       const isSoleAdmin =
-        session.role === 'admin' ||
-        session.userId === 'usr_admin_rewardriver' ||
-        session.email?.toLowerCase() === 'admin@reward-river' ||
-        session.email?.toLowerCase() === 'admin';
+        !session.impersonation &&
+        (session.role === 'admin' ||
+          session.userId === 'usr_admin_rewardriver' ||
+          session.email?.toLowerCase() === 'admin@reward-river' ||
+          session.email?.toLowerCase() === 'admin');
 
       // Auto-heal session user on stateless serverless container if not in local memory yet
       if (!user && session.userId && session.email) {
@@ -154,7 +201,7 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
           salt: '',
           displayName: display,
           emailVerified: true,
-          role: isSoleAdmin ? 'admin' : 'user',
+          role: isSoleAdmin ? 'admin' : session.role === 'manager' ? 'manager' : 'user',
           externalOpaqueId:
             session.externalOpaqueId ||
             `rr_cpx_${String(session.userId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
@@ -166,7 +213,11 @@ export async function authMiddleware(req: AuthenticatedRequest, res: Response, n
       }
 
       if (user) {
-        user.role = isSoleAdmin ? 'admin' : 'user';
+        if (isSoleAdmin) {
+          user.role = 'admin';
+        } else if (user.role !== 'manager' && session.role === 'manager') {
+          user.role = 'manager';
+        }
         req.user = user;
       }
     }
@@ -182,7 +233,23 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   next();
 }
 
+export function blockWhenImpersonating(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (req.impersonation) {
+    res.status(403).json({
+      error: `Read-only mode active (Viewing as ${req.impersonation.targetEmail}). Write actions, withdrawals, profile edits, team changes, and survey completions are blocked.`
+    });
+    return;
+  }
+  next();
+}
+
 export function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (req.impersonation) {
+    res.status(403).json({
+      error: 'Admin routes are blocked while using a read-only View-as-User token. Exit impersonation first.'
+    });
+    return;
+  }
   const u = req.user;
   const isAuthorizedAdmin =
     Boolean(u) &&
@@ -193,6 +260,22 @@ export function requireAdmin(req: AuthenticatedRequest, res: Response, next: Nex
 
   if (!isAuthorizedAdmin) {
     res.status(403).json({ error: 'Access forbidden. Administrator privileges required.' });
+    return;
+  }
+  next();
+}
+
+export function requireManagerOrAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const u = req.user;
+  const isAuthorized =
+    Boolean(u) &&
+    (u!.role === 'manager' ||
+      u!.role === 'admin' ||
+      u!.id === 'usr_admin_rewardriver' ||
+      u!.email.toLowerCase() === 'admin@reward-river');
+
+  if (!isAuthorized) {
+    res.status(403).json({ error: 'Access forbidden. Team Manager or Administrator privileges required.' });
     return;
   }
   next();
@@ -211,3 +294,4 @@ export function requireVerifiedEmail(req: AuthenticatedRequest, res: Response, n
   }
   next();
 }
+

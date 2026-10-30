@@ -9,6 +9,9 @@ import {
   TaskCompletionRecord,
   classifyUserCohort,
   formatKarachiDateTime,
+  toKarachiDateKey,
+  isWithinKarachiDateRange,
+  DateRangePreset,
   verifyDataIntegrity,
   DataIntegrityReport
 } from '../src/utils/adminStats';
@@ -33,7 +36,8 @@ export interface UserAccount {
   salt: string;
   displayName: string;
   emailVerified: boolean;
-  role: 'user' | 'admin';
+  role: 'user' | 'manager' | 'admin';
+  status?: 'active' | 'disabled' | 'banned';
   externalOpaqueId: string; // Opaque ID for CPX survey sessions
   createdAt: string;
   updatedAt: string;
@@ -44,6 +48,53 @@ export interface UserAccount {
   hasPromptedPhone?: boolean;
   provider?: string;
   storedPoints?: number;
+}
+
+export interface TeamRecord {
+  id: string;
+  name: string;
+  managerId: string;
+  teamCode: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface TeamMemberRecord {
+  id: string;
+  teamId: string;
+  userId: string;
+  joinedAt: string;
+  consentAcceptedAt: string;
+}
+
+export interface CallbackLogRecord {
+  id: string;
+  provider: string;
+  transId: string;
+  extUserId: string;
+  matchedUserId?: string;
+  matchedUserEmail?: string;
+  rawQuery: Record<string, unknown>;
+  ipAddress: string;
+  hashValid: boolean;
+  result: 'credited' | 'duplicate' | 'bad_hash' | 'unknown_user' | 'reversed' | 'error';
+  pointsDelta: number;
+  amountUsd: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface ImpersonationSessionRecord {
+  id: string;
+  adminId: string;
+  adminEmail: string;
+  targetUserId: string;
+  targetEmail: string;
+  startedAt: string;
+  endedAt?: string;
+  expiresAt: string;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 export interface WithdrawalRequestDoc {
@@ -84,6 +135,8 @@ export interface AdminAuditLog {
   targetEntity: string;
   targetId: string;
   details: string;
+  beforeState?: Record<string, unknown> | null;
+  afterState?: Record<string, unknown> | null;
   ipAddress?: string;
   createdAt: string;
 }
@@ -98,6 +151,13 @@ export interface SystemSettings {
   feeCentsErc20: number;
   userSharePercent: number;
   pointsPerUsdt: number;
+  newUserDays?: number;
+  timezone?: string;
+  teamSystemEnabled?: boolean;
+  managersCanCreateTeams?: boolean;
+  maxTeamsPerManager?: number;
+  teamBonusEnabled?: boolean;
+  teamBonusPercent?: number;
   surveyDisplayMode?: 'hybrid' | 'points_only';
   cpxAppId?: string;
   cpxHashKey?: string;
@@ -135,6 +195,10 @@ export interface DatabaseSchema {
   withdrawalEvents: WithdrawalEvent[];
   systemSettings: SystemSettings;
   adminAuditLogs: AdminAuditLog[];
+  teams: TeamRecord[];
+  teamMembers: TeamMemberRecord[];
+  callbackLogs: CallbackLogRecord[];
+  impersonationSessions: ImpersonationSessionRecord[];
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -237,6 +301,13 @@ class DatabaseStore {
         feeCentsErc20: 250, // $2.50 USDT fee for ERC-20
         userSharePercent: 50, // 50% user payout (10,000 Pts = $1.00), 50% admin profit margin
         pointsPerUsdt: 5000, // CPX Currency Factor: 5,000 Points = $1.00 Gross
+        newUserDays: 7,
+        timezone: 'Asia/Karachi',
+        teamSystemEnabled: false,
+        managersCanCreateTeams: false,
+        maxTeamsPerManager: 5,
+        teamBonusEnabled: false,
+        teamBonusPercent: 0,
         surveyDisplayMode: 'points_only',
         cpxAppId: process.env.CPX_APP_ID || '37699',
         cpxHashKey: process.env.CPX_HASH_KEY || '1u8hIFGwUYYORM76NM76PDxenCC50bCZ',
@@ -264,7 +335,11 @@ class DatabaseStore {
         sitemapEnabled: true,
         updatedAt: '2026-10-20T00:00:00.000Z'
       },
-      adminAuditLogs: []
+      adminAuditLogs: [],
+      teams: [],
+      teamMembers: [],
+      callbackLogs: [],
+      impersonationSessions: []
     };
   }
 
@@ -414,13 +489,24 @@ class DatabaseStore {
             ...(parsed.systemSettings || {}),
             cpxAppId: parsed.systemSettings?.cpxAppId || '37699',
             cpxHashKey: validCpxHash,
-            pointsPerUsdt: 5000,
-            userSharePercent: 50,
+            pointsPerUsdt: Number(parsed.systemSettings?.pointsPerUsdt) > 0 ? Number(parsed.systemSettings.pointsPerUsdt) : 5000,
+            userSharePercent: Number(parsed.systemSettings?.userSharePercent) > 0 ? Number(parsed.systemSettings.userSharePercent) : 50,
+            newUserDays: Number(parsed.systemSettings?.newUserDays) > 0 ? Number(parsed.systemSettings.newUserDays) : 7,
+            timezone: 'Asia/Karachi',
+            teamSystemEnabled: Boolean(parsed.systemSettings?.teamSystemEnabled ?? false),
+            managersCanCreateTeams: Boolean(parsed.systemSettings?.managersCanCreateTeams ?? false),
+            maxTeamsPerManager: Number(parsed.systemSettings?.maxTeamsPerManager) > 0 ? Number(parsed.systemSettings.maxTeamsPerManager) : 5,
+            teamBonusEnabled: Boolean(parsed.systemSettings?.teamBonusEnabled ?? false),
+            teamBonusPercent: Math.max(0, Number(parsed.systemSettings?.teamBonusPercent) || 0),
             aoyApiKey: parsed.systemSettings?.aoyApiKey || process.env.AOY_API_KEY || '223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa',
             aoySecretKey: parsed.systemSettings?.aoySecretKey || process.env.AOY_SECRET_KEY || '8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92',
             minWithdrawalCents: 2500
           },
-          adminAuditLogs: parsed.adminAuditLogs || []
+          adminAuditLogs: parsed.adminAuditLogs || [],
+          teams: Array.isArray(parsed.teams) ? parsed.teams : [],
+          teamMembers: Array.isArray(parsed.teamMembers) ? parsed.teamMembers : [],
+          callbackLogs: Array.isArray(parsed.callbackLogs) ? parsed.callbackLogs : [],
+          impersonationSessions: Array.isArray(parsed.impersonationSessions) ? parsed.impersonationSessions : []
         };
         await this.persist();
       } else {
@@ -575,7 +661,12 @@ class DatabaseStore {
 
           const isSoleAdmin =
             row.id === 'usr_admin_rewardriver' || rawEmailLower === 'admin@reward-river';
-          const effectiveRole: 'user' | 'admin' = isSoleAdmin ? 'admin' : 'user';
+          const rowRole = String(row.role || '').toLowerCase();
+          const effectiveRole: 'user' | 'manager' | 'admin' = isSoleAdmin
+            ? 'admin'
+            : rowRole === 'manager'
+            ? 'manager'
+            : 'user';
 
           const cleanUuid = String(row.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
           const rawExt = String(row.external_opaque_id || '');
@@ -647,8 +738,14 @@ class DatabaseStore {
               this.data.users[existingIdx].username = display;
               changed = true;
             }
-            if (current.role !== effectiveRole) {
-              this.data.users[existingIdx].role = effectiveRole;
+            // Preserve local 'manager' role if Supabase users table hasn't synced it yet
+            const desiredRole: 'user' | 'manager' | 'admin' = isSoleAdmin
+              ? 'admin'
+              : effectiveRole === 'manager' || current.role === 'manager'
+              ? 'manager'
+              : 'user';
+            if (current.role !== desiredRole) {
+              this.data.users[existingIdx].role = desiredRole;
               changed = true;
             }
             if (row.password_hash && row.salt && (!current.passwordHash || !current.salt)) {
@@ -950,59 +1047,50 @@ class DatabaseStore {
     const raw = String(extId || '').trim();
     if (!raw) return undefined;
 
+    // Reject generic/guest/public feed placeholders immediately — never credit a random user!
+    const lowerRaw = raw.toLowerCase();
+    if (
+      lowerRaw === 'member' ||
+      lowerRaw === 'rr_member_1' ||
+      lowerRaw === 'rr_cpx_public_feed' ||
+      lowerRaw.startsWith('rr_guest') ||
+      lowerRaw === 'guest' ||
+      lowerRaw === 'anonymous'
+    ) {
+      return undefined;
+    }
+
     // 1. Exact externalOpaqueId or id match
     const exact = this.data.users.find(
       u => u.externalOpaqueId === raw || u.id === raw
     );
     if (exact) return exact;
 
-    // 2. Strip rr_cpx_ or rr_ prefixes and check id / username / email
-    const stripped = raw.replace(/^rr_(cpx_)?/i, '');
-    const byStripped = this.data.users.find(
-      u =>
-        u.id === stripped ||
-        u.externalOpaqueId === `rr_cpx_${stripped}` ||
-        u.id.replace(/[^a-zA-Z0-9]/g, '') === stripped.replace(/[^a-zA-Z0-9]/g, '') ||
-        (u.username && u.username.toLowerCase() === raw.toLowerCase()) ||
-        (u.username && u.username.toLowerCase() === stripped.toLowerCase()) ||
-        u.email.toLowerCase() === raw.toLowerCase()
-    );
-    if (byStripped) return byStripped;
+    // 2. Strip rr_cpx_ or rr_ or usr_ prefixes and match strictly by permanent user ID or externalOpaqueId
+    const stripped = raw.replace(/^(rr_cpx_|rr_|usr_)/i, '');
+    if (!stripped || stripped.length < 4) return undefined;
 
-    // 3. Substring matching for user ID, clean UUID hex, email or username inside raw
     const cleanTarget = raw.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     const cleanStripped = stripped.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
-    for (const u of this.data.users) {
-      const cleanId = u.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      const cleanExt = (u.externalOpaqueId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      const cleanEmail = u.email.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      const cleanName = (u.username || u.displayName || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-
+    return this.data.users.find(u => {
       if (
-        cleanId === cleanTarget ||
-        cleanExt === cleanTarget ||
-        cleanId === cleanStripped ||
-        cleanExt === cleanStripped ||
-        (cleanId.length > 6 && (cleanTarget.includes(cleanId) || cleanStripped.includes(cleanId))) ||
-        (cleanExt.length > 6 && (cleanTarget.includes(cleanExt) || cleanStripped.includes(cleanExt))) ||
-        (cleanEmail.length > 5 && (cleanTarget.includes(cleanEmail) || cleanStripped.includes(cleanEmail))) ||
-        (cleanName.length > 3 && (cleanTarget.includes(cleanName) || cleanStripped.includes(cleanName)))
+        u.id === stripped ||
+        u.id === `usr_${stripped}` ||
+        u.externalOpaqueId === `rr_cpx_${stripped}`
       ) {
-        return u;
+        return true;
       }
-    }
-
-    // 4. Fallback if CPX sent generic guest/member placeholder: credit the most recently active non-admin user
-    if (raw === 'member' || raw === 'rr_member_1' || raw.startsWith('rr_guest') || raw === 'rr_cpx_public_feed') {
-      const nonAdminUsers = this.data.users.filter(u => u.role !== 'admin');
-      if (nonAdminUsers.length > 0) {
-        return nonAdminUsers[nonAdminUsers.length - 1];
-      }
-      return this.data.users[0];
-    }
-
-    return undefined;
+      const cleanId = u.id.replace(/^usr_/i, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const cleanFullId = u.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const cleanExt = (u.externalOpaqueId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      return (
+        cleanFullId === cleanTarget ||
+        cleanId === cleanStripped ||
+        cleanExt === cleanTarget ||
+        (cleanId.length >= 8 && cleanStripped === cleanId)
+      );
+    });
   }
 
   getUserByAoySubId(subId: string): UserAccount | undefined {
@@ -1132,6 +1220,12 @@ class DatabaseStore {
   }
 
   getAllUsersWithDetails() {
+    const newUserDays = this.data.systemSettings?.newUserDays || 7;
+    const teams = this.data.teams || [];
+    const teamMembers = this.data.teamMembers || [];
+    const teamById = new Map(teams.map(t => [t.id, t]));
+    const userById = new Map(this.data.users.map(u => [u.id, u]));
+
     return this.data.users.map(({ passwordHash, salt, ...user }) => {
       const balances = this.getUserBalances(user.id);
       const userLedger = this.getLedgerForUser(user.id);
@@ -1166,10 +1260,39 @@ class DatabaseStore {
         }
       }
 
-      const cohort = classifyUserCohort(user.createdAt);
+      const cohort = classifyUserCohort(user.createdAt, undefined, newUserDays);
+      const membership = teamMembers.find(tm => tm.userId === user.id);
+      const memberTeam = membership ? teamById.get(membership.teamId) : undefined;
+      const managerObj = memberTeam ? userById.get(memberTeam.managerId) : undefined;
+
+      const managedTeams =
+        user.role === 'manager' || user.role === 'admin'
+          ? teams
+              .filter(t => t.managerId === user.id)
+              .map(t => ({
+                ...t,
+                memberCount: teamMembers.filter(tm => tm.teamId === t.id).length
+              }))
+          : [];
 
       return {
         ...user,
+        teamId: memberTeam?.id,
+        teamName: memberTeam?.name,
+        teamCode: memberTeam?.teamCode,
+        team:
+          membership && memberTeam
+            ? {
+                teamId: memberTeam.id,
+                teamName: memberTeam.name,
+                teamCode: memberTeam.teamCode,
+                managerId: memberTeam.managerId,
+                managerEmail: managerObj?.email || '',
+                joinedAt: membership.joinedAt,
+                consentAcceptedAt: membership.consentAcceptedAt
+              }
+            : null,
+        managedTeams,
         cohort,
         createdAtKarachi: formatKarachiDateTime(user.createdAt),
         lastActiveAt,
@@ -1889,6 +2012,988 @@ class DatabaseStore {
     return [...this.data.adminAuditLogs].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+  }
+
+  // --- Callback Logs (CPX S2S Postback Audit Trail) ---
+  async addCallbackLog(
+    entry: Omit<CallbackLogRecord, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
+  ): Promise<CallbackLogRecord> {
+    if (!Array.isArray(this.data.callbackLogs)) {
+      this.data.callbackLogs = [];
+    }
+    const record: CallbackLogRecord = {
+      id: entry.id || `cb_${crypto.randomUUID()}`,
+      provider: entry.provider || 'cpx',
+      transId: String(entry.transId || ''),
+      extUserId: String(entry.extUserId || ''),
+      matchedUserId: entry.matchedUserId,
+      matchedUserEmail: entry.matchedUserEmail,
+      rawQuery: entry.rawQuery || {},
+      ipAddress: entry.ipAddress || 'unknown',
+      hashValid: Boolean(entry.hashValid),
+      result: entry.result,
+      pointsDelta: Number(entry.pointsDelta) || 0,
+      amountUsd: Number(entry.amountUsd) || 0,
+      notes: entry.notes,
+      createdAt: entry.createdAt || new Date().toISOString()
+    };
+    this.data.callbackLogs.unshift(record);
+    if (this.data.callbackLogs.length > 500) {
+      this.data.callbackLogs = this.data.callbackLogs.slice(0, 500);
+    }
+    await this.persist();
+
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('callback_logs').insert({
+          provider: record.provider,
+          trans_id: record.transId,
+          ext_user_id: record.extUserId,
+          matched_user_id: record.matchedUserId || null,
+          raw_query: record.rawQuery,
+          ip_address: record.ipAddress,
+          hash_valid: record.hashValid,
+          result: record.result,
+          points_delta: record.pointsDelta,
+          amount_usd: record.amountUsd,
+          notes: record.notes || null,
+          created_at: record.createdAt
+        });
+      } catch {
+        // Optional callback_logs table in Supabase prior to migration
+      }
+    }
+    return record;
+  }
+
+  getCallbackLogs(limit = 200): CallbackLogRecord[] {
+    if (!Array.isArray(this.data.callbackLogs)) return [];
+    const userMap = new Map(this.data.users.map(u => [u.id, u]));
+    return this.data.callbackLogs.slice(0, limit).map(cb => ({
+      ...cb,
+      matchedUserEmail: cb.matchedUserEmail || (cb.matchedUserId ? userMap.get(cb.matchedUserId)?.email : undefined)
+    }));
+  }
+
+  // --- Roles & Manager Promotion / Demotion (Admin-Only) ---
+  async setUserRole(params: {
+    targetUserId: string;
+    newRole: 'user' | 'manager';
+    actorUser: UserAccount;
+    ipAddress?: string;
+  }): Promise<{ user: Omit<UserAccount, 'passwordHash' | 'salt'>; deactivatedTeamsCount: number }> {
+    const { targetUserId, newRole, actorUser, ipAddress } = params;
+
+    const isAuthorizedAdmin =
+      actorUser &&
+      (actorUser.role === 'admin' ||
+        actorUser.id === 'usr_admin_rewardriver' ||
+        actorUser.email.toLowerCase() === 'admin@reward-river');
+
+    if (!isAuthorizedAdmin) {
+      await this.addAuditLog({
+        adminUserId: actorUser?.id || 'unauthorized',
+        adminEmail: actorUser?.email || 'unauthorized',
+        action: 'REJECTED_ROLE_CHANGE_ATTEMPT',
+        targetEntity: 'users',
+        targetId: targetUserId,
+        details: JSON.stringify({
+          attemptedBy: actorUser?.email,
+          attemptedRole: newRole,
+          reason: 'Only Admin can promote or demote managers.'
+        }),
+        ipAddress
+      });
+      const err = new Error('Forbidden: Only an Administrator can promote or demote managers.');
+      (err as any).statusCode = 403;
+      throw err;
+    }
+
+    const idx = this.data.users.findIndex(u => u.id === targetUserId);
+    if (idx === -1) {
+      throw new Error(`User not found: ${targetUserId}`);
+    }
+
+    const target = this.data.users[idx];
+    if (target.role === 'admin' || target.id === 'usr_admin_rewardriver') {
+      throw new Error('Cannot alter the role of the Super Admin account.');
+    }
+
+    const beforeState = {
+      id: target.id,
+      email: target.email,
+      role: target.role,
+      managedTeams: this.getTeamsForManager(target.id)
+    };
+
+    let deactivatedTeamsCount = 0;
+
+    if (newRole === 'manager') {
+      // Block promoting a user who is currently a member of a team
+      const existingMembership = this.getTeamMembershipForUser(target.id);
+      if (existingMembership) {
+        const memberTeam = this.getTeamById(existingMembership.teamId);
+        throw new Error(
+          `Cannot promote ${target.email} to Manager while they are a member of team "${memberTeam?.name || existingMembership.teamId}". Remove them from their team first.`
+        );
+      }
+      this.data.users[idx].role = 'manager';
+      this.data.users[idx].updatedAt = new Date().toISOString();
+    } else if (newRole === 'user') {
+      this.data.users[idx].role = 'user';
+      this.data.users[idx].updatedAt = new Date().toISOString();
+      // Demoting a manager sets is_active = false on all their teams while keeping member history
+      for (const team of this.data.teams || []) {
+        if (team.managerId === target.id && team.isActive) {
+          team.isActive = false;
+          deactivatedTeamsCount += 1;
+        }
+      }
+    }
+
+    const afterState = {
+      id: target.id,
+      email: target.email,
+      role: this.data.users[idx].role,
+      deactivatedTeamsCount,
+      managedTeams: this.getTeamsForManager(target.id)
+    };
+
+    await this.addAuditLog({
+      adminUserId: actorUser.id,
+      adminEmail: actorUser.email,
+      action: newRole === 'manager' ? 'PROMOTE_TO_MANAGER' : 'DEMOTE_MANAGER_TO_USER',
+      targetEntity: 'users',
+      targetId: target.id,
+      beforeState,
+      afterState,
+      details: JSON.stringify({ before: beforeState, after: afterState }),
+      ipAddress
+    });
+
+    await this.persist();
+    await this.upsertUserToSupabase(this.data.users[idx]);
+
+    const { passwordHash: _ph, salt: _s, ...cleanUser } = this.data.users[idx];
+    return { user: cleanUser, deactivatedTeamsCount };
+  }
+
+  // --- Team System (One Manager -> Many Teams) ---
+  generateUniqueTeamCode(length = 6): string {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const existingCodes = new Set((this.data.teams || []).map(t => t.teamCode.toUpperCase()));
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const bytes = crypto.randomBytes(length);
+      let code = '';
+      for (let i = 0; i < length; i++) {
+        code += alphabet[bytes[i] % alphabet.length];
+      }
+      if (!existingCodes.has(code)) {
+        return code;
+      }
+    }
+    return `RR${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  }
+
+  getTeams(): TeamRecord[] {
+    if (!Array.isArray(this.data.teams)) this.data.teams = [];
+    return [...this.data.teams];
+  }
+
+  getTeamMembers(): TeamMemberRecord[] {
+    if (!Array.isArray(this.data.teamMembers)) this.data.teamMembers = [];
+    return [...this.data.teamMembers];
+  }
+
+  getTeamById(teamId: string): TeamRecord | undefined {
+    return (this.data.teams || []).find(t => t.id === teamId);
+  }
+
+  lookupTeamByCode(rawCode: string): (TeamRecord & { managerName?: string; managerEmail?: string; memberCount: number }) | null {
+    const code = String(rawCode || '').trim().toUpperCase();
+    if (!code) return null;
+    const team = (this.data.teams || []).find(t => t.teamCode.toUpperCase() === code);
+    if (!team) return null;
+    const manager = this.getUserById(team.managerId);
+    const memberCount = (this.data.teamMembers || []).filter(tm => tm.teamId === team.id).length;
+    return {
+      ...team,
+      managerName: manager?.displayName || manager?.username || manager?.email?.split('@')[0] || 'Manager',
+      managerEmail: manager?.email,
+      memberCount
+    };
+  }
+
+  getTeamsForManager(managerId: string): TeamRecord[] {
+    return (this.data.teams || []).filter(t => t.managerId === managerId);
+  }
+
+  getTeamMembershipForUser(userId: string): TeamMemberRecord | undefined {
+    return (this.data.teamMembers || []).find(tm => tm.userId === userId);
+  }
+
+  async createTeam(params: {
+    name: string;
+    managerId: string;
+    customCode?: string;
+    actorUser: UserAccount;
+    ipAddress?: string;
+  }): Promise<TeamRecord> {
+    const { name, managerId, customCode, actorUser, ipAddress } = params;
+    const cleanName = String(name || '').trim();
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      throw new Error('Team name must be between 2 and 80 characters.');
+    }
+
+    const isActorAdmin =
+      actorUser &&
+      (actorUser.role === 'admin' ||
+        actorUser.id === 'usr_admin_rewardriver' ||
+        actorUser.email.toLowerCase() === 'admin@reward-river');
+
+    const managersCanCreate = Boolean(this.data.systemSettings?.managersCanCreateTeams);
+    const maxTeams = Number(this.data.systemSettings?.maxTeamsPerManager) || 5;
+
+    if (!isActorAdmin) {
+      if (actorUser?.role !== 'manager' || actorUser.id !== managerId || !managersCanCreate) {
+        await this.addAuditLog({
+          adminUserId: actorUser?.id || 'unauthorized',
+          adminEmail: actorUser?.email || 'unauthorized',
+          action: 'REJECTED_TEAM_CREATION_ATTEMPT',
+          targetEntity: 'teams',
+          targetId: managerId,
+          details: JSON.stringify({
+            attemptedBy: actorUser?.email,
+            role: actorUser?.role,
+            managersCanCreateTeams: managersCanCreate,
+            teamName: cleanName
+          }),
+          ipAddress
+        });
+        const err = new Error('Forbidden: Team creation requires Admin approval (or managers_can_create_teams enabled).');
+        (err as any).statusCode = 403;
+        throw err;
+      }
+    }
+
+    const managerUser = this.getUserById(managerId);
+    if (!managerUser) {
+      throw new Error(`Manager user not found: ${managerId}`);
+    }
+    if (managerUser.role !== 'manager' && managerUser.role !== 'admin') {
+      throw new Error(`User ${managerUser.email} must have role "manager" before owning a team.`);
+    }
+
+    const existingManagerTeams = this.getTeamsForManager(managerId);
+    if (!isActorAdmin && existingManagerTeams.length >= maxTeams) {
+      throw new Error(`Maximum teams per manager (${maxTeams}) reached.`);
+    }
+
+    let teamCode = customCode
+      ? String(customCode).trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+      : '';
+    if (!teamCode || teamCode.length < 6) {
+      teamCode = this.generateUniqueTeamCode(6);
+    } else if ((this.data.teams || []).some(t => t.teamCode.toUpperCase() === teamCode)) {
+      throw new Error(`Team code "${teamCode}" is already in use.`);
+    }
+
+    const newTeam: TeamRecord = {
+      id: `team_${crypto.randomUUID()}`,
+      name: cleanName,
+      managerId: managerUser.id,
+      teamCode,
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!Array.isArray(this.data.teams)) this.data.teams = [];
+    this.data.teams.push(newTeam);
+
+    await this.addAuditLog({
+      adminUserId: actorUser.id,
+      adminEmail: actorUser.email,
+      action: 'CREATE_TEAM',
+      targetEntity: 'teams',
+      targetId: newTeam.id,
+      beforeState: null,
+      afterState: newTeam as unknown as Record<string, unknown>,
+      details: JSON.stringify({ before: null, after: newTeam }),
+      ipAddress
+    });
+
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('teams').upsert({
+          id: newTeam.id,
+          name: newTeam.name,
+          manager_id: newTeam.managerId,
+          team_code: newTeam.teamCode,
+          is_active: newTeam.isActive,
+          created_at: newTeam.createdAt
+        });
+      } catch {
+        // Optional prior to migration
+      }
+    }
+    return newTeam;
+  }
+
+  async updateTeam(params: {
+    teamId: string;
+    name?: string;
+    isActive?: boolean;
+    actorUser: UserAccount;
+    ipAddress?: string;
+  }): Promise<TeamRecord> {
+    const idx = (this.data.teams || []).findIndex(t => t.id === params.teamId);
+    if (idx === -1) throw new Error(`Team not found: ${params.teamId}`);
+
+    const before = { ...this.data.teams[idx] };
+    if (params.name !== undefined && params.name.trim().length >= 2) {
+      this.data.teams[idx].name = params.name.trim();
+    }
+    if (params.isActive !== undefined) {
+      this.data.teams[idx].isActive = Boolean(params.isActive);
+    }
+    const after = { ...this.data.teams[idx] };
+
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: 'UPDATE_TEAM',
+      targetEntity: 'teams',
+      targetId: after.id,
+      beforeState: before as unknown as Record<string, unknown>,
+      afterState: after as unknown as Record<string, unknown>,
+      details: JSON.stringify({ before, after }),
+      ipAddress: params.ipAddress
+    });
+
+    await this.persist();
+    return after;
+  }
+
+  async regenerateTeamCode(params: {
+    teamId: string;
+    actorUser: UserAccount;
+    ipAddress?: string;
+  }): Promise<TeamRecord> {
+    const idx = (this.data.teams || []).findIndex(t => t.id === params.teamId);
+    if (idx === -1) throw new Error(`Team not found: ${params.teamId}`);
+
+    const before = { ...this.data.teams[idx] };
+    this.data.teams[idx].teamCode = this.generateUniqueTeamCode(6);
+    const after = { ...this.data.teams[idx] };
+
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: 'REGENERATE_TEAM_CODE',
+      targetEntity: 'teams',
+      targetId: after.id,
+      beforeState: before as unknown as Record<string, unknown>,
+      afterState: after as unknown as Record<string, unknown>,
+      details: JSON.stringify({ before, after }),
+      ipAddress: params.ipAddress
+    });
+
+    await this.persist();
+    return after;
+  }
+
+  async reassignTeamManager(params: {
+    teamId: string;
+    newManagerId: string;
+    actorUser: UserAccount;
+    ipAddress?: string;
+  }): Promise<TeamRecord> {
+    const idx = (this.data.teams || []).findIndex(t => t.id === params.teamId);
+    if (idx === -1) throw new Error(`Team not found: ${params.teamId}`);
+
+    const newManager = this.getUserById(params.newManagerId);
+    if (!newManager) throw new Error(`Target manager user not found: ${params.newManagerId}`);
+    if (newManager.role !== 'manager' && newManager.role !== 'admin') {
+      throw new Error(`Target user ${newManager.email} is not a manager. Promote them to manager first.`);
+    }
+
+    const before = { ...this.data.teams[idx] };
+    this.data.teams[idx].managerId = newManager.id;
+    const after = { ...this.data.teams[idx] };
+
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: 'REASSIGN_TEAM_MANAGER',
+      targetEntity: 'teams',
+      targetId: after.id,
+      beforeState: before as unknown as Record<string, unknown>,
+      afterState: after as unknown as Record<string, unknown>,
+      details: JSON.stringify({ before, after }),
+      ipAddress: params.ipAddress
+    });
+
+    await this.persist();
+    return after;
+  }
+
+  async moveTeamMember(params: {
+    userId: string;
+    targetTeamId: string | null;
+    actorUser: UserAccount;
+    ipAddress?: string;
+  }): Promise<{ removed: boolean; membership: TeamMemberRecord | null }> {
+    const user = this.getUserById(params.userId);
+    if (!user) throw new Error(`User not found: ${params.userId}`);
+
+    if (!Array.isArray(this.data.teamMembers)) this.data.teamMembers = [];
+    const existingIdx = this.data.teamMembers.findIndex(tm => tm.userId === user.id);
+    const before = existingIdx !== -1 ? { ...this.data.teamMembers[existingIdx] } : null;
+
+    if (!params.targetTeamId) {
+      if (existingIdx !== -1) {
+        this.data.teamMembers.splice(existingIdx, 1);
+      }
+      await this.addAuditLog({
+        adminUserId: params.actorUser.id,
+        adminEmail: params.actorUser.email,
+        action: 'REMOVE_TEAM_MEMBER',
+        targetEntity: 'team_members',
+        targetId: user.id,
+        beforeState: before as unknown as Record<string, unknown>,
+        afterState: null,
+        details: JSON.stringify({ before, after: null }),
+        ipAddress: params.ipAddress
+      });
+      await this.persist();
+      return { removed: true, membership: null };
+    }
+
+    if (user.role === 'manager') {
+      throw new Error('Managers cannot be added as a member of a team.');
+    }
+
+    const targetTeam = this.getTeamById(params.targetTeamId);
+    if (!targetTeam) throw new Error(`Target team not found: ${params.targetTeamId}`);
+
+    const nowIso = new Date().toISOString();
+    const record: TeamMemberRecord = {
+      id: existingIdx !== -1 ? this.data.teamMembers[existingIdx].id : `tm_${crypto.randomUUID()}`,
+      teamId: targetTeam.id,
+      userId: user.id,
+      joinedAt: existingIdx !== -1 ? this.data.teamMembers[existingIdx].joinedAt : nowIso,
+      consentAcceptedAt: existingIdx !== -1 ? this.data.teamMembers[existingIdx].consentAcceptedAt : nowIso
+    };
+
+    if (existingIdx !== -1) {
+      this.data.teamMembers[existingIdx] = record;
+    } else {
+      this.data.teamMembers.push(record);
+    }
+
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: existingIdx !== -1 ? 'MOVE_TEAM_MEMBER' : 'ADD_TEAM_MEMBER_BY_ADMIN',
+      targetEntity: 'team_members',
+      targetId: user.id,
+      beforeState: before as unknown as Record<string, unknown>,
+      afterState: record as unknown as Record<string, unknown>,
+      details: JSON.stringify({ before, after: record }),
+      ipAddress: params.ipAddress
+    });
+
+    await this.persist();
+    return { removed: false, membership: record };
+  }
+
+  async joinTeamByCode(params: {
+    userId: string;
+    teamCode: string;
+    consentAccepted: boolean;
+  }): Promise<{ membership: TeamMemberRecord; team: TeamRecord }> {
+    if (!this.data.systemSettings?.teamSystemEnabled) {
+      throw new Error('The Team System is currently disabled by the administrator.');
+    }
+    if (!params.consentAccepted) {
+      throw new Error(
+        'You must accept the consent disclosure ("Your team manager will be able to see your email, survey activity and points.") to join a team.'
+      );
+    }
+
+    const user = this.getUserById(params.userId);
+    if (!user) throw new Error('User account not found.');
+
+    if (user.role === 'manager') {
+      throw new Error('Managers cannot join a team as a member.');
+    }
+
+    if (!Array.isArray(this.data.teamMembers)) this.data.teamMembers = [];
+    const existing = this.data.teamMembers.find(tm => tm.userId === user.id);
+    if (existing) {
+      const existingTeam = this.getTeamById(existing.teamId);
+      throw new Error(`You are already a member of a team (${existingTeam?.name || existing.teamId}).`);
+    }
+
+    const cleanCode = String(params.teamCode || '').trim().toUpperCase();
+    const team = (this.data.teams || []).find(t => t.teamCode.toUpperCase() === cleanCode);
+    if (!team) {
+      throw new Error(`Invalid team code "${cleanCode}". Please check the code with your manager.`);
+    }
+    if (!team.isActive) {
+      throw new Error(`Team "${team.name}" (${team.teamCode}) is currently inactive and not accepting new members.`);
+    }
+    if (team.managerId === user.id) {
+      throw new Error('You cannot join your own team as a member.');
+    }
+
+    const nowIso = new Date().toISOString();
+    const membership: TeamMemberRecord = {
+      id: `tm_${crypto.randomUUID()}`,
+      teamId: team.id,
+      userId: user.id,
+      joinedAt: nowIso,
+      consentAcceptedAt: nowIso
+    };
+    this.data.teamMembers.push(membership);
+    await this.persist();
+
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('team_members').insert({
+          id: membership.id,
+          team_id: membership.teamId,
+          user_id: membership.userId,
+          joined_at: membership.joinedAt,
+          consent_accepted_at: membership.consentAcceptedAt
+        });
+      } catch {
+        // Optional prior to migration
+      }
+    }
+
+    return { membership, team };
+  }
+
+  // --- Manager Dashboard Read-Only Queries (Strictly Scoped to Manager's Own Teams) ---
+  getManagerDashboardData(params: {
+    managerId: string;
+    teamId?: string;
+    range?: DateRangePreset;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+    sortBy?: 'points' | 'surveys' | 'joinedAt';
+    nowIso?: string;
+  }) {
+    const manager = this.getUserById(params.managerId);
+    if (!manager) {
+      throw new Error('Manager account not found.');
+    }
+
+    const range: DateRangePreset = params.range || 'all';
+    const nowIso = params.nowIso || new Date().toISOString();
+    const todayKey = toKarachiDateKey(nowIso);
+    const filterOpts = {
+      range,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      nowIso
+    };
+
+    const managerTeams = (this.data.teams || []).filter(t => t.managerId === manager.id);
+    const managerTeamIds = new Set(managerTeams.map(t => t.id));
+    const allMemberships = (this.data.teamMembers || []).filter(tm => managerTeamIds.has(tm.teamId));
+
+    const userMap = new Map(this.data.users.map(u => [u.id, u]));
+    const teamMap = new Map(managerTeams.map(t => [t.id, t]));
+
+    const entryToPts = (l: LedgerEntry) =>
+      typeof l.points === 'number' && !isNaN(l.points) && l.points !== 0
+        ? Math.abs(Math.round(l.points))
+        : Math.max(0, Math.round(Math.abs(l.amountCents) * 100));
+
+    // Calculate per-team stats in selected date filter (excluding team_bonus and manager's personal survey points)
+    const teamsSummary = managerTeams.map(team => {
+      const tMembers = allMemberships.filter(tm => tm.teamId === team.id && tm.userId !== manager.id);
+      const memberIds = new Set(tMembers.map(tm => tm.userId));
+      let teamPointsInRange = 0;
+      let surveysInRange = 0;
+      const activeTodayUserIds = new Set<string>();
+
+      for (const l of this.data.rewardLedger) {
+        if (!memberIds.has(l.userId)) continue;
+        const isTeamBonus =
+          (l as { reason?: string }).reason === 'team_bonus' ||
+          (l.description || '').toLowerCase().includes('team bonus');
+        if (isTeamBonus) continue;
+
+        if (toKarachiDateKey(l.createdAt) === todayKey && l.status === 'confirmed' && l.entryType === 'credit') {
+          activeTodayUserIds.add(l.userId);
+        }
+
+        if (!isWithinKarachiDateRange(l.createdAt, filterOpts)) continue;
+
+        const pts = entryToPts(l);
+        if (l.status === 'confirmed' && l.entryType === 'credit') {
+          teamPointsInRange += pts;
+          surveysInRange += 1;
+        } else if ((l.status === 'confirmed' || l.status === 'reversed') && l.entryType === 'reversal') {
+          teamPointsInRange = Math.max(0, teamPointsInRange - pts);
+        }
+      }
+
+      return {
+        id: team.id,
+        name: team.name,
+        teamCode: team.teamCode,
+        managerId: team.managerId,
+        isActive: team.isActive,
+        createdAt: team.createdAt,
+        createdAtKarachi: formatKarachiDateTime(team.createdAt),
+        memberCount: tMembers.length,
+        activeTodayCount: activeTodayUserIds.size,
+        teamPoints: teamPointsInRange,
+        completedSurveysCount: surveysInRange
+      };
+    });
+
+    // Manager's own personal survey points vs team_bonus points (kept strictly separate from team total)
+    const managerEntries = this.getLedgerForUser(manager.id).filter(l =>
+      isWithinKarachiDateRange(l.createdAt, filterOpts)
+    );
+    let managerPersonalSurveyPoints = 0;
+    let managerTeamBonusPoints = 0;
+    for (const l of managerEntries) {
+      const pts = entryToPts(l);
+      const isBonus =
+        (l as { reason?: string }).reason === 'team_bonus' ||
+        (l.description || '').toLowerCase().includes('team bonus');
+      if (l.status === 'confirmed' && l.entryType === 'credit') {
+        if (isBonus) managerTeamBonusPoints += pts;
+        else managerPersonalSurveyPoints += pts;
+      } else if ((l.status === 'confirmed' || l.status === 'reversed') && l.entryType === 'reversal') {
+        if (isBonus) managerTeamBonusPoints = Math.max(0, managerTeamBonusPoints - pts);
+        else managerPersonalSurveyPoints = Math.max(0, managerPersonalSurveyPoints - pts);
+      }
+    }
+
+    // Filter memberships by selected teamId (if provided and belongs to manager)
+    const selectedTeamId =
+      params.teamId && params.teamId !== 'all' && managerTeamIds.has(params.teamId)
+        ? params.teamId
+        : 'all';
+
+    const scopedMemberships =
+      selectedTeamId === 'all'
+        ? allMemberships.filter(tm => tm.userId !== manager.id)
+        : allMemberships.filter(tm => tm.teamId === selectedTeamId && tm.userId !== manager.id);
+
+    const searchLower = String(params.search || '').trim().toLowerCase();
+
+    const membersRows = scopedMemberships
+      .map(tm => {
+        const u = userMap.get(tm.userId);
+        const t = teamMap.get(tm.teamId);
+        const uEntries = this.getLedgerForUser(tm.userId);
+        let pointsInRange = 0;
+        let surveysInRange = 0;
+        let allTimePoints = 0;
+        let allTimeSurveys = 0;
+
+        for (const l of uEntries) {
+          const isBonus =
+            (l as { reason?: string }).reason === 'team_bonus' ||
+            (l.description || '').toLowerCase().includes('team bonus');
+          if (isBonus) continue;
+          const pts = entryToPts(l);
+          if (l.status === 'confirmed' && l.entryType === 'credit') {
+            allTimePoints += pts;
+            allTimeSurveys += 1;
+            if (isWithinKarachiDateRange(l.createdAt, filterOpts)) {
+              pointsInRange += pts;
+              surveysInRange += 1;
+            }
+          } else if ((l.status === 'confirmed' || l.status === 'reversed') && l.entryType === 'reversal') {
+            allTimePoints = Math.max(0, allTimePoints - pts);
+            if (isWithinKarachiDateRange(l.createdAt, filterOpts)) {
+              pointsInRange = Math.max(0, pointsInRange - pts);
+            }
+          }
+        }
+
+        const lastActiveAt = uEntries[0]?.createdAt || u?.updatedAt || tm.joinedAt;
+
+        return {
+          membershipId: tm.id,
+          userId: tm.userId,
+          displayName: u?.displayName || u?.username || u?.email?.split('@')[0] || 'Member',
+          email: u?.email || 'unknown@user',
+          teamId: tm.teamId,
+          teamName: t?.name || 'Team',
+          teamCode: t?.teamCode || '',
+          joinedAt: tm.joinedAt,
+          joinedAtKarachi: formatKarachiDateTime(tm.joinedAt),
+          consentAcceptedAt: tm.consentAcceptedAt,
+          lastActiveAt,
+          lastActiveAtKarachi: formatKarachiDateTime(lastActiveAt),
+          surveysCompleted: surveysInRange,
+          totalPoints: pointsInRange,
+          allTimeSurveys,
+          allTimePoints
+        };
+      })
+      .filter(m => {
+        if (!searchLower) return true;
+        return (
+          m.displayName.toLowerCase().includes(searchLower) ||
+          m.email.toLowerCase().includes(searchLower) ||
+          m.userId.toLowerCase().includes(searchLower) ||
+          m.teamName.toLowerCase().includes(searchLower) ||
+          m.teamCode.toLowerCase().includes(searchLower)
+        );
+      });
+
+    const sortBy = params.sortBy || 'points';
+    membersRows.sort((a, b) => {
+      if (sortBy === 'surveys') return b.surveysCompleted - a.surveysCompleted || b.totalPoints - a.totalPoints;
+      if (sortBy === 'joinedAt') return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime();
+      return b.totalPoints - a.totalPoints || b.surveysCompleted - a.surveysCompleted;
+    });
+
+    const combinedSummary = {
+      totalTeams: managerTeams.length,
+      activeTeams: managerTeams.filter(t => t.isActive).length,
+      totalMembers: allMemberships.filter(tm => tm.userId !== manager.id).length,
+      activeMembersToday: teamsSummary.reduce((sum, t) => sum + t.activeTodayCount, 0),
+      totalTeamPoints: teamsSummary.reduce((sum, t) => sum + t.teamPoints, 0),
+      totalTeamSurveysCompleted: teamsSummary.reduce((sum, t) => sum + t.completedSurveysCount, 0),
+      managerPersonalSurveyPoints,
+      managerTeamBonusPoints
+    };
+
+    return {
+      timezone: 'Asia/Karachi',
+      filter: {
+        teamId: selectedTeamId,
+        range,
+        startDate: params.startDate || '',
+        endDate: params.endDate || ''
+      },
+      permissions: {
+        managersCanCreateTeams: Boolean(this.data.systemSettings?.managersCanCreateTeams),
+        maxTeamsPerManager: Number(this.data.systemSettings?.maxTeamsPerManager) || 5,
+        teamBonusEnabled: Boolean(this.data.systemSettings?.teamBonusEnabled),
+        teamBonusPercent: Number(this.data.systemSettings?.teamBonusPercent) || 0
+      },
+      summary: combinedSummary,
+      teams: teamsSummary,
+      members: membersRows
+    };
+  }
+
+  getManagerMemberDetail(params: { managerId: string; memberUserId: string }) {
+    const managerTeams = (this.data.teams || []).filter(t => t.managerId === params.managerId);
+    const managerTeamIds = new Set(managerTeams.map(t => t.id));
+    const membership = (this.data.teamMembers || []).find(
+      tm => tm.userId === params.memberUserId && managerTeamIds.has(tm.teamId)
+    );
+    if (!membership) {
+      return null;
+    }
+
+    const user = this.getUserById(params.memberUserId);
+    if (!user) return null;
+    const team = this.getTeamById(membership.teamId);
+    const ledger = this.getLedgerForUser(user.id);
+    const balances = this.getUserBalances(user.id);
+
+    // Build daily activity chart (last 14 days in Asia/Karachi)
+    const dailyMap = new Map<string, { date: string; points: number; surveys: number }>();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const key = toKarachiDateKey(d);
+      dailyMap.set(key, { date: key, points: 0, surveys: 0 });
+    }
+    for (const l of ledger) {
+      const key = toKarachiDateKey(l.createdAt);
+      const bucket = dailyMap.get(key);
+      if (!bucket) continue;
+      const pts = Math.abs(Math.round(Number(l.points) || Number(l.amountCents) * 100));
+      if (l.status === 'confirmed' && l.entryType === 'credit') {
+        bucket.points += pts;
+        bucket.surveys += 1;
+      } else if ((l.status === 'confirmed' || l.status === 'reversed') && l.entryType === 'reversal') {
+        bucket.points = Math.max(0, bucket.points - pts);
+      }
+    }
+
+    return {
+      userId: user.id,
+      displayName: user.displayName || user.username || user.email.split('@')[0],
+      email: user.email,
+      teamId: membership.teamId,
+      teamName: team?.name || 'Team',
+      teamCode: team?.teamCode || '',
+      joinedAt: membership.joinedAt,
+      joinedAtKarachi: formatKarachiDateTime(membership.joinedAt),
+      consentAcceptedAt: membership.consentAcceptedAt,
+      lastActiveAt: ledger[0]?.createdAt || user.updatedAt || membership.joinedAt,
+      lastActiveAtKarachi: formatKarachiDateTime(ledger[0]?.createdAt || user.updatedAt || membership.joinedAt),
+      totalPoints: balances.totalEarnedPoints,
+      availablePoints: balances.availablePoints,
+      completedSurveysCount: balances.completedSurveysCount,
+      completions: ledger.filter(l => l.entryType === 'credit' || l.entryType === 'reversal').map(l => ({
+        id: l.id,
+        transId: l.providerTxId,
+        offerId: l.cpxOfferId || l.taskId || 'survey',
+        points: l.entryType === 'reversal' ? -Math.abs(l.points || 0) : Math.abs(l.points || 0),
+        amountUsd: ((l.grossCents || Math.round(((l.points || 0) / 5000) * 100)) / 100).toFixed(2),
+        status: l.entryType === 'reversal' || l.status === 'reversed' ? 'reversed' : 'completed',
+        createdAt: l.createdAt,
+        createdAtKarachi: formatKarachiDateTime(l.createdAt),
+        description: l.description
+      })),
+      ledger: ledger.map(l => ({
+        ...l,
+        createdAtKarachi: formatKarachiDateTime(l.createdAt)
+      })),
+      activityChart: Array.from(dailyMap.values())
+    };
+  }
+
+  // --- Admin "View as User" Impersonation Sessions (Read-Only, 15-Minute Expiry) ---
+  async createImpersonationSession(params: {
+    adminUser: UserAccount;
+    targetUserId: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<ImpersonationSessionRecord> {
+    const { adminUser, targetUserId, ipAddress, userAgent } = params;
+    const isAuthorizedAdmin =
+      adminUser &&
+      (adminUser.role === 'admin' ||
+        adminUser.id === 'usr_admin_rewardriver' ||
+        adminUser.email.toLowerCase() === 'admin@reward-river');
+
+    if (!isAuthorizedAdmin) {
+      const err = new Error('Forbidden: Only an Administrator can start a View-as-User session.');
+      (err as any).statusCode = 403;
+      throw err;
+    }
+
+    const target = this.getUserById(targetUserId);
+    if (!target) {
+      throw new Error(`Target user not found: ${targetUserId}`);
+    }
+
+    if (
+      target.role === 'admin' ||
+      target.id === 'usr_admin_rewardriver' ||
+      target.email.toLowerCase() === 'admin@reward-river'
+    ) {
+      const err = new Error('Forbidden: An Administrator cannot impersonate another Administrator.');
+      (err as any).statusCode = 403;
+      throw err;
+    }
+
+    const nowMs = Date.now();
+    const startedAt = new Date(nowMs).toISOString();
+    const expiresAt = new Date(nowMs + 15 * 60 * 1000).toISOString(); // 15 minutes
+
+    const session: ImpersonationSessionRecord = {
+      id: `imp_${crypto.randomUUID()}`,
+      adminId: adminUser.id,
+      adminEmail: adminUser.email,
+      targetUserId: target.id,
+      targetEmail: target.email,
+      startedAt,
+      expiresAt,
+      ipAddress,
+      userAgent
+    };
+
+    if (!Array.isArray(this.data.impersonationSessions)) {
+      this.data.impersonationSessions = [];
+    }
+    this.data.impersonationSessions.unshift(session);
+
+    await this.addAuditLog({
+      adminUserId: adminUser.id,
+      adminEmail: adminUser.email,
+      action: 'START_IMPERSONATION_SESSION',
+      targetEntity: 'impersonation_sessions',
+      targetId: target.id,
+      beforeState: null,
+      afterState: session as unknown as Record<string, unknown>,
+      details: JSON.stringify({
+        sessionId: session.id,
+        adminEmail: adminUser.email,
+        targetUserId: target.id,
+        targetEmail: target.email,
+        expiresAt: session.expiresAt,
+        readOnly: true
+      }),
+      ipAddress
+    });
+
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('impersonation_sessions').insert({
+          id: session.id,
+          admin_id: session.adminId,
+          target_user_id: session.targetUserId,
+          started_at: session.startedAt,
+          expires_at: session.expiresAt,
+          ip_address: session.ipAddress || null,
+          user_agent: session.userAgent || null
+        });
+      } catch {
+        // Optional prior to migration
+      }
+    }
+
+    return session;
+  }
+
+  getImpersonationSession(sessionId: string): ImpersonationSessionRecord | null {
+    if (!sessionId || !Array.isArray(this.data.impersonationSessions)) return null;
+    const s = this.data.impersonationSessions.find(item => item.id === sessionId);
+    if (!s) return null;
+    if (s.endedAt) return null;
+    if (new Date(s.expiresAt).getTime() <= Date.now()) return null;
+    return s;
+  }
+
+  async endImpersonationSession(sessionId: string, actorUserId: string, ipAddress?: string): Promise<boolean> {
+    if (!Array.isArray(this.data.impersonationSessions)) return false;
+    const idx = this.data.impersonationSessions.findIndex(s => s.id === sessionId);
+    if (idx === -1) return false;
+    const endedAt = new Date().toISOString();
+    this.data.impersonationSessions[idx].endedAt = endedAt;
+
+    await this.addAuditLog({
+      adminUserId: this.data.impersonationSessions[idx].adminId,
+      adminEmail: this.data.impersonationSessions[idx].adminEmail,
+      action: 'END_IMPERSONATION_SESSION',
+      targetEntity: 'impersonation_sessions',
+      targetId: this.data.impersonationSessions[idx].targetUserId,
+      details: JSON.stringify({
+        sessionId,
+        endedBy: actorUserId,
+        endedAt
+      }),
+      ipAddress
+    });
+
+    await this.persist();
+    return true;
   }
 }
 
