@@ -26,7 +26,7 @@ export interface DateFilterOptions {
 
 export interface TaskDefinitionRecord {
   id: string;
-  taskType: 'survey' | 'ptc' | 'shortlink' | 'screenout_bonus' | 'Verification' | 'custom';
+  taskType: 'survey' | 'ptc' | 'shortlink' | 'screenout_bonus' | 'Verification' | 'custom' | 'daily_checkin' | 'profile_verification';
   title: string;
   description: string;
   rewardPoints: number;

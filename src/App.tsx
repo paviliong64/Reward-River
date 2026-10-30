@@ -757,7 +757,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
             <span>
-              Viewing as <strong className="underline">{impersonation.targetUserEmail || user.email}</strong>. Read-only.
+              Viewing as <strong className="underline">{impersonation.targetEmail || user.email}</strong>. Read-only.
             </span>
           </div>
           <button
@@ -830,18 +830,18 @@ export default function App() {
             {currentTab === 'transactions' && (
               <TransactionsView
                 entries={ledgerEntries}
-                withdrawals={withdrawals}
                 usdtQuote={usdtQuote}
                 pointsPerUsdt={pointsPerUsdt}
+                onRefresh={handleRefreshAll}
               />
             )}
 
             {currentTab === 'settings' && (
               <SettingsView
                 user={user}
+                token={getAuthToken() || ''}
                 onVerifyEmail={handleVerifyEmail}
-                onChangePassword={handlePasswordChange}
-                onSignOut={handleSignOut}
+                onPasswordChange={handlePasswordChange}
               />
             )}
 

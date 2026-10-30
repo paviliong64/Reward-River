@@ -186,6 +186,7 @@ export interface LedgerEntry {
   description?: string;
   cpxOfferId?: string;
   approvedBy?: string;
+  reversalRef?: string;
 }
 
 export interface SystemSettings {

@@ -284,7 +284,7 @@ export const ManagerPortal: React.FC<ManagerPortalProps> = ({ token }) => {
             </span>
           </div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white mt-1">
-            {data?.manager.displayName || 'Manager'} — Teams & Member Activity
+            {data?.manager?.displayName || 'Manager'} — Teams & Member Activity
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Track real survey completions and verified points across your assigned teams. Team points strictly reflect member survey earnings and exclude manager personal surveys or bonuses.
@@ -366,7 +366,7 @@ export const ManagerPortal: React.FC<ManagerPortalProps> = ({ token }) => {
             </p>
           </div>
 
-          {data?.permissions.managersCanCreateTeams && (
+          {data?.permissions?.managersCanCreateTeams && (
             <form onSubmit={handleCreateTeam} className="flex items-center gap-2">
               <input
                 type="text"
@@ -655,9 +655,9 @@ export const ManagerPortal: React.FC<ManagerPortalProps> = ({ token }) => {
                   Team Member Read-Only Detail
                 </span>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">
-                  {memberDetail?.member.displayName || 'Loading Member...'}
+                  {memberDetail?.member?.displayName || 'Loading Member...'}
                 </h3>
-                {memberDetail && (
+                {memberDetail?.member && (
                   <p className="text-xs text-slate-500">
                     {memberDetail.member.email} • Team: <strong>{memberDetail.member.teamName}</strong> ({memberDetail.member.teamCode})
                   </p>
@@ -684,25 +684,25 @@ export const ManagerPortal: React.FC<ManagerPortalProps> = ({ token }) => {
               </div>
             )}
 
-            {memberDetail && (
+            {memberDetail?.member && memberDetail?.summary && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700">
                     <span className="text-[11px] font-bold text-slate-400 uppercase">Total Ledger Points</span>
                     <div className="text-xl font-black text-emerald-600 font-mono mt-1">
-                      {memberDetail.summary.totalPoints.toLocaleString('en-US')} Pts
+                      {(memberDetail.summary.totalPoints || 0).toLocaleString('en-US')} Pts
                     </div>
                   </div>
                   <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700">
                     <span className="text-[11px] font-bold text-slate-400 uppercase">Completed Surveys</span>
                     <div className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
-                      {memberDetail.summary.completedSurveys}
+                      {memberDetail.summary.completedSurveys ?? 0}
                     </div>
                   </div>
                   <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700">
                     <span className="text-[11px] font-bold text-slate-400 uppercase">Joined Team (PKT)</span>
                     <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 mt-1.5">
-                      {memberDetail.member.joinedTeamAtKarachi}
+                      {memberDetail.member.joinedTeamAtKarachi || memberDetail.member.joinedTeamAt}
                     </div>
                     <div className="text-[10px] text-emerald-600 font-semibold mt-0.5 flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3" />
@@ -718,7 +718,7 @@ export const ManagerPortal: React.FC<ManagerPortalProps> = ({ token }) => {
                     <span>Last 14 Days Activity (Asia/Karachi)</span>
                   </h4>
                   <div className="grid grid-cols-7 sm:grid-cols-14 gap-1.5 pt-2">
-                    {memberDetail.activityChart.map((day) => (
+                    {(memberDetail.activityChart || []).map((day) => (
                       <div
                         key={day.dateKey}
                         className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center"

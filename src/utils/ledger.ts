@@ -19,6 +19,7 @@ export interface LedgerEntry {
   processedAt?: string;
   reversalRef?: string;
   description?: string;
+  reason?: string;
   cpxOfferId?: string;
   approvedBy?: string; // 'CPX Research S2S' | 'AoyTasks S2S' | Admin email
 }

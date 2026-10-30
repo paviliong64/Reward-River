@@ -111,6 +111,119 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [callbackLogFilter, setCallbackLogFilter] = useState<string>('all');
   const [moveTargetTeamId, setMoveTargetTeamId] = useState<string>('');
 
+  const [startingImpersonation, setStartingImpersonation] = useState(false);
+  const [updatingUserRole, setUpdatingUserRole] = useState(false);
+  const [loadingManagersTeams, setLoadingManagersTeams] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamDesc, setNewTeamDesc] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [completionsSearch, setCompletionsSearch] = useState('');
+  const [completionsFilterStatus, setCompletionsFilterStatus] = useState('all');
+  const [loadingCompletions, setLoadingCompletions] = useState(false);
+  const [completionsList, setCompletionsList] = useState<any[]>([]);
+  const [callbackFilterResult, setCallbackFilterResult] = useState('all');
+  const [loadingCallbackLogs, setLoadingCallbackLogs] = useState(false);
+
+  const teamsList = managersData?.teams || [];
+  const managersList = managersData?.managers || [];
+
+  const showFeedback = (type: 'success' | 'error', text: string) => {
+    setActionMessage({ text, type });
+  };
+
+  const fetchManagersAndTeams = async () => {
+    setLoadingManagersTeams(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/managers-and-teams', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setManagersData(data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingManagersTeams(false);
+    }
+  };
+
+  const handleAdminCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeamManagerId || !newTeamName.trim()) {
+      showFeedback('error', 'Please choose a manager and enter a team name.');
+      return;
+    }
+    setCreatingTeam(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/teams', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          managerId: newTeamManagerId,
+          name: newTeamName.trim(),
+          description: newTeamDesc.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create team.');
+      showFeedback('success', `Team "${newTeamName.trim()}" created successfully! Code: ${data.team?.teamCode}`);
+      setNewTeamName('');
+      setNewTeamDesc('');
+      await fetchManagersAndTeams();
+    } catch (err: any) {
+      showFeedback('error', err.message || 'Failed to create team.');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
+  const fetchSurveyCompletions = async () => {
+    setLoadingCompletions(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const url = new URL('/api/admin/survey-completions', window.location.origin);
+      if (completionsSearch.trim()) url.searchParams.set('q', completionsSearch.trim());
+      if (completionsFilterStatus !== 'all') url.searchParams.set('status', completionsFilterStatus);
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.completions)) {
+        setCompletionsList(data.completions);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingCompletions(false);
+    }
+  };
+
+  const fetchCallbackLogs = async () => {
+    setLoadingCallbackLogs(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const url = new URL('/api/admin/cpx/callback-logs', window.location.origin);
+      if (callbackFilterResult !== 'all') url.searchParams.set('result', callbackFilterResult);
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.logs)) {
+        setCallbackLogs(data.logs);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingCallbackLogs(false);
+    }
+  };
+
   const defaultAdminSettings: SystemSettings = {
     supabaseUrl: '',
     supabaseAnonKey: '',
@@ -498,35 +611,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
       await fetchAdminData();
     } catch (err: any) {
       setActionMessage({ text: err.message || 'Failed to update user role.', type: 'error' });
-    }
-  };
-
-  const handleAdminCreateTeam = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTeamManagerId || !newTeamNameInput.trim()) return;
-    try {
-      const token = localStorage.getItem('rr_auth_token');
-      const res = await fetch('/api/admin/teams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          managerId: newTeamManagerId,
-          teamName: newTeamNameInput.trim()
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create team.');
-      setNewTeamNameInput('');
-      setActionMessage({
-        text: `Created team "${data.team.teamName}" (Invite Code: ${data.team.teamCode})`,
-        type: 'success'
-      });
-      await fetchAdminData();
-    } catch (err: any) {
-      setActionMessage({ text: err.message || 'Failed to create team.', type: 'error' });
     }
   };
 
@@ -3839,7 +3923,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={fetchAdminData}
+                  onClick={() => fetchAdminData()}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors self-start sm:self-auto cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -5816,7 +5900,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     {(selectedUserDetail.balances.totalEarnedPoints || 0).toLocaleString('en-US')} Pts
                   </div>
                   <div className="text-[10px] font-mono text-slate-500">
-                    Withdrawn: ${((selectedUserDetail.balances.withdrawnCents || 0) / 100).toFixed(2)}
+                    Withdrawn: ${((selectedUserDetail.balances.totalWithdrawnCents || 0) / 100).toFixed(2)}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">

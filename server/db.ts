@@ -2778,6 +2778,12 @@ class DatabaseStore {
 
     return {
       timezone: 'Asia/Karachi',
+      manager: {
+        id: manager.id,
+        displayName: manager.displayName || manager.username || manager.email.split('@')[0],
+        email: manager.email,
+        role: manager.role
+      },
       filter: {
         teamId: selectedTeamId,
         range,
@@ -2785,6 +2791,7 @@ class DatabaseStore {
         endDate: params.endDate || ''
       },
       permissions: {
+        teamSystemEnabled: Boolean(this.data.systemSettings?.teamSystemEnabled),
         managersCanCreateTeams: Boolean(this.data.systemSettings?.managersCanCreateTeams),
         maxTeamsPerManager: Number(this.data.systemSettings?.maxTeamsPerManager) || 5,
         teamBonusEnabled: Boolean(this.data.systemSettings?.teamBonusEnabled),

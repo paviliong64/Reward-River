@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, UserBalances } from '../types';
 import { Logo } from './Logo';
+import { CloudflareTurnstile, CloudflareTurnstileRef } from './CloudflareTurnstile';
 import {
   X,
   Lock,
@@ -9,8 +10,7 @@ import {
   Eye,
   EyeOff,
   Sun,
-  Moon,
-  RefreshCw
+  Moon
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -54,25 +54,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   }>({ checking: false, found: false, teamSystemEnabled: false });
   const [teamConsentAccepted, setTeamConsentAccepted] = useState(false);
 
-  // Human Math Verification state (Anti-bot)
-  const [num1, setNum1] = useState(3);
-  const [num2, setNum2] = useState(4);
-  const [mathAnswer, setMathAnswer] = useState('');
-  const [mathError, setMathError] = useState<string | null>(null);
-
-  const generateNewMathQuestion = () => {
-    const n1 = Math.floor(Math.random() * 8) + 2;
-    const n2 = Math.floor(Math.random() * 8) + 2;
-    setNum1(n1);
-    setNum2(n2);
-    setMathAnswer('');
-    setMathError(null);
-  };
+  // Cloudflare Turnstile Verification state (Anti-bot)
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
+  const turnstileRef = useRef<CloudflareTurnstileRef>(null);
 
   useEffect(() => {
     setMode(initialMode);
     setError(null);
-    generateNewMathQuestion();
+    setTurnstileToken('');
+    turnstileRef.current?.reset();
     const urlParams = new URLSearchParams(window.location.search);
     const codeFromUrl = (urlParams.get('team') || initialTeamCode || '').trim().toUpperCase();
     if (codeFromUrl) {
@@ -242,13 +232,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     targetPassword: string
   ) => {
     setError(null);
-    setMathError(null);
 
-    // Human Math Verification Check
-    const parsedAns = parseInt(mathAnswer.trim(), 10);
-    if (isNaN(parsedAns) || parsedAns !== num1 + num2) {
-      setMathError('Incorrect answer, please try again.');
-      generateNewMathQuestion();
+    // Cloudflare Turnstile Verification Check
+    if (!turnstileToken) {
+      setError('Please complete the Cloudflare security verification.');
       return;
     }
 
@@ -271,7 +258,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           email: targetEmail.trim(),
           password: targetPassword,
           teamCode: teamLookup.found ? teamCode.trim().toUpperCase() : '',
-          teamConsentAccepted
+          teamConsentAccepted,
+          turnstileToken
         })
       });
 
@@ -322,6 +310,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Execute sign in (Username OR Email + Password)
   const executeInstantSignin = async (identifierInput: string, passwordInput: string) => {
     setError(null);
+
+    // Cloudflare Turnstile Verification Check
+    if (!turnstileToken) {
+      setError('Please complete the Cloudflare security verification.');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/auth/login', {
@@ -330,7 +325,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         body: JSON.stringify({
           identifier: identifierInput.trim(),
           email: identifierInput.trim(),
-          password: passwordInput
+          password: passwordInput,
+          turnstileToken
         })
       });
 
@@ -586,52 +582,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          {/* Human Math Verification (Bot protection - lightweight & fast) */}
-          {mode === 'signup' && (
-            <div className="p-3 bg-[#F0FBF5]/90 dark:bg-slate-800/80 rounded-xl border border-[#D9EFE3] dark:border-slate-700">
-              <div className="flex items-center justify-between mb-1.5">
-                <label
-                  htmlFor="auth-math"
-                  className="block text-xs font-bold text-[#192F40] dark:text-slate-200"
-                >
-                  Verification: Solve Math
-                </label>
-                <button
-                  type="button"
-                  onClick={generateNewMathQuestion}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#079B55] dark:text-[#4CC65A] hover:underline cursor-pointer"
-                  title="Generate new question"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>New</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="px-3.5 py-2 rounded-lg bg-white dark:bg-slate-900 border border-[#D9EFE3] dark:border-slate-700 text-sm font-black text-[#192F40] dark:text-white tracking-widest select-none">
-                  {num1} + {num2} =
-                </div>
-                <input
-                  id="auth-math"
-                  type="number"
-                  required
-                  value={mathAnswer}
-                  onChange={(e) => {
-                    setMathAnswer(e.target.value);
-                    setMathError(null);
-                  }}
-                  placeholder="?"
-                  className="w-20 px-3 py-2 text-sm rounded-lg bg-white dark:bg-slate-900 border border-[#D9EFE3] dark:border-slate-700 focus:border-[#079B55] focus:ring-2 focus:ring-[#079B55]/15 focus:outline-none text-[#192F40] dark:text-white font-bold text-center"
-                />
-              </div>
-
-              {mathError && (
-                <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 mt-1.5">
-                  {mathError}
-                </p>
-              )}
-            </div>
-          )}
+          {/* Real Cloudflare Turnstile CAPTCHA (Bot Protection) */}
+          <CloudflareTurnstile
+            key={mode}
+            ref={turnstileRef}
+            onSuccess={(token) => {
+              setTurnstileToken(token);
+              setError(null);
+            }}
+            onError={() => {
+              setTurnstileToken('');
+            }}
+            onExpire={() => {
+              setTurnstileToken('');
+            }}
+            theme={theme === 'dark' ? 'dark' : 'light'}
+            action={mode}
+          />
 
           <button
             type="submit"
@@ -659,6 +626,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   type="button"
                   onClick={() => {
                     setError(null);
+                    setTurnstileToken('');
                     setMode('signup');
                   }}
                   className="font-bold text-[#079B55] dark:text-[#4CC65A] hover:underline cursor-pointer"
@@ -673,6 +641,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   type="button"
                   onClick={() => {
                     setError(null);
+                    setTurnstileToken('');
                     setMode('signin');
                   }}
                   className="font-bold text-[#079B55] dark:text-[#4CC65A] hover:underline cursor-pointer"

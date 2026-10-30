@@ -376,13 +376,16 @@ test('Teams, Manager Roles, One-Manager-Many-Teams, Team Points Exclusion, and S
 
   // Enable team_system_enabled for testing
   const prevSettings = { ...dbStore.getSettings() };
-  await dbStore.updateSettings({
-    teamSystemEnabled: true,
-    managersCanCreateTeams: false,
-    maxTeamsPerManager: 5,
-    teamBonusEnabled: true,
-    teamBonusPercent: 10
-  });
+  await dbStore.updateSettings(
+    {
+      teamSystemEnabled: true,
+      managersCanCreateTeams: false,
+      maxTeamsPerManager: 5,
+      teamBonusEnabled: true,
+      teamBonusPercent: 10
+    },
+    adminId
+  );
 
   // Non-admin user cannot promote to manager (Test Case 11)
   await assert.rejects(
@@ -613,7 +616,7 @@ test('Teams, Manager Roles, One-Manager-Many-Teams, Team Points Exclusion, and S
   assert.ok(dbStore.getTeamMembershipForUser(member1Id));
 
   // Cleanup test records
-  await dbStore.updateSettings(prevSettings);
+  await dbStore.updateSettings(prevSettings, adminId);
   await dbStore.deleteUser(member1Id);
   await dbStore.deleteUser(member2Id);
   await dbStore.deleteUser(mgrAId);

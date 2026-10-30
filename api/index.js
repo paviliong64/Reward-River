@@ -2,7 +2,7 @@
 import express from "express";
 import dotenv2 from "dotenv";
 import path2 from "path";
-import crypto6 from "node:crypto";
+import crypto5 from "node:crypto";
 
 // server/db.ts
 import { promises as fs } from "node:fs";
@@ -174,10 +174,16 @@ function isWithinKarachiDateRange(isoTimestamp, filter) {
   const { startKey, endKey } = resolveKarachiDateBounds(filter);
   return key >= startKey && key <= endKey;
 }
-function classifyUserCohort(createdAtIso, nowIso) {
+function classifyUserCohort(createdAtIso, nowIso, newUserDays = 7) {
   if (!createdAtIso) return "old";
   const createdKey = toKarachiDateKey(createdAtIso);
-  const { startKey } = resolveKarachiDateBounds({ range: "7d", nowIso });
+  const safeDays = Math.max(1, Math.min(365, Number(newUserDays) || 7));
+  const nowKd = toKarachiShiftedDate(nowIso);
+  const startKd = new Date(nowKd.getTime() - (safeDays - 1) * 24 * 60 * 60 * 1e3);
+  const y = startKd.getUTCFullYear();
+  const m = String(startKd.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(startKd.getUTCDate()).padStart(2, "0");
+  const startKey = `${y}-${m}-${d}`;
   return createdKey >= startKey ? "new" : "old";
 }
 function verifyDataIntegrity(params) {
@@ -314,8 +320,11 @@ function computeAdminDashboardStats(params) {
     ledger,
     withdrawals,
     taskCompletions = [],
+    teams = [],
+    teamMembers = [],
     pointsPerUsdt = 5e3,
-    userSharePercent = 50
+    userSharePercent = 50,
+    newUserDays = 7
   } = params;
   const filter = params.filter || {
     range: params.range || "all",
@@ -334,6 +343,7 @@ function computeAdminDashboardStats(params) {
   let newUsersToday = 0;
   let newUsers7d = 0;
   let newUsers30d = 0;
+  let newUsersCohortCount = 0;
   let oldUsersCount = 0;
   let newUsersInFilter = 0;
   for (const u of users) {
@@ -341,6 +351,9 @@ function computeAdminDashboardStats(params) {
     if (joinedKey === todayKey) newUsersToday += 1;
     if (joinedKey >= bounds7d.startKey && joinedKey <= bounds7d.endKey) {
       newUsers7d += 1;
+    }
+    if (classifyUserCohort(u.createdAt, nowIso, newUserDays) === "new") {
+      newUsersCohortCount += 1;
     } else {
       oldUsersCount += 1;
     }
@@ -438,6 +451,14 @@ function computeAdminDashboardStats(params) {
   const grossRevenueCents = filteredGrossCentsAccum;
   const userRewardCents = Math.round(netFilteredPointsAwarded / pointsPerUsdt * shareRatio * 100);
   const adminProfitCents = Math.max(0, grossRevenueCents - userRewardCents);
+  const userTeamMap = /* @__PURE__ */ new Map();
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+  for (const tm of teamMembers) {
+    const t = teamById.get(tm.teamId);
+    if (t) {
+      userTeamMap.set(tm.userId, { teamId: t.id, teamName: t.name, teamCode: t.teamCode });
+    }
+  }
   const userSummaries = users.map((u) => {
     const rawCleanId = u.id;
     const cleanNoUsr = rawCleanId.replace(/^usr_/, "");
@@ -462,14 +483,19 @@ function computeAdminDashboardStats(params) {
       (e) => e.status === "reversed" || e.status === "rejected" || e.entryType === "reversal"
     ).length;
     const activeInFilter = uEntries.some((e) => isWithinKarachiDateRange(e.createdAt, { ...filter, nowIso })) || uWithdrawals.some((w) => isWithinKarachiDateRange(w.createdAt, { ...filter, nowIso }));
+    const teamInfo = userTeamMap.get(u.id);
     return {
       id: u.id,
       externalOpaqueId: u.externalOpaqueId || "",
       displayName: u.displayName || u.username || u.email.split("@")[0],
       email: u.email,
+      role: u.role,
+      teamId: teamInfo?.teamId,
+      teamName: teamInfo?.teamName,
+      teamCode: teamInfo?.teamCode,
       phoneNumber: u.phoneNumber || u.whatsappNumber || "",
       countryCode: u.countryCode || "",
-      cohort: classifyUserCohort(u.createdAt, nowIso),
+      cohort: classifyUserCohort(u.createdAt, nowIso, newUserDays),
       createdAt: u.createdAt,
       joinedAt: u.createdAt,
       createdAtKarachi: formatKarachiDateTime(u.createdAt),
@@ -495,6 +521,41 @@ function computeAdminDashboardStats(params) {
     rank: idx + 1,
     ...u
   }));
+  const teamSummaries = teams.map((team) => {
+    const membersOfTeam = teamMembers.filter((tm) => tm.teamId === team.id);
+    const memberIdSet = new Set(
+      membersOfTeam.map((tm) => tm.userId).filter((uid) => uid !== team.managerId)
+    );
+    let teamPointsInRange = 0;
+    let completedSurveysInRange = 0;
+    for (const l of filteredLedger) {
+      if (!memberIdSet.has(l.userId)) continue;
+      const isTeamBonus = l.reason === "team_bonus" || (l.description || "").toLowerCase().includes("team bonus");
+      if (isTeamBonus) continue;
+      const pts = entryToPts(l);
+      if (l.status === "confirmed" && l.entryType === "credit") {
+        teamPointsInRange += pts;
+        completedSurveysInRange += 1;
+      } else if ((l.status === "confirmed" || l.status === "reversed") && l.entryType === "reversal") {
+        teamPointsInRange = Math.max(0, teamPointsInRange - pts);
+      }
+    }
+    const managerUser = userLookup.get(team.managerId);
+    return {
+      id: team.id,
+      name: team.name,
+      teamCode: team.teamCode,
+      managerId: team.managerId,
+      managerEmail: managerUser?.email || "",
+      managerName: managerUser?.displayName || managerUser?.email || "Manager",
+      isActive: team.isActive,
+      memberCount: membersOfTeam.length,
+      teamPoints: teamPointsInRange,
+      completedSurveysCount: completedSurveysInRange,
+      createdAt: team.createdAt
+    };
+  });
+  const topTeamsByPoints = [...teamSummaries].sort((a, b) => b.teamPoints - a.teamPoints || b.memberCount - a.memberCount).slice(0, 10).map((t, idx) => ({ rank: idx + 1, ...t }));
   const periodKeyFor = (iso) => {
     if (groupBy === "month") return toKarachiMonthKey(iso);
     if (groupBy === "week") return toKarachiWeekKey(iso);
@@ -580,10 +641,8 @@ function computeAdminDashboardStats(params) {
       newUsersToday,
       newUsers7d,
       newUsers30d,
-      newUsersCount: newUsers7d,
-      // New = registered in last 7 days
+      newUsersCount: newUsersCohortCount,
       oldUsersCount,
-      // Old = registered earlier than 7 days ago
       activeUsersCount,
       activeUsersInRange,
       activeUsersAllTime: activeUsersCount,
@@ -616,6 +675,14 @@ function computeAdminDashboardStats(params) {
       allTimeGrossRevenueCents,
       allTimeUserRewardCents,
       allTimeAdminProfitCents
+    },
+    teams: {
+      totalTeams: teams.length,
+      activeTeams: teams.filter((t) => t.isActive).length,
+      totalManagers: users.filter((u) => u.role === "manager").length,
+      totalTeamMembers: teamMembers.length,
+      usersWithoutTeam: Math.max(0, totalUsers - teamMembers.length),
+      topTeamsByPoints
     },
     topUsersByPoints,
     timeSeries
@@ -807,6 +874,13 @@ var DatabaseStore = class {
         // 50% user payout (10,000 Pts = $1.00), 50% admin profit margin
         pointsPerUsdt: 5e3,
         // CPX Currency Factor: 5,000 Points = $1.00 Gross
+        newUserDays: 7,
+        timezone: "Asia/Karachi",
+        teamSystemEnabled: false,
+        managersCanCreateTeams: false,
+        maxTeamsPerManager: 5,
+        teamBonusEnabled: false,
+        teamBonusPercent: 0,
         surveyDisplayMode: "points_only",
         cpxAppId: process.env.CPX_APP_ID || "37699",
         cpxHashKey: process.env.CPX_HASH_KEY || "1u8hIFGwUYYORM76NM76PDxenCC50bCZ",
@@ -834,7 +908,11 @@ var DatabaseStore = class {
         sitemapEnabled: true,
         updatedAt: "2026-10-20T00:00:00.000Z"
       },
-      adminAuditLogs: []
+      adminAuditLogs: [],
+      teams: [],
+      teamMembers: [],
+      callbackLogs: [],
+      impersonationSessions: []
     };
   }
   async init() {
@@ -931,13 +1009,24 @@ var DatabaseStore = class {
             ...parsed.systemSettings || {},
             cpxAppId: parsed.systemSettings?.cpxAppId || "37699",
             cpxHashKey: validCpxHash,
-            pointsPerUsdt: 5e3,
-            userSharePercent: 50,
+            pointsPerUsdt: Number(parsed.systemSettings?.pointsPerUsdt) > 0 ? Number(parsed.systemSettings.pointsPerUsdt) : 5e3,
+            userSharePercent: Number(parsed.systemSettings?.userSharePercent) > 0 ? Number(parsed.systemSettings.userSharePercent) : 50,
+            newUserDays: Number(parsed.systemSettings?.newUserDays) > 0 ? Number(parsed.systemSettings.newUserDays) : 7,
+            timezone: "Asia/Karachi",
+            teamSystemEnabled: Boolean(parsed.systemSettings?.teamSystemEnabled ?? false),
+            managersCanCreateTeams: Boolean(parsed.systemSettings?.managersCanCreateTeams ?? false),
+            maxTeamsPerManager: Number(parsed.systemSettings?.maxTeamsPerManager) > 0 ? Number(parsed.systemSettings.maxTeamsPerManager) : 5,
+            teamBonusEnabled: Boolean(parsed.systemSettings?.teamBonusEnabled ?? false),
+            teamBonusPercent: Math.max(0, Number(parsed.systemSettings?.teamBonusPercent) || 0),
             aoyApiKey: parsed.systemSettings?.aoyApiKey || process.env.AOY_API_KEY || "223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa",
             aoySecretKey: parsed.systemSettings?.aoySecretKey || process.env.AOY_SECRET_KEY || "8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92",
             minWithdrawalCents: 2500
           },
-          adminAuditLogs: parsed.adminAuditLogs || []
+          adminAuditLogs: parsed.adminAuditLogs || [],
+          teams: Array.isArray(parsed.teams) ? parsed.teams : [],
+          teamMembers: Array.isArray(parsed.teamMembers) ? parsed.teamMembers : [],
+          callbackLogs: Array.isArray(parsed.callbackLogs) ? parsed.callbackLogs : [],
+          impersonationSessions: Array.isArray(parsed.impersonationSessions) ? parsed.impersonationSessions : []
         };
         await this.persist();
       } else {
@@ -1044,7 +1133,8 @@ var DatabaseStore = class {
             continue;
           }
           const isSoleAdmin = row.id === "usr_admin_rewardriver" || rawEmailLower === "admin@reward-river";
-          const effectiveRole = isSoleAdmin ? "admin" : "user";
+          const rowRole = String(row.role || "").toLowerCase();
+          const effectiveRole = isSoleAdmin ? "admin" : rowRole === "manager" ? "manager" : "user";
           const cleanUuid = String(row.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
           const rawExt = String(row.external_opaque_id || "");
           const isEmailText = rawExt.includes("@") || rawExt.includes("gmail.com") || rawExt.length < 6;
@@ -1107,8 +1197,9 @@ var DatabaseStore = class {
               this.data.users[existingIdx].username = display;
               changed = true;
             }
-            if (current.role !== effectiveRole) {
-              this.data.users[existingIdx].role = effectiveRole;
+            const desiredRole = isSoleAdmin ? "admin" : effectiveRole === "manager" || current.role === "manager" ? "manager" : "user";
+            if (current.role !== desiredRole) {
+              this.data.users[existingIdx].role = desiredRole;
               changed = true;
             }
             if (row.password_hash && row.salt && (!current.passwordHash || !current.salt)) {
@@ -1359,34 +1450,27 @@ var DatabaseStore = class {
   getUserByExternalId(extId) {
     const raw = String(extId || "").trim();
     if (!raw) return void 0;
+    const lowerRaw = raw.toLowerCase();
+    if (lowerRaw === "member" || lowerRaw === "rr_member_1" || lowerRaw === "rr_cpx_public_feed" || lowerRaw.startsWith("rr_guest") || lowerRaw === "guest" || lowerRaw === "anonymous") {
+      return void 0;
+    }
     const exact = this.data.users.find(
       (u) => u.externalOpaqueId === raw || u.id === raw
     );
     if (exact) return exact;
-    const stripped = raw.replace(/^rr_(cpx_)?/i, "");
-    const byStripped = this.data.users.find(
-      (u) => u.id === stripped || u.externalOpaqueId === `rr_cpx_${stripped}` || u.id.replace(/[^a-zA-Z0-9]/g, "") === stripped.replace(/[^a-zA-Z0-9]/g, "") || u.username && u.username.toLowerCase() === raw.toLowerCase() || u.username && u.username.toLowerCase() === stripped.toLowerCase() || u.email.toLowerCase() === raw.toLowerCase()
-    );
-    if (byStripped) return byStripped;
+    const stripped = raw.replace(/^(rr_cpx_|rr_|usr_)/i, "");
+    if (!stripped || stripped.length < 4) return void 0;
     const cleanTarget = raw.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
     const cleanStripped = stripped.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-    for (const u of this.data.users) {
-      const cleanId = u.id.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    return this.data.users.find((u) => {
+      if (u.id === stripped || u.id === `usr_${stripped}` || u.externalOpaqueId === `rr_cpx_${stripped}`) {
+        return true;
+      }
+      const cleanId = u.id.replace(/^usr_/i, "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+      const cleanFullId = u.id.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
       const cleanExt = (u.externalOpaqueId || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-      const cleanEmail = u.email.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-      const cleanName = (u.username || u.displayName || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-      if (cleanId === cleanTarget || cleanExt === cleanTarget || cleanId === cleanStripped || cleanExt === cleanStripped || cleanId.length > 6 && (cleanTarget.includes(cleanId) || cleanStripped.includes(cleanId)) || cleanExt.length > 6 && (cleanTarget.includes(cleanExt) || cleanStripped.includes(cleanExt)) || cleanEmail.length > 5 && (cleanTarget.includes(cleanEmail) || cleanStripped.includes(cleanEmail)) || cleanName.length > 3 && (cleanTarget.includes(cleanName) || cleanStripped.includes(cleanName))) {
-        return u;
-      }
-    }
-    if (raw === "member" || raw === "rr_member_1" || raw.startsWith("rr_guest") || raw === "rr_cpx_public_feed") {
-      const nonAdminUsers = this.data.users.filter((u) => u.role !== "admin");
-      if (nonAdminUsers.length > 0) {
-        return nonAdminUsers[nonAdminUsers.length - 1];
-      }
-      return this.data.users[0];
-    }
-    return void 0;
+      return cleanFullId === cleanTarget || cleanId === cleanStripped || cleanExt === cleanTarget || cleanId.length >= 8 && cleanStripped === cleanId;
+    });
   }
   getUserByAoySubId(subId) {
     const cleanTarget = String(subId || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
@@ -1496,6 +1580,11 @@ var DatabaseStore = class {
     return this.data.users.map(({ passwordHash, salt, ...rest }) => rest);
   }
   getAllUsersWithDetails() {
+    const newUserDays = this.data.systemSettings?.newUserDays || 7;
+    const teams = this.data.teams || [];
+    const teamMembers = this.data.teamMembers || [];
+    const teamById = new Map(teams.map((t) => [t.id, t]));
+    const userById = new Map(this.data.users.map((u) => [u.id, u]));
     return this.data.users.map(({ passwordHash, salt, ...user }) => {
       const balances = this.getUserBalances(user.id);
       const userLedger = this.getLedgerForUser(user.id);
@@ -1524,9 +1613,29 @@ var DatabaseStore = class {
           lastActiveAt = ts;
         }
       }
-      const cohort = classifyUserCohort(user.createdAt);
+      const cohort = classifyUserCohort(user.createdAt, void 0, newUserDays);
+      const membership = teamMembers.find((tm) => tm.userId === user.id);
+      const memberTeam = membership ? teamById.get(membership.teamId) : void 0;
+      const managerObj = memberTeam ? userById.get(memberTeam.managerId) : void 0;
+      const managedTeams = user.role === "manager" || user.role === "admin" ? teams.filter((t) => t.managerId === user.id).map((t) => ({
+        ...t,
+        memberCount: teamMembers.filter((tm) => tm.teamId === t.id).length
+      })) : [];
       return {
         ...user,
+        teamId: memberTeam?.id,
+        teamName: memberTeam?.name,
+        teamCode: memberTeam?.teamCode,
+        team: membership && memberTeam ? {
+          teamId: memberTeam.id,
+          teamName: memberTeam.name,
+          teamCode: memberTeam.teamCode,
+          managerId: memberTeam.managerId,
+          managerEmail: managerObj?.email || "",
+          joinedAt: membership.joinedAt,
+          consentAcceptedAt: membership.consentAcceptedAt
+        } : null,
+        managedTeams,
         cohort,
         createdAtKarachi: formatKarachiDateTime(user.createdAt),
         lastActiveAt,
@@ -2135,6 +2244,790 @@ var DatabaseStore = class {
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
+  // --- Callback Logs (CPX S2S Postback Audit Trail) ---
+  async addCallbackLog(entry) {
+    if (!Array.isArray(this.data.callbackLogs)) {
+      this.data.callbackLogs = [];
+    }
+    const record = {
+      id: entry.id || `cb_${crypto.randomUUID()}`,
+      provider: entry.provider || "cpx",
+      transId: String(entry.transId || ""),
+      extUserId: String(entry.extUserId || ""),
+      matchedUserId: entry.matchedUserId,
+      matchedUserEmail: entry.matchedUserEmail,
+      rawQuery: entry.rawQuery || {},
+      ipAddress: entry.ipAddress || "unknown",
+      hashValid: Boolean(entry.hashValid),
+      result: entry.result,
+      pointsDelta: Number(entry.pointsDelta) || 0,
+      amountUsd: Number(entry.amountUsd) || 0,
+      notes: entry.notes,
+      createdAt: entry.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+    };
+    this.data.callbackLogs.unshift(record);
+    if (this.data.callbackLogs.length > 500) {
+      this.data.callbackLogs = this.data.callbackLogs.slice(0, 500);
+    }
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from("callback_logs").insert({
+          provider: record.provider,
+          trans_id: record.transId,
+          ext_user_id: record.extUserId,
+          matched_user_id: record.matchedUserId || null,
+          raw_query: record.rawQuery,
+          ip_address: record.ipAddress,
+          hash_valid: record.hashValid,
+          result: record.result,
+          points_delta: record.pointsDelta,
+          amount_usd: record.amountUsd,
+          notes: record.notes || null,
+          created_at: record.createdAt
+        });
+      } catch {
+      }
+    }
+    return record;
+  }
+  getCallbackLogs(limit = 200) {
+    if (!Array.isArray(this.data.callbackLogs)) return [];
+    const userMap = new Map(this.data.users.map((u) => [u.id, u]));
+    return this.data.callbackLogs.slice(0, limit).map((cb) => ({
+      ...cb,
+      matchedUserEmail: cb.matchedUserEmail || (cb.matchedUserId ? userMap.get(cb.matchedUserId)?.email : void 0)
+    }));
+  }
+  // --- Roles & Manager Promotion / Demotion (Admin-Only) ---
+  async setUserRole(params) {
+    const { targetUserId, newRole, actorUser, ipAddress } = params;
+    const isAuthorizedAdmin = actorUser && (actorUser.role === "admin" || actorUser.id === "usr_admin_rewardriver" || actorUser.email.toLowerCase() === "admin@reward-river");
+    if (!isAuthorizedAdmin) {
+      await this.addAuditLog({
+        adminUserId: actorUser?.id || "unauthorized",
+        adminEmail: actorUser?.email || "unauthorized",
+        action: "REJECTED_ROLE_CHANGE_ATTEMPT",
+        targetEntity: "users",
+        targetId: targetUserId,
+        details: JSON.stringify({
+          attemptedBy: actorUser?.email,
+          attemptedRole: newRole,
+          reason: "Only Admin can promote or demote managers."
+        }),
+        ipAddress
+      });
+      const err = new Error("Forbidden: Only an Administrator can promote or demote managers.");
+      err.statusCode = 403;
+      throw err;
+    }
+    const idx = this.data.users.findIndex((u) => u.id === targetUserId);
+    if (idx === -1) {
+      throw new Error(`User not found: ${targetUserId}`);
+    }
+    const target = this.data.users[idx];
+    if (target.role === "admin" || target.id === "usr_admin_rewardriver") {
+      throw new Error("Cannot alter the role of the Super Admin account.");
+    }
+    const beforeState = {
+      id: target.id,
+      email: target.email,
+      role: target.role,
+      managedTeams: this.getTeamsForManager(target.id)
+    };
+    let deactivatedTeamsCount = 0;
+    if (newRole === "manager") {
+      const existingMembership = this.getTeamMembershipForUser(target.id);
+      if (existingMembership) {
+        const memberTeam = this.getTeamById(existingMembership.teamId);
+        throw new Error(
+          `Cannot promote ${target.email} to Manager while they are a member of team "${memberTeam?.name || existingMembership.teamId}". Remove them from their team first.`
+        );
+      }
+      this.data.users[idx].role = "manager";
+      this.data.users[idx].updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    } else if (newRole === "user") {
+      this.data.users[idx].role = "user";
+      this.data.users[idx].updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      for (const team of this.data.teams || []) {
+        if (team.managerId === target.id && team.isActive) {
+          team.isActive = false;
+          deactivatedTeamsCount += 1;
+        }
+      }
+    }
+    const afterState = {
+      id: target.id,
+      email: target.email,
+      role: this.data.users[idx].role,
+      deactivatedTeamsCount,
+      managedTeams: this.getTeamsForManager(target.id)
+    };
+    await this.addAuditLog({
+      adminUserId: actorUser.id,
+      adminEmail: actorUser.email,
+      action: newRole === "manager" ? "PROMOTE_TO_MANAGER" : "DEMOTE_MANAGER_TO_USER",
+      targetEntity: "users",
+      targetId: target.id,
+      beforeState,
+      afterState,
+      details: JSON.stringify({ before: beforeState, after: afterState }),
+      ipAddress
+    });
+    await this.persist();
+    await this.upsertUserToSupabase(this.data.users[idx]);
+    const { passwordHash: _ph, salt: _s, ...cleanUser } = this.data.users[idx];
+    return { user: cleanUser, deactivatedTeamsCount };
+  }
+  // --- Team System (One Manager -> Many Teams) ---
+  generateUniqueTeamCode(length = 6) {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const existingCodes = new Set((this.data.teams || []).map((t) => t.teamCode.toUpperCase()));
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const bytes = crypto.randomBytes(length);
+      let code = "";
+      for (let i = 0; i < length; i++) {
+        code += alphabet[bytes[i] % alphabet.length];
+      }
+      if (!existingCodes.has(code)) {
+        return code;
+      }
+    }
+    return `RR${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  }
+  getTeams() {
+    if (!Array.isArray(this.data.teams)) this.data.teams = [];
+    return [...this.data.teams];
+  }
+  getTeamMembers() {
+    if (!Array.isArray(this.data.teamMembers)) this.data.teamMembers = [];
+    return [...this.data.teamMembers];
+  }
+  getTeamById(teamId) {
+    return (this.data.teams || []).find((t) => t.id === teamId);
+  }
+  lookupTeamByCode(rawCode) {
+    const code = String(rawCode || "").trim().toUpperCase();
+    if (!code) return null;
+    const team = (this.data.teams || []).find((t) => t.teamCode.toUpperCase() === code);
+    if (!team) return null;
+    const manager = this.getUserById(team.managerId);
+    const memberCount = (this.data.teamMembers || []).filter((tm) => tm.teamId === team.id).length;
+    return {
+      ...team,
+      managerName: manager?.displayName || manager?.username || manager?.email?.split("@")[0] || "Manager",
+      managerEmail: manager?.email,
+      memberCount
+    };
+  }
+  getTeamsForManager(managerId) {
+    return (this.data.teams || []).filter((t) => t.managerId === managerId);
+  }
+  getTeamMembershipForUser(userId) {
+    return (this.data.teamMembers || []).find((tm) => tm.userId === userId);
+  }
+  async createTeam(params) {
+    const { name, managerId, customCode, actorUser, ipAddress } = params;
+    const cleanName = String(name || "").trim();
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      throw new Error("Team name must be between 2 and 80 characters.");
+    }
+    const isActorAdmin = actorUser && (actorUser.role === "admin" || actorUser.id === "usr_admin_rewardriver" || actorUser.email.toLowerCase() === "admin@reward-river");
+    const managersCanCreate = Boolean(this.data.systemSettings?.managersCanCreateTeams);
+    const maxTeams = Number(this.data.systemSettings?.maxTeamsPerManager) || 5;
+    if (!isActorAdmin) {
+      if (actorUser?.role !== "manager" || actorUser.id !== managerId || !managersCanCreate) {
+        await this.addAuditLog({
+          adminUserId: actorUser?.id || "unauthorized",
+          adminEmail: actorUser?.email || "unauthorized",
+          action: "REJECTED_TEAM_CREATION_ATTEMPT",
+          targetEntity: "teams",
+          targetId: managerId,
+          details: JSON.stringify({
+            attemptedBy: actorUser?.email,
+            role: actorUser?.role,
+            managersCanCreateTeams: managersCanCreate,
+            teamName: cleanName
+          }),
+          ipAddress
+        });
+        const err = new Error("Forbidden: Team creation requires Admin approval (or managers_can_create_teams enabled).");
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+    const managerUser = this.getUserById(managerId);
+    if (!managerUser) {
+      throw new Error(`Manager user not found: ${managerId}`);
+    }
+    if (managerUser.role !== "manager" && managerUser.role !== "admin") {
+      throw new Error(`User ${managerUser.email} must have role "manager" before owning a team.`);
+    }
+    const existingManagerTeams = this.getTeamsForManager(managerId);
+    if (!isActorAdmin && existingManagerTeams.length >= maxTeams) {
+      throw new Error(`Maximum teams per manager (${maxTeams}) reached.`);
+    }
+    let teamCode = customCode ? String(customCode).trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) : "";
+    if (!teamCode || teamCode.length < 6) {
+      teamCode = this.generateUniqueTeamCode(6);
+    } else if ((this.data.teams || []).some((t) => t.teamCode.toUpperCase() === teamCode)) {
+      throw new Error(`Team code "${teamCode}" is already in use.`);
+    }
+    const newTeam = {
+      id: `team_${crypto.randomUUID()}`,
+      name: cleanName,
+      managerId: managerUser.id,
+      teamCode,
+      isActive: true,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (!Array.isArray(this.data.teams)) this.data.teams = [];
+    this.data.teams.push(newTeam);
+    await this.addAuditLog({
+      adminUserId: actorUser.id,
+      adminEmail: actorUser.email,
+      action: "CREATE_TEAM",
+      targetEntity: "teams",
+      targetId: newTeam.id,
+      beforeState: null,
+      afterState: newTeam,
+      details: JSON.stringify({ before: null, after: newTeam }),
+      ipAddress
+    });
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from("teams").upsert({
+          id: newTeam.id,
+          name: newTeam.name,
+          manager_id: newTeam.managerId,
+          team_code: newTeam.teamCode,
+          is_active: newTeam.isActive,
+          created_at: newTeam.createdAt
+        });
+      } catch {
+      }
+    }
+    return newTeam;
+  }
+  async updateTeam(params) {
+    const idx = (this.data.teams || []).findIndex((t) => t.id === params.teamId);
+    if (idx === -1) throw new Error(`Team not found: ${params.teamId}`);
+    const before = { ...this.data.teams[idx] };
+    if (params.name !== void 0 && params.name.trim().length >= 2) {
+      this.data.teams[idx].name = params.name.trim();
+    }
+    if (params.isActive !== void 0) {
+      this.data.teams[idx].isActive = Boolean(params.isActive);
+    }
+    const after = { ...this.data.teams[idx] };
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: "UPDATE_TEAM",
+      targetEntity: "teams",
+      targetId: after.id,
+      beforeState: before,
+      afterState: after,
+      details: JSON.stringify({ before, after }),
+      ipAddress: params.ipAddress
+    });
+    await this.persist();
+    return after;
+  }
+  async regenerateTeamCode(params) {
+    const idx = (this.data.teams || []).findIndex((t) => t.id === params.teamId);
+    if (idx === -1) throw new Error(`Team not found: ${params.teamId}`);
+    const before = { ...this.data.teams[idx] };
+    this.data.teams[idx].teamCode = this.generateUniqueTeamCode(6);
+    const after = { ...this.data.teams[idx] };
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: "REGENERATE_TEAM_CODE",
+      targetEntity: "teams",
+      targetId: after.id,
+      beforeState: before,
+      afterState: after,
+      details: JSON.stringify({ before, after }),
+      ipAddress: params.ipAddress
+    });
+    await this.persist();
+    return after;
+  }
+  async reassignTeamManager(params) {
+    const idx = (this.data.teams || []).findIndex((t) => t.id === params.teamId);
+    if (idx === -1) throw new Error(`Team not found: ${params.teamId}`);
+    const newManager = this.getUserById(params.newManagerId);
+    if (!newManager) throw new Error(`Target manager user not found: ${params.newManagerId}`);
+    if (newManager.role !== "manager" && newManager.role !== "admin") {
+      throw new Error(`Target user ${newManager.email} is not a manager. Promote them to manager first.`);
+    }
+    const before = { ...this.data.teams[idx] };
+    this.data.teams[idx].managerId = newManager.id;
+    const after = { ...this.data.teams[idx] };
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: "REASSIGN_TEAM_MANAGER",
+      targetEntity: "teams",
+      targetId: after.id,
+      beforeState: before,
+      afterState: after,
+      details: JSON.stringify({ before, after }),
+      ipAddress: params.ipAddress
+    });
+    await this.persist();
+    return after;
+  }
+  async moveTeamMember(params) {
+    const user = this.getUserById(params.userId);
+    if (!user) throw new Error(`User not found: ${params.userId}`);
+    if (!Array.isArray(this.data.teamMembers)) this.data.teamMembers = [];
+    const existingIdx = this.data.teamMembers.findIndex((tm) => tm.userId === user.id);
+    const before = existingIdx !== -1 ? { ...this.data.teamMembers[existingIdx] } : null;
+    if (!params.targetTeamId) {
+      if (existingIdx !== -1) {
+        this.data.teamMembers.splice(existingIdx, 1);
+      }
+      await this.addAuditLog({
+        adminUserId: params.actorUser.id,
+        adminEmail: params.actorUser.email,
+        action: "REMOVE_TEAM_MEMBER",
+        targetEntity: "team_members",
+        targetId: user.id,
+        beforeState: before,
+        afterState: null,
+        details: JSON.stringify({ before, after: null }),
+        ipAddress: params.ipAddress
+      });
+      await this.persist();
+      return { removed: true, membership: null };
+    }
+    if (user.role === "manager") {
+      throw new Error("Managers cannot be added as a member of a team.");
+    }
+    const targetTeam = this.getTeamById(params.targetTeamId);
+    if (!targetTeam) throw new Error(`Target team not found: ${params.targetTeamId}`);
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const record = {
+      id: existingIdx !== -1 ? this.data.teamMembers[existingIdx].id : `tm_${crypto.randomUUID()}`,
+      teamId: targetTeam.id,
+      userId: user.id,
+      joinedAt: existingIdx !== -1 ? this.data.teamMembers[existingIdx].joinedAt : nowIso,
+      consentAcceptedAt: existingIdx !== -1 ? this.data.teamMembers[existingIdx].consentAcceptedAt : nowIso
+    };
+    if (existingIdx !== -1) {
+      this.data.teamMembers[existingIdx] = record;
+    } else {
+      this.data.teamMembers.push(record);
+    }
+    await this.addAuditLog({
+      adminUserId: params.actorUser.id,
+      adminEmail: params.actorUser.email,
+      action: existingIdx !== -1 ? "MOVE_TEAM_MEMBER" : "ADD_TEAM_MEMBER_BY_ADMIN",
+      targetEntity: "team_members",
+      targetId: user.id,
+      beforeState: before,
+      afterState: record,
+      details: JSON.stringify({ before, after: record }),
+      ipAddress: params.ipAddress
+    });
+    await this.persist();
+    return { removed: false, membership: record };
+  }
+  async joinTeamByCode(params) {
+    if (!this.data.systemSettings?.teamSystemEnabled) {
+      throw new Error("The Team System is currently disabled by the administrator.");
+    }
+    if (!params.consentAccepted) {
+      throw new Error(
+        'You must accept the consent disclosure ("Your team manager will be able to see your email, survey activity and points.") to join a team.'
+      );
+    }
+    const user = this.getUserById(params.userId);
+    if (!user) throw new Error("User account not found.");
+    if (user.role === "manager") {
+      throw new Error("Managers cannot join a team as a member.");
+    }
+    if (!Array.isArray(this.data.teamMembers)) this.data.teamMembers = [];
+    const existing = this.data.teamMembers.find((tm) => tm.userId === user.id);
+    if (existing) {
+      const existingTeam = this.getTeamById(existing.teamId);
+      throw new Error(`You are already a member of a team (${existingTeam?.name || existing.teamId}).`);
+    }
+    const cleanCode = String(params.teamCode || "").trim().toUpperCase();
+    const team = (this.data.teams || []).find((t) => t.teamCode.toUpperCase() === cleanCode);
+    if (!team) {
+      throw new Error(`Invalid team code "${cleanCode}". Please check the code with your manager.`);
+    }
+    if (!team.isActive) {
+      throw new Error(`Team "${team.name}" (${team.teamCode}) is currently inactive and not accepting new members.`);
+    }
+    if (team.managerId === user.id) {
+      throw new Error("You cannot join your own team as a member.");
+    }
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const membership = {
+      id: `tm_${crypto.randomUUID()}`,
+      teamId: team.id,
+      userId: user.id,
+      joinedAt: nowIso,
+      consentAcceptedAt: nowIso
+    };
+    this.data.teamMembers.push(membership);
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from("team_members").insert({
+          id: membership.id,
+          team_id: membership.teamId,
+          user_id: membership.userId,
+          joined_at: membership.joinedAt,
+          consent_accepted_at: membership.consentAcceptedAt
+        });
+      } catch {
+      }
+    }
+    return { membership, team };
+  }
+  // --- Manager Dashboard Read-Only Queries (Strictly Scoped to Manager's Own Teams) ---
+  getManagerDashboardData(params) {
+    const manager = this.getUserById(params.managerId);
+    if (!manager) {
+      throw new Error("Manager account not found.");
+    }
+    const range = params.range || "all";
+    const nowIso = params.nowIso || (/* @__PURE__ */ new Date()).toISOString();
+    const todayKey = toKarachiDateKey(nowIso);
+    const filterOpts = {
+      range,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      nowIso
+    };
+    const managerTeams = (this.data.teams || []).filter((t) => t.managerId === manager.id);
+    const managerTeamIds = new Set(managerTeams.map((t) => t.id));
+    const allMemberships = (this.data.teamMembers || []).filter((tm) => managerTeamIds.has(tm.teamId));
+    const userMap = new Map(this.data.users.map((u) => [u.id, u]));
+    const teamMap = new Map(managerTeams.map((t) => [t.id, t]));
+    const entryToPts = (l) => typeof l.points === "number" && !isNaN(l.points) && l.points !== 0 ? Math.abs(Math.round(l.points)) : Math.max(0, Math.round(Math.abs(l.amountCents) * 100));
+    const teamsSummary = managerTeams.map((team) => {
+      const tMembers = allMemberships.filter((tm) => tm.teamId === team.id && tm.userId !== manager.id);
+      const memberIds = new Set(tMembers.map((tm) => tm.userId));
+      let teamPointsInRange = 0;
+      let surveysInRange = 0;
+      const activeTodayUserIds = /* @__PURE__ */ new Set();
+      for (const l of this.data.rewardLedger) {
+        if (!memberIds.has(l.userId)) continue;
+        const isTeamBonus = l.reason === "team_bonus" || (l.description || "").toLowerCase().includes("team bonus");
+        if (isTeamBonus) continue;
+        if (toKarachiDateKey(l.createdAt) === todayKey && l.status === "confirmed" && l.entryType === "credit") {
+          activeTodayUserIds.add(l.userId);
+        }
+        if (!isWithinKarachiDateRange(l.createdAt, filterOpts)) continue;
+        const pts = entryToPts(l);
+        if (l.status === "confirmed" && l.entryType === "credit") {
+          teamPointsInRange += pts;
+          surveysInRange += 1;
+        } else if ((l.status === "confirmed" || l.status === "reversed") && l.entryType === "reversal") {
+          teamPointsInRange = Math.max(0, teamPointsInRange - pts);
+        }
+      }
+      return {
+        id: team.id,
+        name: team.name,
+        teamCode: team.teamCode,
+        managerId: team.managerId,
+        isActive: team.isActive,
+        createdAt: team.createdAt,
+        createdAtKarachi: formatKarachiDateTime(team.createdAt),
+        memberCount: tMembers.length,
+        activeTodayCount: activeTodayUserIds.size,
+        teamPoints: teamPointsInRange,
+        completedSurveysCount: surveysInRange
+      };
+    });
+    const managerEntries = this.getLedgerForUser(manager.id).filter(
+      (l) => isWithinKarachiDateRange(l.createdAt, filterOpts)
+    );
+    let managerPersonalSurveyPoints = 0;
+    let managerTeamBonusPoints = 0;
+    for (const l of managerEntries) {
+      const pts = entryToPts(l);
+      const isBonus = l.reason === "team_bonus" || (l.description || "").toLowerCase().includes("team bonus");
+      if (l.status === "confirmed" && l.entryType === "credit") {
+        if (isBonus) managerTeamBonusPoints += pts;
+        else managerPersonalSurveyPoints += pts;
+      } else if ((l.status === "confirmed" || l.status === "reversed") && l.entryType === "reversal") {
+        if (isBonus) managerTeamBonusPoints = Math.max(0, managerTeamBonusPoints - pts);
+        else managerPersonalSurveyPoints = Math.max(0, managerPersonalSurveyPoints - pts);
+      }
+    }
+    const selectedTeamId = params.teamId && params.teamId !== "all" && managerTeamIds.has(params.teamId) ? params.teamId : "all";
+    const scopedMemberships = selectedTeamId === "all" ? allMemberships.filter((tm) => tm.userId !== manager.id) : allMemberships.filter((tm) => tm.teamId === selectedTeamId && tm.userId !== manager.id);
+    const searchLower = String(params.search || "").trim().toLowerCase();
+    const membersRows = scopedMemberships.map((tm) => {
+      const u = userMap.get(tm.userId);
+      const t = teamMap.get(tm.teamId);
+      const uEntries = this.getLedgerForUser(tm.userId);
+      let pointsInRange = 0;
+      let surveysInRange = 0;
+      let allTimePoints = 0;
+      let allTimeSurveys = 0;
+      for (const l of uEntries) {
+        const isBonus = l.reason === "team_bonus" || (l.description || "").toLowerCase().includes("team bonus");
+        if (isBonus) continue;
+        const pts = entryToPts(l);
+        if (l.status === "confirmed" && l.entryType === "credit") {
+          allTimePoints += pts;
+          allTimeSurveys += 1;
+          if (isWithinKarachiDateRange(l.createdAt, filterOpts)) {
+            pointsInRange += pts;
+            surveysInRange += 1;
+          }
+        } else if ((l.status === "confirmed" || l.status === "reversed") && l.entryType === "reversal") {
+          allTimePoints = Math.max(0, allTimePoints - pts);
+          if (isWithinKarachiDateRange(l.createdAt, filterOpts)) {
+            pointsInRange = Math.max(0, pointsInRange - pts);
+          }
+        }
+      }
+      const lastActiveAt = uEntries[0]?.createdAt || u?.updatedAt || tm.joinedAt;
+      return {
+        membershipId: tm.id,
+        userId: tm.userId,
+        displayName: u?.displayName || u?.username || u?.email?.split("@")[0] || "Member",
+        email: u?.email || "unknown@user",
+        teamId: tm.teamId,
+        teamName: t?.name || "Team",
+        teamCode: t?.teamCode || "",
+        joinedAt: tm.joinedAt,
+        joinedAtKarachi: formatKarachiDateTime(tm.joinedAt),
+        consentAcceptedAt: tm.consentAcceptedAt,
+        lastActiveAt,
+        lastActiveAtKarachi: formatKarachiDateTime(lastActiveAt),
+        surveysCompleted: surveysInRange,
+        totalPoints: pointsInRange,
+        allTimeSurveys,
+        allTimePoints
+      };
+    }).filter((m) => {
+      if (!searchLower) return true;
+      return m.displayName.toLowerCase().includes(searchLower) || m.email.toLowerCase().includes(searchLower) || m.userId.toLowerCase().includes(searchLower) || m.teamName.toLowerCase().includes(searchLower) || m.teamCode.toLowerCase().includes(searchLower);
+    });
+    const sortBy = params.sortBy || "points";
+    membersRows.sort((a, b) => {
+      if (sortBy === "surveys") return b.surveysCompleted - a.surveysCompleted || b.totalPoints - a.totalPoints;
+      if (sortBy === "joinedAt") return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime();
+      return b.totalPoints - a.totalPoints || b.surveysCompleted - a.surveysCompleted;
+    });
+    const combinedSummary = {
+      totalTeams: managerTeams.length,
+      activeTeams: managerTeams.filter((t) => t.isActive).length,
+      totalMembers: allMemberships.filter((tm) => tm.userId !== manager.id).length,
+      activeMembersToday: teamsSummary.reduce((sum, t) => sum + t.activeTodayCount, 0),
+      totalTeamPoints: teamsSummary.reduce((sum, t) => sum + t.teamPoints, 0),
+      totalTeamSurveysCompleted: teamsSummary.reduce((sum, t) => sum + t.completedSurveysCount, 0),
+      managerPersonalSurveyPoints,
+      managerTeamBonusPoints
+    };
+    return {
+      timezone: "Asia/Karachi",
+      manager: {
+        id: manager.id,
+        displayName: manager.displayName || manager.username || manager.email.split("@")[0],
+        email: manager.email,
+        role: manager.role
+      },
+      filter: {
+        teamId: selectedTeamId,
+        range,
+        startDate: params.startDate || "",
+        endDate: params.endDate || ""
+      },
+      permissions: {
+        teamSystemEnabled: Boolean(this.data.systemSettings?.teamSystemEnabled),
+        managersCanCreateTeams: Boolean(this.data.systemSettings?.managersCanCreateTeams),
+        maxTeamsPerManager: Number(this.data.systemSettings?.maxTeamsPerManager) || 5,
+        teamBonusEnabled: Boolean(this.data.systemSettings?.teamBonusEnabled),
+        teamBonusPercent: Number(this.data.systemSettings?.teamBonusPercent) || 0
+      },
+      summary: combinedSummary,
+      teams: teamsSummary,
+      members: membersRows
+    };
+  }
+  getManagerMemberDetail(params) {
+    const managerTeams = (this.data.teams || []).filter((t) => t.managerId === params.managerId);
+    const managerTeamIds = new Set(managerTeams.map((t) => t.id));
+    const membership = (this.data.teamMembers || []).find(
+      (tm) => tm.userId === params.memberUserId && managerTeamIds.has(tm.teamId)
+    );
+    if (!membership) {
+      return null;
+    }
+    const user = this.getUserById(params.memberUserId);
+    if (!user) return null;
+    const team = this.getTeamById(membership.teamId);
+    const ledger = this.getLedgerForUser(user.id);
+    const balances = this.getUserBalances(user.id);
+    const dailyMap = /* @__PURE__ */ new Map();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1e3);
+      const key = toKarachiDateKey(d);
+      dailyMap.set(key, { date: key, points: 0, surveys: 0 });
+    }
+    for (const l of ledger) {
+      const key = toKarachiDateKey(l.createdAt);
+      const bucket = dailyMap.get(key);
+      if (!bucket) continue;
+      const pts = Math.abs(Math.round(Number(l.points) || Number(l.amountCents) * 100));
+      if (l.status === "confirmed" && l.entryType === "credit") {
+        bucket.points += pts;
+        bucket.surveys += 1;
+      } else if ((l.status === "confirmed" || l.status === "reversed") && l.entryType === "reversal") {
+        bucket.points = Math.max(0, bucket.points - pts);
+      }
+    }
+    return {
+      userId: user.id,
+      displayName: user.displayName || user.username || user.email.split("@")[0],
+      email: user.email,
+      teamId: membership.teamId,
+      teamName: team?.name || "Team",
+      teamCode: team?.teamCode || "",
+      joinedAt: membership.joinedAt,
+      joinedAtKarachi: formatKarachiDateTime(membership.joinedAt),
+      consentAcceptedAt: membership.consentAcceptedAt,
+      lastActiveAt: ledger[0]?.createdAt || user.updatedAt || membership.joinedAt,
+      lastActiveAtKarachi: formatKarachiDateTime(ledger[0]?.createdAt || user.updatedAt || membership.joinedAt),
+      totalPoints: balances.totalEarnedPoints,
+      availablePoints: balances.availablePoints,
+      completedSurveysCount: balances.completedSurveysCount,
+      completions: ledger.filter((l) => l.entryType === "credit" || l.entryType === "reversal").map((l) => ({
+        id: l.id,
+        transId: l.providerTxId,
+        offerId: l.cpxOfferId || l.taskId || "survey",
+        points: l.entryType === "reversal" ? -Math.abs(l.points || 0) : Math.abs(l.points || 0),
+        amountUsd: ((l.grossCents || Math.round((l.points || 0) / 5e3 * 100)) / 100).toFixed(2),
+        status: l.entryType === "reversal" || l.status === "reversed" ? "reversed" : "completed",
+        createdAt: l.createdAt,
+        createdAtKarachi: formatKarachiDateTime(l.createdAt),
+        description: l.description
+      })),
+      ledger: ledger.map((l) => ({
+        ...l,
+        createdAtKarachi: formatKarachiDateTime(l.createdAt)
+      })),
+      activityChart: Array.from(dailyMap.values())
+    };
+  }
+  // --- Admin "View as User" Impersonation Sessions (Read-Only, 15-Minute Expiry) ---
+  async createImpersonationSession(params) {
+    const { adminUser, targetUserId, ipAddress, userAgent } = params;
+    const isAuthorizedAdmin = adminUser && (adminUser.role === "admin" || adminUser.id === "usr_admin_rewardriver" || adminUser.email.toLowerCase() === "admin@reward-river");
+    if (!isAuthorizedAdmin) {
+      const err = new Error("Forbidden: Only an Administrator can start a View-as-User session.");
+      err.statusCode = 403;
+      throw err;
+    }
+    const target = this.getUserById(targetUserId);
+    if (!target) {
+      throw new Error(`Target user not found: ${targetUserId}`);
+    }
+    if (target.role === "admin" || target.id === "usr_admin_rewardriver" || target.email.toLowerCase() === "admin@reward-river") {
+      const err = new Error("Forbidden: An Administrator cannot impersonate another Administrator.");
+      err.statusCode = 403;
+      throw err;
+    }
+    const nowMs = Date.now();
+    const startedAt = new Date(nowMs).toISOString();
+    const expiresAt = new Date(nowMs + 15 * 60 * 1e3).toISOString();
+    const session = {
+      id: `imp_${crypto.randomUUID()}`,
+      adminId: adminUser.id,
+      adminEmail: adminUser.email,
+      targetUserId: target.id,
+      targetEmail: target.email,
+      startedAt,
+      expiresAt,
+      ipAddress,
+      userAgent
+    };
+    if (!Array.isArray(this.data.impersonationSessions)) {
+      this.data.impersonationSessions = [];
+    }
+    this.data.impersonationSessions.unshift(session);
+    await this.addAuditLog({
+      adminUserId: adminUser.id,
+      adminEmail: adminUser.email,
+      action: "START_IMPERSONATION_SESSION",
+      targetEntity: "impersonation_sessions",
+      targetId: target.id,
+      beforeState: null,
+      afterState: session,
+      details: JSON.stringify({
+        sessionId: session.id,
+        adminEmail: adminUser.email,
+        targetUserId: target.id,
+        targetEmail: target.email,
+        expiresAt: session.expiresAt,
+        readOnly: true
+      }),
+      ipAddress
+    });
+    await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from("impersonation_sessions").insert({
+          id: session.id,
+          admin_id: session.adminId,
+          target_user_id: session.targetUserId,
+          started_at: session.startedAt,
+          expires_at: session.expiresAt,
+          ip_address: session.ipAddress || null,
+          user_agent: session.userAgent || null
+        });
+      } catch {
+      }
+    }
+    return session;
+  }
+  getImpersonationSession(sessionId) {
+    if (!sessionId || !Array.isArray(this.data.impersonationSessions)) return null;
+    const s = this.data.impersonationSessions.find((item) => item.id === sessionId);
+    if (!s) return null;
+    if (s.endedAt) return null;
+    if (new Date(s.expiresAt).getTime() <= Date.now()) return null;
+    return s;
+  }
+  async endImpersonationSession(sessionId, actorUserId, ipAddress) {
+    if (!Array.isArray(this.data.impersonationSessions)) return false;
+    const idx = this.data.impersonationSessions.findIndex((s) => s.id === sessionId);
+    if (idx === -1) return false;
+    const endedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.data.impersonationSessions[idx].endedAt = endedAt;
+    await this.addAuditLog({
+      adminUserId: this.data.impersonationSessions[idx].adminId,
+      adminEmail: this.data.impersonationSessions[idx].adminEmail,
+      action: "END_IMPERSONATION_SESSION",
+      targetEntity: "impersonation_sessions",
+      targetId: this.data.impersonationSessions[idx].targetUserId,
+      details: JSON.stringify({
+        sessionId,
+        endedBy: actorUserId,
+        endedAt
+      }),
+      ipAddress
+    });
+    await this.persist();
+    return true;
+  }
 };
 var dbStore = new DatabaseStore();
 
@@ -2173,6 +3066,22 @@ function createSessionToken(user) {
   const signature = crypto2.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
   return `${payload}.${signature}`;
 }
+function createImpersonationToken(targetUser, impersonation) {
+  const expMs = new Date(impersonation.expiresAt).getTime();
+  const session = {
+    userId: targetUser.id,
+    email: targetUser.email,
+    username: targetUser.username || targetUser.displayName,
+    displayName: targetUser.displayName || targetUser.username || targetUser.email.split("@")[0],
+    externalOpaqueId: targetUser.externalOpaqueId,
+    role: targetUser.role,
+    exp: expMs,
+    impersonation
+  };
+  const payload = Buffer.from(JSON.stringify(session)).toString("base64url");
+  const signature = crypto2.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
 function verifySessionToken(token) {
   if (!token) return null;
   if (token.endsWith(".fallback_sig")) {
@@ -2194,6 +3103,10 @@ function verifySessionToken(token) {
     try {
       const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8"));
       if (session.exp && Date.now() > session.exp) return null;
+      if (session.impersonation) {
+        if (!isSigMatch) return null;
+        if (new Date(session.impersonation.expiresAt).getTime() <= Date.now()) return null;
+      }
       if (isSigMatch || session.userId) {
         return session;
       }
@@ -2211,7 +3124,7 @@ function verifySessionToken(token) {
         email: payload.email || "",
         username: payload.username || payload.user_metadata?.username,
         displayName: payload.displayName || payload.user_metadata?.full_name,
-        role: isAdmin ? "admin" : "user",
+        role: isAdmin ? "admin" : payload.role === "manager" ? "manager" : "user",
         exp: (payload.exp || Math.floor(Date.now() / 1e3) + 86400) * 1e3
       };
     } catch {
@@ -2226,6 +3139,14 @@ async function authMiddleware(req, res, next) {
     const token = authHeader.substring(7).trim();
     const session = verifySessionToken(token);
     if (session) {
+      if (session.impersonation) {
+        const activeImp = dbStore.getImpersonationSession(session.impersonation.sessionId);
+        if (!activeImp) {
+          res.status(401).json({ error: "View-as-User impersonation session has expired or ended." });
+          return;
+        }
+        req.impersonation = session.impersonation;
+      }
       let user = dbStore.getUserById(session.userId);
       if (!user && session.email) {
         user = dbStore.getUserByUsernameOrEmail(session.email);
@@ -2237,7 +3158,7 @@ async function authMiddleware(req, res, next) {
           user = dbStore.getUserByUsernameOrEmail(session.email);
         }
       }
-      const isSoleAdmin = session.role === "admin" || session.userId === "usr_admin_rewardriver" || session.email?.toLowerCase() === "admin@reward-river" || session.email?.toLowerCase() === "admin";
+      const isSoleAdmin = !session.impersonation && (session.role === "admin" || session.userId === "usr_admin_rewardriver" || session.email?.toLowerCase() === "admin@reward-river" || session.email?.toLowerCase() === "admin");
       if (!user && session.userId && session.email) {
         const display = session.displayName || session.username || (isSoleAdmin ? "Reward River Admin" : session.email.split("@")[0]);
         user = await dbStore.createUser({
@@ -2248,7 +3169,7 @@ async function authMiddleware(req, res, next) {
           salt: "",
           displayName: display,
           emailVerified: true,
-          role: isSoleAdmin ? "admin" : "user",
+          role: isSoleAdmin ? "admin" : session.role === "manager" ? "manager" : "user",
           externalOpaqueId: session.externalOpaqueId || `rr_cpx_${String(session.userId).replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
           updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -2257,7 +3178,11 @@ async function authMiddleware(req, res, next) {
         });
       }
       if (user) {
-        user.role = isSoleAdmin ? "admin" : "user";
+        if (isSoleAdmin) {
+          user.role = "admin";
+        } else if (user.role !== "manager" && session.role === "manager") {
+          user.role = "manager";
+        }
         req.user = user;
       }
     }
@@ -2271,7 +3196,22 @@ function requireAuth(req, res, next) {
   }
   next();
 }
+function blockWhenImpersonating(req, res, next) {
+  if (req.impersonation) {
+    res.status(403).json({
+      error: `Read-only mode active (Viewing as ${req.impersonation.targetEmail}). Write actions, withdrawals, profile edits, team changes, and survey completions are blocked.`
+    });
+    return;
+  }
+  next();
+}
 function requireAdmin(req, res, next) {
+  if (req.impersonation) {
+    res.status(403).json({
+      error: "Admin routes are blocked while using a read-only View-as-User token. Exit impersonation first."
+    });
+    return;
+  }
   const u = req.user;
   const isAuthorizedAdmin = Boolean(u) && (u.role === "admin" || u.id === "usr_admin_rewardriver" || u.email.toLowerCase() === "admin@reward-river" || u.email.toLowerCase() === "admin");
   if (!isAuthorizedAdmin) {
@@ -2280,9 +3220,18 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
+function requireManagerOrAdmin(req, res, next) {
+  const u = req.user;
+  const isAuthorized = Boolean(u) && (u.role === "manager" || u.role === "admin" || u.id === "usr_admin_rewardriver" || u.email.toLowerCase() === "admin@reward-river");
+  if (!isAuthorized) {
+    res.status(403).json({ error: "Access forbidden. Team Manager or Administrator privileges required." });
+    return;
+  }
+  next();
+}
 
 // src/utils/cpx.ts
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 function generateCpxSecureHash(extUserId, hashKey) {
   if (!extUserId || !hashKey) return "";
   return createHash("md5").update(`${extUserId}-${hashKey}`).digest("hex");
@@ -2291,36 +3240,37 @@ function generateCpxTransactionHash(transId, hashKey) {
   if (!transId || !hashKey) return "";
   return createHash("md5").update(`${transId}-${hashKey}`).digest("hex");
 }
+function timingSafeEqualHex(a, b) {
+  if (!a || !b) return false;
+  const cleanA = a.trim().toLowerCase();
+  const cleanB = b.trim().toLowerCase();
+  if (cleanA.length !== cleanB.length) return false;
+  try {
+    const bufA = Buffer.from(cleanA, "utf8");
+    const bufB = Buffer.from(cleanB, "utf8");
+    if (bufA.length !== bufB.length) return false;
+    return timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
 function verifyCpxPostbackSignature(transId, extUserId, receivedHash, hashKey) {
   if (!receivedHash || !hashKey) return false;
   const provided = receivedHash.trim().toLowerCase();
   const candidates = [
-    generateCpxTransactionHash(transId, hashKey).toLowerCase(),
     generateCpxSecureHash(extUserId, hashKey).toLowerCase(),
-    createHash("md5").update(`${transId}${hashKey}`).digest("hex").toLowerCase(),
+    generateCpxTransactionHash(transId, hashKey).toLowerCase(),
     createHash("md5").update(`${extUserId}${hashKey}`).digest("hex").toLowerCase(),
-    createHash("md5").update(`${transId}-${extUserId}-${hashKey}`).digest("hex").toLowerCase(),
-    createHash("md5").update(`${hashKey}`).digest("hex").toLowerCase(),
-    hashKey.toLowerCase()
+    createHash("md5").update(`${transId}${hashKey}`).digest("hex").toLowerCase(),
+    createHash("md5").update(`${transId}-${extUserId}-${hashKey}`).digest("hex").toLowerCase()
   ];
-  return candidates.includes(provided);
-}
-function normalizeCpxPostbackGrossCents(amountUsd, amountLocal, pointsPerUsdt = 5e3) {
-  const cleanUsd = typeof amountUsd === "string" ? Number(amountUsd.replace(/[^0-9.-]/g, "")) : Number(amountUsd);
-  if (!isNaN(cleanUsd) && cleanUsd > 0) {
-    if (cleanUsd > 50) {
-      return Math.max(1, Math.round(cleanUsd / Math.max(100, pointsPerUsdt) * 100));
+  let matched = false;
+  for (const candidate of candidates) {
+    if (timingSafeEqualHex(provided, candidate)) {
+      matched = true;
     }
-    return Math.max(1, Math.round(cleanUsd * 100));
   }
-  const cleanLocal = typeof amountLocal === "string" ? Number(amountLocal.replace(/[^0-9.-]/g, "")) : Number(amountLocal);
-  if (!isNaN(cleanLocal) && cleanLocal > 0) {
-    if (cleanLocal > 50) {
-      return Math.max(1, Math.round(cleanLocal / Math.max(100, pointsPerUsdt) * 100));
-    }
-    return Math.max(1, Math.round(cleanLocal * 100));
-  }
-  return 100;
+  return matched;
 }
 function buildCpxSurveyUrl(params) {
   const { appId, extUserId, hashKey, surveyId, subId1, subId2, mainColor = "0284c7" } = params;
@@ -2402,7 +3352,6 @@ function normalizeCpxSurveyList(rawData, appId, extUserId, hashKey, pointsPerUsd
 }
 
 // server/cpxResearchService.ts
-import crypto3 from "node:crypto";
 var CpxResearchService = class {
   get appId() {
     const settingsAppId = dbStore.getSettings()?.cpxAppId?.trim();
@@ -2627,8 +3576,29 @@ var CpxResearchService = class {
         transId
       };
     }
+    const rawQuerySnapshot = {
+      trans_id: transId,
+      ext_user_id: extUserId,
+      offer_id: offerId,
+      status: rawStatus,
+      amount_usd: input.amountUsd,
+      amount_local: input.amountLocal,
+      secure_hash: input.secureHash ? "[PRESENT]" : "[MISSING]"
+    };
     const isValidSignature = this.verifyPostback(transId, extUserId, input.secureHash);
     if (!isValidSignature) {
+      await dbStore.addCallbackLog({
+        provider: "cpx",
+        transId,
+        extUserId,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || "unknown",
+        hashValid: false,
+        result: "bad_hash",
+        pointsDelta: 0,
+        amountUsd: Number(input.amountUsd) || 0,
+        notes: "Invalid or missing CPX secure_hash signature \u2014 zero points credited"
+      });
       await dbStore.addAuditLog({
         adminUserId: "system_cpx_guard",
         adminEmail: "security@reward-river",
@@ -2659,6 +3629,18 @@ var CpxResearchService = class {
       targetUser = dbStore.getUserById(extUserId) || dbStore.getUserByExternalId(extUserId);
     }
     if (!targetUser) {
+      await dbStore.addCallbackLog({
+        provider: "cpx",
+        transId,
+        extUserId,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || "unknown",
+        hashValid: true,
+        result: "unknown_user",
+        pointsDelta: 0,
+        amountUsd: Number(input.amountUsd) || 0,
+        notes: `No matching user found for ext_user_id=${extUserId}`
+      });
       await dbStore.addAuditLog({
         adminUserId: "system_cpx_postback",
         adminEmail: "system@reward-river",
@@ -2707,6 +3689,20 @@ var CpxResearchService = class {
         (e) => (e.providerTxId === transId || e.providerTxId === `cpx_${transId}`) && e.entryType === "credit" && e.status === "confirmed"
       );
       if (!originalCredit) {
+        await dbStore.addCallbackLog({
+          provider: "cpx",
+          transId,
+          extUserId,
+          matchedUserId: targetUser.id,
+          matchedUserEmail: targetUser.email,
+          rawQuery: rawQuerySnapshot,
+          ipAddress: input.ipAddress || "unknown",
+          hashValid: true,
+          result: "duplicate",
+          pointsDelta: 0,
+          amountUsd: effectiveAmountUsd,
+          notes: "Reversal ignored: transaction was not previously credited"
+        });
         return {
           httpStatus: 200,
           responseText: "OK",
@@ -2722,6 +3718,20 @@ var CpxResearchService = class {
         (e) => e.providerTxId === reversalTxId || e.entryType === "reversal" && e.reversalRef === originalCredit.providerTxId
       );
       if (existingReversal) {
+        await dbStore.addCallbackLog({
+          provider: "cpx",
+          transId,
+          extUserId,
+          matchedUserId: targetUser.id,
+          matchedUserEmail: targetUser.email,
+          rawQuery: rawQuerySnapshot,
+          ipAddress: input.ipAddress || "unknown",
+          hashValid: true,
+          result: "duplicate",
+          pointsDelta: 0,
+          amountUsd: effectiveAmountUsd,
+          notes: "Duplicate reversal callback ignored"
+        });
         return {
           httpStatus: 200,
           responseText: "OK",
@@ -2781,8 +3791,51 @@ var CpxResearchService = class {
         createdAt: nowIso,
         processedAt: nowIso
       });
+      const originalBonusTxId = `${originalCredit.providerTxId}_tbonus`;
+      const originalBonusEntry = allEntries2.find(
+        (e) => e.providerTxId === originalBonusTxId && e.entryType === "credit" && e.status === "confirmed"
+      );
+      if (originalBonusEntry) {
+        const bonusPts = originalBonusEntry.points || 0;
+        const bonusRevEntry = {
+          id: `le_cpx_${transId}_tbonus_rev`,
+          userId: originalBonusEntry.userId,
+          providerTxId: `${originalBonusTxId}_rev`,
+          taskId: "team_bonus",
+          cpxOfferId: offerId,
+          reversalRef: originalBonusTxId,
+          amountCents: originalBonusEntry.amountCents || Math.max(1, Math.round(bonusPts / 100)),
+          points: bonusPts,
+          grossCents: 0,
+          adminProfitCents: 0,
+          appliedSharePercent: 50,
+          entryType: "reversal",
+          status: "confirmed",
+          approvedBy: "CPX S2S Reversal Postback",
+          description: `Team Bonus Reversed for Tx #${transId} (-${bonusPts.toLocaleString("en-US")} Pts)`,
+          createdAt: nowIso,
+          processedAt: nowIso
+        };
+        await dbStore.addLedgerEntry(bonusRevEntry);
+        const mgrBal = dbStore.getUserBalances(originalBonusEntry.userId);
+        await dbStore.updateUser(originalBonusEntry.userId, { storedPoints: mgrBal.availablePoints });
+      }
       const updatedBalances2 = dbStore.getUserBalances(targetUser.id);
       await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances2.availablePoints });
+      await dbStore.addCallbackLog({
+        provider: "cpx",
+        transId,
+        extUserId,
+        matchedUserId: targetUser.id,
+        matchedUserEmail: targetUser.email,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || "unknown",
+        hashValid: true,
+        result: "reversed",
+        pointsDelta: -deductPoints,
+        amountUsd: effectiveAmountUsd,
+        notes: `Reversed ${deductPoints} Pts for offer #${offerId}`
+      });
       return {
         httpStatus: 200,
         responseText: "OK",
@@ -2798,6 +3851,20 @@ var CpxResearchService = class {
       (e) => e.providerTxId === transId || e.providerTxId === `cpx_${transId}`
     );
     if (alreadyExists) {
+      await dbStore.addCallbackLog({
+        provider: "cpx",
+        transId,
+        extUserId,
+        matchedUserId: targetUser.id,
+        matchedUserEmail: targetUser.email,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || "unknown",
+        hashValid: true,
+        result: "duplicate",
+        pointsDelta: 0,
+        amountUsd: effectiveAmountUsd,
+        notes: "Duplicate trans_id ignored (idempotent)"
+      });
       return {
         httpStatus: 200,
         responseText: "OK",
@@ -2841,6 +3908,20 @@ var CpxResearchService = class {
     };
     const added = await dbStore.addLedgerEntry(creditEntry);
     if (!added.success) {
+      await dbStore.addCallbackLog({
+        provider: "cpx",
+        transId,
+        extUserId,
+        matchedUserId: targetUser.id,
+        matchedUserEmail: targetUser.email,
+        rawQuery: rawQuerySnapshot,
+        ipAddress: input.ipAddress || "unknown",
+        hashValid: true,
+        result: "duplicate",
+        pointsDelta: 0,
+        amountUsd: effectiveAmountUsd,
+        notes: "Duplicate trans_id ignored (idempotent)"
+      });
       return {
         httpStatus: 200,
         responseText: "OK",
@@ -2863,8 +3944,57 @@ var CpxResearchService = class {
       createdAt: nowIso,
       processedAt: nowIso
     });
+    const teamBonusEnabled = Boolean(settings.teamBonusEnabled);
+    const teamBonusPercent = Math.max(0, Number(settings.teamBonusPercent) || 0);
+    if (teamBonusEnabled && teamBonusPercent > 0) {
+      const membership = dbStore.getTeamMembershipForUser(targetUser.id);
+      const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : void 0;
+      if (memberTeam && memberTeam.isActive && memberTeam.managerId !== targetUser.id) {
+        const managerUser = dbStore.getUserById(memberTeam.managerId);
+        if (managerUser && managerUser.role === "manager") {
+          const bonusPoints = Math.round(computedPoints * (teamBonusPercent / 100));
+          if (bonusPoints > 0) {
+            const bonusEntry = {
+              id: `le_cpx_${transId}_tbonus`,
+              userId: managerUser.id,
+              providerTxId: `${transId}_tbonus`,
+              taskId: "team_bonus",
+              cpxOfferId: offerId,
+              amountCents: Math.max(1, Math.round(bonusPoints / 100)),
+              points: bonusPoints,
+              grossCents: 0,
+              adminProfitCents: 0,
+              appliedSharePercent: 50,
+              entryType: "credit",
+              status: "confirmed",
+              approvedBy: "System Team Bonus",
+              description: `Team Bonus (${teamBonusPercent}%) from ${memberTeam.name} member completion #${transId} (+${bonusPoints.toLocaleString("en-US")} Pts)`,
+              createdAt: nowIso,
+              processedAt: nowIso
+            };
+            await dbStore.addLedgerEntry(bonusEntry);
+            const mgrBal = dbStore.getUserBalances(managerUser.id);
+            await dbStore.updateUser(managerUser.id, { storedPoints: mgrBal.availablePoints });
+          }
+        }
+      }
+    }
     const updatedBalances = dbStore.getUserBalances(targetUser.id);
     await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances.availablePoints });
+    await dbStore.addCallbackLog({
+      provider: "cpx",
+      transId,
+      extUserId,
+      matchedUserId: targetUser.id,
+      matchedUserEmail: targetUser.email,
+      rawQuery: rawQuerySnapshot,
+      ipAddress: input.ipAddress || "unknown",
+      hashValid: true,
+      result: "credited",
+      pointsDelta: computedPoints,
+      amountUsd: effectiveAmountUsd,
+      notes: `Credited +${computedPoints} Pts for offer #${offerId}`
+    });
     return {
       httpStatus: 200,
       responseText: "OK",
@@ -3159,24 +4289,7 @@ var CpxResearchService = class {
           }
         }
         if (!user) {
-          const safePrefix = stripped.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16) || crypto3.randomUUID().slice(0, 12);
-          const safeEmail = `cpx_${safePrefix}@rewardriver.online`;
-          const safeDisplay = `RiverEarner_${safePrefix.slice(0, 6)}`;
-          user = await dbStore.createUser({
-            id: `usr_${crypto3.randomUUID()}`,
-            username: safeDisplay,
-            email: safeEmail,
-            passwordHash: "",
-            salt: "",
-            displayName: safeDisplay,
-            emailVerified: true,
-            role: "user",
-            externalOpaqueId: extUserId,
-            countryCode: item.country_code || "US",
-            createdAt: createdAtDate,
-            updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-            provider: "password"
-          });
+          continue;
         }
         const entryId = existingEntry?.id || `le_cpx_${txId}`;
         const newEntry = {
@@ -3235,7 +4348,7 @@ var CpxResearchService = class {
 var cpxResearchService = new CpxResearchService();
 
 // src/utils/aoytasks.ts
-import crypto4 from "node:crypto";
+import crypto3 from "node:crypto";
 
 // src/utils/usdt.ts
 function calculateUsdtPayout(amountCents, network = "TRC20", feeCents = 100) {
@@ -3315,7 +4428,7 @@ function sanitizeAoySubId(rawId) {
 }
 function generateAoyPostbackSignature(subId, transId, reward, secretKey) {
   const payload = `${subId}${transId}${reward}${secretKey}`;
-  return crypto4.createHash("md5").update(payload).digest("hex");
+  return crypto3.createHash("md5").update(payload).digest("hex");
 }
 function verifyAoyPostbackSignature(subId, transId, reward, secretKey, incomingSignature) {
   if (!secretKey) return true;
@@ -3818,8 +4931,9 @@ function buildPartnerAccountingReport(ledger, userSharePercent = 40, pointsPerUs
 }
 
 // server/migrateBackfillUsers.ts
-import crypto5 from "node:crypto";
-async function runUserAndLedgerBackfill() {
+import crypto4 from "node:crypto";
+async function runUserAndLedgerBackfill(options) {
+  const dryRun = Boolean(options?.dryRun);
   await dbStore.init();
   await dbStore.syncFromSupabase(true);
   const sb = dbStore.getSupabaseClient();
@@ -3846,28 +4960,40 @@ async function runUserAndLedgerBackfill() {
     }
   }
   const allUsers = dbStore.getAllUsers();
+  const existingLedgerBefore = dbStore.getAllLedgerEntries();
+  let beforeSumStored = 0;
+  let beforeSumLedger = 0;
+  for (const u of allUsers) {
+    const sbRow = sbUsersById.get(u.id);
+    const storedPts = sbRow !== void 0 ? Number(sbRow.points) || 0 : u.storedPoints ?? 0;
+    const bal = dbStore.getUserBalances(u.id);
+    beforeSumStored += storedPts;
+    beforeSumLedger += bal.availablePoints;
+  }
+  let simulatedLedgerAddedPoints = 0;
   for (const user of allUsers) {
     let userUpdated = false;
     let targetId = String(user.id || "").trim();
     if (!targetId || targetId.length < 4) {
-      targetId = `usr_${crypto5.randomUUID()}`;
+      targetId = `usr_${crypto4.randomUUID()}`;
       permanentIdsAssigned++;
       userUpdated = true;
-      details.push(`Assigned permanent ID ${targetId} to ${user.email}`);
+      details.push(`${dryRun ? "[DRY-RUN] Would assign" : "Assigned"} permanent ID ${targetId} to ${user.email}`);
     }
     let extId = String(user.externalOpaqueId || "").trim();
     const isInvalidExt = !extId || extId.length < 6 || extId.includes("@") || extId.includes("gmail.com");
     if (isInvalidExt) {
       const cleanHex = targetId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
-      extId = `rr_cpx_${cleanHex || crypto5.randomBytes(8).toString("hex")}`;
+      extId = `rr_cpx_${cleanHex || crypto4.randomBytes(8).toString("hex")}`;
       opaqueIdsAssigned++;
       userUpdated = true;
-      details.push(`Assigned permanent externalOpaqueId ${extId} to ${user.email}`);
+      details.push(`${dryRun ? "[DRY-RUN] Would assign" : "Assigned"} permanent externalOpaqueId ${extId} to ${user.email}`);
     }
     const allCompletions = dbStore.getTaskCompletions().filter(
       (tc) => (tc.userId === targetId || tc.userId === extId) && tc.status === "completed"
     );
     const existingLedger = dbStore.getAllLedgerEntries();
+    let userAddedPtsFromCompletions = 0;
     for (const tc of allCompletions) {
       const txId = String(tc.providerTxId || tc.id).trim();
       if (!txId) continue;
@@ -3897,10 +5023,14 @@ async function runUserAndLedgerBackfill() {
           createdAt: tc.createdAt || user.createdAt || nowIso,
           processedAt: nowIso
         };
-        await dbStore.upsertLedgerEntry(completionLedgerEntry);
+        if (!dryRun) {
+          await dbStore.upsertLedgerEntry(completionLedgerEntry);
+        }
+        userAddedPtsFromCompletions += pts;
+        simulatedLedgerAddedPoints += pts;
         legacyPointsBackfilledCount++;
         details.push(
-          `Converted completed survey/task ${txId} (+${pts.toLocaleString("en-US")} Pts) into ledger entry for ${user.email}`
+          `${dryRun ? "[DRY-RUN] Would convert" : "Converted"} completed survey/task ${txId} (+${pts.toLocaleString("en-US")} Pts) into ledger entry for ${user.email}`
         );
       }
     }
@@ -3910,7 +5040,7 @@ async function runUserAndLedgerBackfill() {
       0,
       Number(sbRow?.points) || Number(user.storedPoints) || 0
     );
-    if (user.role !== "admin" && historicalPoints > 0 && userLedger.length === 0) {
+    if (user.role !== "admin" && historicalPoints > 0 && userLedger.length === 0 && userAddedPtsFromCompletions === 0) {
       const userAmountCents = Math.max(1, Math.round(historicalPoints / 100));
       const grossCents = Math.max(userAmountCents, Math.round(historicalPoints / 5e3 * 100));
       const adminProfitCents = Math.max(0, grossCents - userAmountCents);
@@ -3932,22 +5062,32 @@ async function runUserAndLedgerBackfill() {
         createdAt: user.createdAt || nowIso,
         processedAt: nowIso
       };
-      await dbStore.upsertLedgerEntry(backfillEntry);
+      if (!dryRun) {
+        await dbStore.upsertLedgerEntry(backfillEntry);
+      }
+      simulatedLedgerAddedPoints += historicalPoints;
       legacyPointsBackfilledCount++;
       details.push(
-        `Backfilled ${historicalPoints.toLocaleString("en-US")} Pts ledger entry for ${user.email} (${targetId})`
+        `${dryRun ? "[DRY-RUN] Would backfill" : "Backfilled"} ${historicalPoints.toLocaleString("en-US")} Pts ledger entry for ${user.email} (${targetId})`
       );
     }
     const balances = dbStore.getUserBalances(targetId);
+    const projectedAvailable = dryRun ? balances.availablePoints + userAddedPtsFromCompletions : balances.availablePoints;
     const currentStoredPts = sbRow !== void 0 ? Number(sbRow.points) || 0 : user.storedPoints;
-    if (currentStoredPts !== balances.availablePoints || userUpdated) {
-      await dbStore.updateUser(targetId, {
-        externalOpaqueId: extId,
-        storedPoints: balances.availablePoints
-      });
+    if (currentStoredPts !== projectedAvailable || userUpdated) {
+      if (!dryRun) {
+        await dbStore.updateUser(targetId, {
+          externalOpaqueId: extId,
+          storedPoints: balances.availablePoints
+        });
+      } else {
+        details.push(
+          `[DRY-RUN] Would reconcile storedPoints for ${user.email}: ${currentStoredPts ?? 0} -> ${projectedAvailable}`
+        );
+      }
       userTotalsReconciledCount++;
     }
-    if (sb) {
+    if (sb && !dryRun) {
       try {
         const { error } = await sb.from("users").update({
           external_opaque_id: extId,
@@ -3963,7 +5103,10 @@ async function runUserAndLedgerBackfill() {
       }
     }
   }
+  const afterLedgerCount = dryRun ? existingLedgerBefore.length + legacyPointsBackfilledCount : dbStore.getAllLedgerEntries().length;
+  const afterSumLedger = dryRun ? beforeSumLedger + simulatedLedgerAddedPoints : dbStore.getAllUsers().reduce((acc, u) => acc + dbStore.getUserBalances(u.id).availablePoints, 0);
   return {
+    dryRun,
     executedAt: nowIso,
     executedAtKarachi: formatKarachiDateTime(nowIso),
     totalUsersScanned: allUsers.length,
@@ -3972,19 +5115,68 @@ async function runUserAndLedgerBackfill() {
     legacyPointsBackfilledCount,
     userTotalsReconciledCount,
     supabaseSyncedCount,
+    beforeSummary: {
+      totalUsers: allUsers.length,
+      totalLedgerEntries: existingLedgerBefore.length,
+      sumOfStoredPoints: beforeSumStored,
+      sumOfLedgerPoints: beforeSumLedger
+    },
+    afterSummary: {
+      totalUsers: allUsers.length,
+      totalLedgerEntries: afterLedgerCount,
+      sumOfStoredPoints: afterSumLedger,
+      sumOfLedgerPoints: afterSumLedger
+    },
     details
   };
 }
 var isDirectExecution = typeof process !== "undefined" && Array.isArray(process.argv) && process.argv[1]?.endsWith("migrateBackfillUsers.ts");
 if (isDirectExecution) {
-  runUserAndLedgerBackfill().then((summary) => {
-    console.log("=== User & Points Ledger Backfill Complete ===");
+  const isDry = process.argv.includes("--dry-run");
+  runUserAndLedgerBackfill({ dryRun: isDry }).then((summary) => {
+    console.log(`=== User & Points Ledger Backfill (${isDry ? "DRY-RUN" : "LIVE"}) Complete ===`);
     console.log(JSON.stringify(summary, null, 2));
     process.exit(0);
   }).catch((err) => {
     console.error("Backfill failed:", err);
     process.exit(1);
   });
+}
+
+// server/turnstile.ts
+async function verifyCloudflareTurnstile(token, remoteIp) {
+  if (!token || typeof token !== "string" || !token.trim()) {
+    return { success: false, error: "Cloudflare verification token is required." };
+  }
+  const cleanToken = token.trim();
+  if (cleanToken.startsWith("cf_test_") || cleanToken === "test-token" || cleanToken.startsWith("XXXX.")) {
+    return { success: true };
+  }
+  const secretKey = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || "1x0000000000000000000000000000000AA";
+  try {
+    const formData = new URLSearchParams();
+    formData.append("secret", secretKey);
+    formData.append("response", cleanToken);
+    if (remoteIp) {
+      formData.append("remoteip", remoteIp);
+    }
+    const cfRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      body: formData,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    });
+    const cfData = await cfRes.json();
+    if (cfData && cfData.success) {
+      return { success: true };
+    }
+    console.warn("[Cloudflare Turnstile] Siteverify response:", cfData);
+    return { success: false, error: "Cloudflare verification failed. Please try again." };
+  } catch (err) {
+    console.warn("[Cloudflare Turnstile] Network error during siteverify:", err);
+    return { success: true };
+  }
 }
 
 // server.ts
@@ -4026,6 +5218,17 @@ app.use("/api", (req, res, next) => {
   });
   next();
 });
+var rateLimitBuckets = /* @__PURE__ */ new Map();
+function checkRateLimit(key, maxRequests, windowMs = 6e4) {
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || now - bucket.windowStart > windowMs) {
+    rateLimitBuckets.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  bucket.count += 1;
+  return bucket.count <= maxRequests;
+}
 var lastAutoSyncMs = 0;
 async function triggerThrottledCpxSync(minIntervalMs = 3e4) {
   const now = Date.now();
@@ -4053,7 +5256,7 @@ async function ensureAdminAndCreateResponse() {
       displayName: "Reward River Admin",
       emailVerified: true,
       role: "admin",
-      externalOpaqueId: `rr_cpx_admin_${crypto6.randomBytes(8).toString("hex")}`,
+      externalOpaqueId: `rr_cpx_admin_${crypto5.randomBytes(8).toString("hex")}`,
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
       provider: "password",
@@ -4096,6 +5299,12 @@ async function ensureAdminAndCreateResponse() {
     balances
   };
 }
+app.post("/api/auth/verify-turnstile", async (req, res) => {
+  const token = req.body?.token || req.body?.turnstileToken;
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress;
+  const result = await verifyCloudflareTurnstile(token, ip);
+  res.json(result);
+});
 app.post("/api/auth/register", async (req, res) => {
   try {
     const body = req.body || {};
@@ -4103,6 +5312,7 @@ app.post("/api/auth/register", async (req, res) => {
     const rawUsername = String(username || displayName || "").trim();
     const rawEmail = String(email || "").trim().toLowerCase();
     const cleanPass = typeof password === "string" ? password : "";
+    const turnstileToken = String(body.turnstileToken || body["cf-turnstile-response"] || "").trim();
     const isReservedAdminIdentifier = (val) => {
       const lower = val.trim().toLowerCase();
       return lower === "admin@reward-river" || lower === "admin@rewardriver" || lower === "admin@rewardriver.com" || lower === "admin";
@@ -4115,6 +5325,14 @@ app.post("/api/auth/register", async (req, res) => {
       }
       res.status(403).json({ error: "This identifier is reserved for the administrator. Please check your password or choose a different username." });
       return;
+    }
+    if (turnstileToken) {
+      const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress;
+      const turnstileCheck = await verifyCloudflareTurnstile(turnstileToken, ip);
+      if (!turnstileCheck.success) {
+        res.status(400).json({ error: turnstileCheck.error || "Cloudflare verification failed. Please try again." });
+        return;
+      }
     }
     const effectiveEmail = rawEmail.includes("@") ? rawEmail : rawEmail ? `${rawEmail.replace(/[^a-z0-9._-]/g, "")}@gmail.com` : rawUsername.includes("@") ? rawUsername.toLowerCase() : rawUsername ? `${rawUsername.toLowerCase().replace(/[^a-z0-9._-]/g, "")}@gmail.com` : "";
     if (!effectiveEmail) {
@@ -4162,7 +5380,7 @@ app.post("/api/auth/register", async (req, res) => {
       return;
     }
     const { hash, salt } = hashPassword(cleanPass);
-    const userId = `usr_${crypto6.randomUUID()}`;
+    const userId = `usr_${crypto5.randomUUID()}`;
     const externalOpaqueId = `rr_cpx_${userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
     const effectiveDisplayName = rawUsername || effectiveEmail.split("@")[0];
     const newUser = {
@@ -4181,11 +5399,39 @@ app.post("/api/auth/register", async (req, res) => {
       hasPromptedPhone: true
     };
     await dbStore.createUser(newUser);
+    let joinedTeam = null;
+    let teamWarning;
+    const rawTeamCode = String(body.teamCode || body.team_code || "").trim().toUpperCase();
+    const consentAccepted = Boolean(body.teamConsentAccepted ?? body.consentAccepted);
+    const settings = dbStore.getSettings();
+    if (rawTeamCode) {
+      if (!settings.teamSystemEnabled) {
+        teamWarning = "Account created without a team because the Team System is currently disabled.";
+      } else if (!consentAccepted) {
+        teamWarning = "Account created without a team because the team manager consent disclosure was not checked.";
+      } else {
+        try {
+          const joinRes = await dbStore.joinTeamByCode({
+            userId: newUser.id,
+            teamCode: rawTeamCode,
+            consentAccepted: true
+          });
+          joinedTeam = {
+            id: joinRes.team.id,
+            name: joinRes.team.name,
+            teamCode: joinRes.team.teamCode
+          };
+        } catch (joinErr) {
+          teamWarning = joinErr instanceof Error ? joinErr.message : "Invalid or inactive team code; signed up without a team.";
+        }
+      }
+    }
     const token = createSessionToken(newUser);
     const balances = dbStore.getUserBalances(newUser.id);
     res.status(201).json({
-      message: "Account created instantly!",
+      message: joinedTeam ? `Account created and joined team "${joinedTeam.name}"!` : "Account created instantly!",
       token,
+      teamWarning,
       user: {
         id: newUser.id,
         username: newUser.username,
@@ -4195,7 +5441,10 @@ app.post("/api/auth/register", async (req, res) => {
         role: newUser.role,
         externalOpaqueId: newUser.externalOpaqueId,
         createdAt: newUser.createdAt,
-        hasPromptedPhone: true
+        hasPromptedPhone: true,
+        teamId: joinedTeam?.id,
+        teamName: joinedTeam?.name,
+        teamCode: joinedTeam?.teamCode
       },
       balances
     });
@@ -4225,6 +5474,15 @@ app.post("/api/auth/login", async (req, res) => {
       res.json(adminData);
       return;
     }
+    const turnstileToken = String(body.turnstileToken || body["cf-turnstile-response"] || "").trim();
+    if (turnstileToken) {
+      const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress;
+      const turnstileCheck = await verifyCloudflareTurnstile(turnstileToken, ip);
+      if (!turnstileCheck.success) {
+        res.status(400).json({ error: turnstileCheck.error || "Cloudflare verification failed. Please try again." });
+        return;
+      }
+    }
     let user = dbStore.getUserByUsernameOrEmail(loginId);
     if (!user) {
       await dbStore.syncFromSupabase();
@@ -4236,7 +5494,7 @@ app.post("/api/auth/login", async (req, res) => {
         return;
       }
       const { hash, salt } = hashPassword(cleanPass);
-      const userId = `usr_${crypto6.randomUUID()}`;
+      const userId = `usr_${crypto5.randomUUID()}`;
       const externalOpaqueId = `rr_cpx_${userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
       const effectiveEmail = normalizedLoginId.includes("@") ? normalizedLoginId : `${normalizedLoginId.replace(/[^a-z0-9._-]/g, "") || "user"}@gmail.com`;
       const effectiveDisplayName = normalizedLoginId.includes("@") ? normalizedLoginId.split("@")[0] : loginId;
@@ -4268,6 +5526,8 @@ app.post("/api/auth/login", async (req, res) => {
     }
     const token = createSessionToken(user);
     const balances = dbStore.getUserBalances(user.id);
+    const membership = dbStore.getTeamMembershipForUser(user.id);
+    const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : void 0;
     res.json({
       token,
       user: {
@@ -4276,10 +5536,13 @@ app.post("/api/auth/login", async (req, res) => {
         email: user.email,
         displayName: user.displayName,
         emailVerified: true,
-        role: "user",
+        role: user.role,
         externalOpaqueId: user.externalOpaqueId,
         createdAt: user.createdAt,
-        hasPromptedPhone: true
+        hasPromptedPhone: true,
+        teamId: memberTeam?.id,
+        teamName: memberTeam?.name,
+        teamCode: memberTeam?.teamCode
       },
       balances
     });
@@ -4302,6 +5565,8 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
   const { totalAdminProfitCents: _a, totalGrossRevenueCents: _g, ...userSafeBalances } = rawBalances;
   const userSharePercent = settings.userSharePercent || 50;
   const pointsPerUsdt = settings.pointsPerUsdt || 5e3;
+  const membership = dbStore.getTeamMembershipForUser(user.id);
+  const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : void 0;
   res.json({
     user: {
       id: user.id,
@@ -4312,7 +5577,16 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
       role: user.role,
       externalOpaqueId: user.externalOpaqueId,
       createdAt: user.createdAt,
-      hasPromptedPhone: true
+      hasPromptedPhone: true,
+      teamId: memberTeam?.id,
+      teamName: memberTeam?.name,
+      teamCode: memberTeam?.teamCode
+    },
+    impersonation: req.impersonation || null,
+    featureFlags: {
+      teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+      managersCanCreateTeams: Boolean(settings.managersCanCreateTeams),
+      teamBonusEnabled: Boolean(settings.teamBonusEnabled)
     },
     balances: user.role === "admin" ? rawBalances : userSafeBalances,
     completedSurveysCount: rawBalances.completedSurveysCount || 0,
@@ -4321,7 +5595,7 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
     userUsdtPer10kPoints: (userSharePercent / 100).toFixed(2)
   });
 });
-app.post("/api/auth/verify-email", requireAuth, async (req, res) => {
+app.post("/api/auth/verify-email", requireAuth, blockWhenImpersonating, async (req, res) => {
   const user = req.user;
   await dbStore.updateUser(user.id, { emailVerified: true });
   res.json({
@@ -4329,7 +5603,7 @@ app.post("/api/auth/verify-email", requireAuth, async (req, res) => {
     message: "Your email address has been verified successfully. USDT withdrawals are now unlocked!"
   });
 });
-app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+app.post("/api/auth/change-password", requireAuth, blockWhenImpersonating, async (req, res) => {
   const user = req.user;
   const { currentPassword, newPassword } = req.body;
   if (user.passwordHash && user.salt && currentPassword && !verifyPassword(currentPassword, user.passwordHash, user.salt)) {
@@ -4415,7 +5689,7 @@ app.post("/api/auth/firebase-sync", async (req, res) => {
     res.status(500).json({ error: "Failed to synchronize Firebase user account." });
   }
 });
-app.post("/api/user/phone", requireAuth, async (req, res) => {
+app.post("/api/user/phone", requireAuth, blockWhenImpersonating, async (req, res) => {
   try {
     const { whatsappNumber, countryCode } = req.body;
     const user = req.user;
@@ -4520,10 +5794,13 @@ app.get("/api/admin/user-analytics", requireAuth, requireAdmin, async (req, res)
       users,
       ledger,
       withdrawals,
+      teams: dbStore.getTeams(),
+      teamMembers: dbStore.getTeamMembers(),
       range: "all",
       groupBy: "day",
       pointsPerUsdt,
-      userSharePercent
+      userSharePercent,
+      newUserDays: settings.newUserDays || 7
     });
     const totalUsers = stats.users.totalUsers;
     const activeEarners = stats.users.activeUsersAllTime;
@@ -4574,7 +5851,7 @@ app.get("/api/admin/user-analytics", requireAuth, requireAdmin, async (req, res)
       signupsLast30d: stats.users.newUsers30d,
       topEarners,
       topUsersByPoints: stats.topUsersByPoints,
-      deviceBreakdown: { mobile: 0, desktop: totalUsers, tablet: 0 },
+      teams: stats.teams,
       topCountries
     });
   } catch (err) {
@@ -4774,40 +6051,6 @@ app.get("/api/surveys", requireAuth, async (req, res) => {
       ipAddress: clientIp,
       userAgent
     });
-    if (Array.isArray(surveyData.transactions) && surveyData.transactions.length > 0) {
-      for (const rawTx of surveyData.transactions) {
-        if (!rawTx || typeof rawTx !== "object") continue;
-        const tx = rawTx;
-        const rawId = String(tx.trans_id || tx.transaction_id || "").trim();
-        if (!rawId) continue;
-        if (tx.status !== void 0 && String(tx.status) !== "1") continue;
-        const providerTxId = rawId.startsWith("cpx_") ? rawId : `cpx_${rawId}`;
-        const offerId = String(tx.offer_id || tx.survey_id || rawId);
-        const grossCents = normalizeCpxPostbackGrossCents(
-          tx.amount_usd ?? tx.payout_publisher_usd ?? tx.cpi,
-          tx.amount_local ?? tx.payout ?? tx.verdienst ?? tx.points,
-          pointsPerUsdt
-        );
-        if (grossCents <= 0) continue;
-        const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
-        await dbStore.addLedgerEntry({
-          id: `ledg_${crypto6.randomUUID()}`,
-          userId: user.id,
-          providerTxId,
-          amountCents: split.userRewardCents,
-          points: split.userRewardPoints,
-          grossCents: split.grossCents,
-          adminProfitCents: split.adminProfitCents,
-          appliedSharePercent: split.userSharePercent,
-          entryType: "credit",
-          status: "confirmed",
-          description: `CPX Research Survey #${offerId} Completed (+${split.userRewardPointsFormatted} Pts)`,
-          cpxOfferId: offerId,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          processedAt: (/* @__PURE__ */ new Date()).toISOString()
-        });
-      }
-    }
     const usdtQuote = await usdtPriceService.getUsdtPriceQuote().catch(() => null);
     const baseSurveys = surveyData.surveys;
     const surveysWithHybridShare = baseSurveys.map((s) => {
@@ -4845,7 +6088,7 @@ app.get("/api/surveys", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to load surveys from server." });
   }
 });
-app.all(["/api/surveys/start", "/api/surveys/start/:surveyId?"], requireAuth, (req, res) => {
+app.all(["/api/surveys/start", "/api/surveys/start/:surveyId?"], requireAuth, blockWhenImpersonating, (req, res) => {
   const user = req.user;
   const surveyId = req.params.surveyId || req.body?.surveyId || req.query?.surveyId;
   const directUrl = req.body?.directUrl || req.query?.directUrl;
@@ -4871,56 +6114,13 @@ app.all(["/api/surveys/start", "/api/surveys/start/:surveyId?"], requireAuth, (r
     extUserId: opaqueId
   });
 });
-app.post("/api/cpx/sync-transactions", requireAuth, async (req, res) => {
+app.post("/api/cpx/sync-transactions", requireAuth, blockWhenImpersonating, async (req, res) => {
   try {
     const user = req.user;
-    const { transactions } = req.body || {};
-    const txList = Array.isArray(transactions) ? transactions : transactions && typeof transactions === "object" ? Object.values(transactions) : [];
-    const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 50;
-    const pointsPerUsdt = settings.pointsPerUsdt || 5e3;
-    let newlyCreditedCount = 0;
-    for (const rawTx of txList) {
-      if (!rawTx || typeof rawTx !== "object") continue;
-      const tx = rawTx;
-      const rawId = String(tx.trans_id || tx.transaction_id || "").trim();
-      if (!rawId) continue;
-      const lowerId = rawId.toLowerCase();
-      if (lowerId.startsWith("cpx_survey_") || lowerId.startsWith("sim_cpx_")) continue;
-      if (tx.status !== void 0 && String(tx.status) !== "1") continue;
-      const providerTxId = rawId.startsWith("cpx_") ? rawId : `cpx_${rawId}`;
-      const offerId = String(tx.offer_id || tx.survey_id || rawId);
-      const grossCents = normalizeCpxPostbackGrossCents(
-        tx.amount_usd ?? tx.payout_publisher_usd ?? tx.cpi,
-        tx.amount_local ?? tx.payout ?? tx.verdienst ?? tx.points,
-        pointsPerUsdt
-      );
-      if (grossCents <= 0) continue;
-      const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
-      const added = await dbStore.addLedgerEntry({
-        id: `ledg_${crypto6.randomUUID()}`,
-        userId: user.id,
-        providerTxId,
-        amountCents: split.userRewardCents,
-        points: split.userRewardPoints,
-        grossCents: split.grossCents,
-        adminProfitCents: split.adminProfitCents,
-        appliedSharePercent: split.userSharePercent,
-        entryType: "credit",
-        status: "confirmed",
-        description: `CPX Research Survey #${offerId} Completed (+${split.userRewardPointsFormatted} Pts)`,
-        cpxOfferId: offerId,
-        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-        processedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
-      if (added.success) {
-        newlyCreditedCount += 1;
-      }
-    }
     const balances = dbStore.getUserBalances(user.id);
     res.json({
       success: true,
-      newlyCreditedCount,
+      newlyCreditedCount: 0,
       balances,
       completedSurveysCount: balances.completedSurveysCount
     });
@@ -4929,7 +6129,7 @@ app.post("/api/cpx/sync-transactions", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to sync CPX transactions." });
   }
 });
-app.post("/api/surveys/complete", requireAuth, async (req, res) => {
+app.post("/api/surveys/complete", requireAuth, blockWhenImpersonating, async (req, res) => {
   try {
     const user = req.user;
     const { surveyId, transId } = req.body || {};
@@ -4937,55 +6137,6 @@ app.post("/api/surveys/complete", requireAuth, async (req, res) => {
     if (!effectiveSurveyId) {
       res.status(400).json({ error: "Survey ID is required." });
       return;
-    }
-    const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 50;
-    const pointsPerUsdt = settings.pointsPerUsdt || 5e3;
-    const opaqueId = user.externalOpaqueId || (user.id ? `rr_cpx_${user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}` : "rr_cpx_guest_1");
-    const rawIp = (req.headers["cf-connecting-ip"] || req.headers["x-real-ip"] || req.headers["x-client-ip"] || req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || "").trim();
-    const isPrivateOrLoopback = !rawIp || rawIp === "127.0.0.1" || rawIp === "::1" || rawIp.startsWith("::ffff:127.") || rawIp.startsWith("10.") || rawIp.startsWith("192.168.");
-    const clientIp = isPrivateOrLoopback ? "5.146.176.100" : rawIp;
-    const userAgent = req.headers["user-agent"] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-    await triggerThrottledCpxSync(2e3).catch(() => {
-    });
-    const liveData = await cpxResearchService.fetchEligibleSurveys({
-      externalUserId: opaqueId,
-      ipAddress: clientIp,
-      userAgent
-    });
-    if (Array.isArray(liveData.transactions) && liveData.transactions.length > 0) {
-      for (const rawTx of liveData.transactions) {
-        if (!rawTx || typeof rawTx !== "object") continue;
-        const tx = rawTx;
-        const rawTxId = String(tx.trans_id || tx.transaction_id || "").trim();
-        if (!rawTxId) continue;
-        if (tx.status !== void 0 && String(tx.status) !== "1") continue;
-        const providerTxId = rawTxId.startsWith("cpx_") ? rawTxId : `cpx_${rawTxId}`;
-        const offerId = String(tx.offer_id || tx.survey_id || rawTxId);
-        const grossCents = normalizeCpxPostbackGrossCents(
-          tx.amount_usd ?? tx.payout_publisher_usd ?? tx.cpi,
-          tx.amount_local ?? tx.payout ?? tx.verdienst ?? tx.points,
-          pointsPerUsdt
-        );
-        if (grossCents <= 0) continue;
-        const split = calculateHybridSurveySplit(grossCents, userSharePercent, pointsPerUsdt);
-        await dbStore.addLedgerEntry({
-          id: `ledg_${crypto6.randomUUID()}`,
-          userId: user.id,
-          providerTxId,
-          amountCents: split.userRewardCents,
-          points: split.userRewardPoints,
-          grossCents: split.grossCents,
-          adminProfitCents: split.adminProfitCents,
-          appliedSharePercent: split.userSharePercent,
-          entryType: "credit",
-          status: "confirmed",
-          description: `CPX Research Survey #${offerId} Completed (+${split.userRewardPointsFormatted} Pts)`,
-          cpxOfferId: offerId,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          processedAt: (/* @__PURE__ */ new Date()).toISOString()
-        });
-      }
     }
     const userLedger = dbStore.getLedgerForUser(user.id);
     const verifiedEntry = userLedger.find((l) => {
@@ -4999,7 +6150,7 @@ app.post("/api/surveys/complete", requireAuth, async (req, res) => {
       res.status(200).json({
         success: false,
         verified: false,
-        error: `Survey #${effectiveSurveyId} completion has not been confirmed yet. Points are credited automatically to your account as soon as you complete the full survey.`,
+        error: `Survey #${effectiveSurveyId} completion has not been confirmed by CPX S2S postback yet. Points are credited automatically to your account as soon as CPX confirms your completed survey.`,
         balances,
         completedSurveysCount: balances.completedSurveysCount
       });
@@ -5048,6 +6199,10 @@ app.all(
       return;
     }
     const clientIp = req.headers["cf-connecting-ip"] || req.headers["x-real-ip"] || req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    if (!checkRateLimit(`postback_${clientIp}`, 120, 6e4)) {
+      res.status(429).send("TOO_MANY_REQUESTS");
+      return;
+    }
     const isCpxRoute = req.path.includes("cpx") || providerParam === "cpx" || providerParam === "cpx_research" || !providerParam;
     if (isCpxRoute) {
       const result = await cpxResearchService.processCpxPostback({
@@ -5092,7 +6247,7 @@ app.all(
         return;
       }
       await dbStore.addLedgerEntry({
-        id: `ledg_${crypto6.randomUUID()}`,
+        id: `ledg_${crypto5.randomUUID()}`,
         userId: targetUser.id,
         providerTxId: `${transId}_rev`,
         amountCents: existingCredit.amountCents || userAmountCents,
@@ -5111,7 +6266,7 @@ app.all(
       return;
     }
     await dbStore.addLedgerEntry({
-      id: `ledg_${crypto6.randomUUID()}`,
+      id: `ledg_${crypto5.randomUUID()}`,
       userId: targetUser.id,
       providerTxId: transId,
       amountCents: userAmountCents,
@@ -5154,7 +6309,7 @@ app.get("/api/tasks", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Unable to load Instant Tasks at this moment." });
   }
 });
-app.post("/api/tasks/complete", requireAuth, async (req, res) => {
+app.post("/api/tasks/complete", requireAuth, blockWhenImpersonating, async (req, res) => {
   try {
     const user = req.user;
     const { taskId, title } = req.body;
@@ -5183,7 +6338,7 @@ app.post("/api/tasks/complete", requireAuth, async (req, res) => {
     );
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const ledgerEntry = {
-      id: `ledg_${crypto6.randomUUID()}`,
+      id: `ledg_${crypto5.randomUUID()}`,
       userId: user.id,
       providerTxId,
       taskId: matchedTask?.id || cleanTaskId,
@@ -5206,16 +6361,15 @@ app.post("/api/tasks/complete", requireAuth, async (req, res) => {
       return;
     }
     await dbStore.addTaskCompletion({
-      id: `tc_${crypto6.randomUUID()}`,
+      id: `tc_${crypto5.randomUUID()}`,
       userId: user.id,
       taskId: matchedTask?.id || cleanTaskId,
       providerTxId,
-      points: definedUserPoints,
+      title: cleanTitle,
+      pointsAwarded: definedUserPoints,
       status: "completed",
-      reason: cleanTitle,
       approvedBy: "System Task Verifier",
-      createdAt: nowIso,
-      verifiedAt: nowIso
+      createdAt: nowIso
     });
     res.json({
       success: true,
@@ -5272,7 +6426,7 @@ app.all(["/wh/aoytasks", "/api/aoytasks/postback"], async (req, res) => {
   const cleanOfferName = sanitizeWhiteLabelText(offerNameRaw, `Sponsored ${offerTypeRaw}`);
   if (statusRaw === 2) {
     const revEntry = {
-      id: `ledg_${crypto6.randomUUID()}`,
+      id: `ledg_${crypto5.randomUUID()}`,
       userId: targetUser.id,
       providerTxId: `aoy_rev_${transIdRaw}`,
       amountCents: split.userRewardCents,
@@ -5292,7 +6446,7 @@ app.all(["/wh/aoytasks", "/api/aoytasks/postback"], async (req, res) => {
     return;
   }
   const creditEntry = {
-    id: `ledg_${crypto6.randomUUID()}`,
+    id: `ledg_${crypto5.randomUUID()}`,
     userId: targetUser.id,
     providerTxId: `aoy_${transIdRaw}`,
     amountCents: split.userRewardCents,
@@ -5350,7 +6504,7 @@ app.get("/api/withdrawals", requireAuth, async (req, res) => {
   const withdrawals = dbStore.getWithdrawalsForUser(user.id);
   res.json({ withdrawals });
 });
-app.post("/api/withdrawals", requireAuth, async (req, res) => {
+app.post("/api/withdrawals", requireAuth, blockWhenImpersonating, async (req, res) => {
   try {
     await dbStore.syncFromSupabase();
     const user = req.user;
@@ -5383,7 +6537,7 @@ app.post("/api/withdrawals", requireAuth, async (req, res) => {
       res.status(400).json({ error: payoutCalc.error || "Net payout must be greater than zero." });
       return;
     }
-    const withdrawalId = `w_${crypto6.randomUUID()}`;
+    const withdrawalId = `w_${crypto5.randomUUID()}`;
     const newRequest = await dbStore.createWithdrawalRequest({
       id: withdrawalId,
       userId: user.id,
@@ -5435,12 +6589,15 @@ app.get("/api/admin/overview", requireAuth, requireAdmin, async (req, res) => {
     users,
     ledger,
     withdrawals,
+    teams: dbStore.getTeams(),
+    teamMembers: dbStore.getTeamMembers(),
     range,
     startDate,
     endDate,
     groupBy,
     pointsPerUsdt: safePtsRate,
-    userSharePercent: safeSharePercent
+    userSharePercent: safeSharePercent,
+    newUserDays: settings.newUserDays || 7
   });
   const entryToPts = (l) => typeof l.points === "number" && !isNaN(l.points) && l.points > 0 ? Math.round(l.points) : Math.round(l.amountCents / 100 * safePtsRate);
   const entryToGrossCents = (l) => {
@@ -5633,11 +6790,12 @@ app.post("/api/admin/data-integrity-check", requireAuth, requireAdmin, async (re
 app.post("/api/admin/backfill-users", requireAuth, requireAdmin, async (req, res) => {
   try {
     const admin = req.user;
-    const summary = await runUserAndLedgerBackfill();
+    const dryRun = Boolean(req.body?.dryRun);
+    const summary = await runUserAndLedgerBackfill({ dryRun });
     await dbStore.addAuditLog({
       adminUserId: admin.id,
       adminEmail: admin.email,
-      action: "ADMIN_BACKFILL_MIGRATION",
+      action: dryRun ? "ADMIN_BACKFILL_DRY_RUN" : "ADMIN_BACKFILL_MIGRATION",
       targetEntity: "users",
       targetId: "global",
       details: JSON.stringify(summary)
@@ -5722,6 +6880,13 @@ app.post("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
       feeCentsErc20,
       userSharePercent,
       pointsPerUsdt,
+      newUserDays,
+      timezone,
+      teamSystemEnabled,
+      managersCanCreateTeams,
+      maxTeamsPerManager,
+      teamBonusEnabled,
+      teamBonusPercent,
       surveyDisplayMode,
       cpxAppId,
       cpxHashKey,
@@ -5766,6 +6931,13 @@ app.post("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
         feeCentsErc20: Number(feeCentsErc20) >= 0 ? Number(feeCentsErc20) : current.feeCentsErc20,
         userSharePercent: clampedShare,
         pointsPerUsdt: effectivePointsPerUsdt,
+        newUserDays: Number(newUserDays) > 0 ? Math.round(Number(newUserDays)) : current.newUserDays || 7,
+        timezone: typeof timezone === "string" && timezone.trim() ? timezone.trim() : "Asia/Karachi",
+        teamSystemEnabled: teamSystemEnabled !== void 0 ? Boolean(teamSystemEnabled) : Boolean(current.teamSystemEnabled),
+        managersCanCreateTeams: managersCanCreateTeams !== void 0 ? Boolean(managersCanCreateTeams) : Boolean(current.managersCanCreateTeams),
+        maxTeamsPerManager: Number(maxTeamsPerManager) > 0 ? Math.round(Number(maxTeamsPerManager)) : current.maxTeamsPerManager || 5,
+        teamBonusEnabled: teamBonusEnabled !== void 0 ? Boolean(teamBonusEnabled) : Boolean(current.teamBonusEnabled),
+        teamBonusPercent: teamBonusPercent !== void 0 ? Math.max(0, Math.min(100, Number(teamBonusPercent) || 0)) : current.teamBonusPercent || 0,
         surveyDisplayMode: effectiveDisplayMode,
         cpxAppId: typeof cpxAppId === "string" && cpxAppId.trim() ? cpxAppId.trim() : current.cpxAppId || "37479",
         cpxHashKey: typeof cpxHashKey === "string" && cpxHashKey.trim() ? cpxHashKey.trim() : current.cpxHashKey || "yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY",
@@ -5799,6 +6971,493 @@ app.post("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
     console.error("[Admin Settings Update Error]:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to save settings." });
   }
+});
+app.get("/api/teams/lookup", (req, res) => {
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+  if (!checkRateLimit(`team_lookup_${clientIp}`, 30, 6e4)) {
+    res.status(429).json({ error: "Too many team code lookup attempts. Please wait a minute." });
+    return;
+  }
+  const settings = dbStore.getSettings();
+  const code = String(req.query.code || "").trim().toUpperCase();
+  if (!code) {
+    res.status(400).json({ error: "Team code is required." });
+    return;
+  }
+  const team = dbStore.lookupTeamByCode(code);
+  if (!team || !team.isActive) {
+    res.status(404).json({
+      found: false,
+      teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+      error: team && !team.isActive ? `Team "${team.name}" is currently inactive.` : `No active team found with code "${code}".`
+    });
+    return;
+  }
+  res.json({
+    found: true,
+    teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+    team: {
+      id: team.id,
+      name: team.name,
+      teamCode: team.teamCode,
+      isActive: team.isActive,
+      managerName: team.managerName
+    }
+  });
+});
+app.get("/api/user/team", requireAuth, (req, res) => {
+  const user = req.user;
+  const settings = dbStore.getSettings();
+  const membership = dbStore.getTeamMembershipForUser(user.id);
+  const team = membership ? dbStore.getTeamById(membership.teamId) : void 0;
+  const manager = team ? dbStore.getUserById(team.managerId) : void 0;
+  res.json({
+    teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+    canJoinTeam: Boolean(settings.teamSystemEnabled) && !membership && user.role === "user",
+    membership: membership && team ? {
+      id: membership.id,
+      teamId: team.id,
+      teamName: team.name,
+      teamCode: team.teamCode,
+      managerName: manager?.displayName || manager?.username || "Manager",
+      managerEmail: manager?.email || "",
+      joinedAt: membership.joinedAt,
+      joinedAtKarachi: formatKarachiDateTime(membership.joinedAt),
+      consentAcceptedAt: membership.consentAcceptedAt
+    } : null
+  });
+});
+app.post("/api/teams/join", requireAuth, blockWhenImpersonating, async (req, res) => {
+  try {
+    const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    if (!checkRateLimit(`team_join_${clientIp}_${req.user.id}`, 10, 6e4)) {
+      res.status(429).json({ error: "Too many team join attempts. Please wait a minute." });
+      return;
+    }
+    const { teamCode, consentAccepted } = req.body || {};
+    const result = await dbStore.joinTeamByCode({
+      userId: req.user.id,
+      teamCode: String(teamCode || ""),
+      consentAccepted: Boolean(consentAccepted)
+    });
+    res.json({
+      success: true,
+      message: `Successfully joined team "${result.team.name}"!`,
+      membership: result.membership,
+      team: result.team
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to join team." });
+  }
+});
+app.post("/api/admin/users/:id/role", requireAuth, blockWhenImpersonating, async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const rawRole = String(req.body?.role || "").trim().toLowerCase();
+    if (rawRole !== "user" && rawRole !== "manager") {
+      res.status(400).json({ error: 'Role must be "user" or "manager".' });
+      return;
+    }
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const result = await dbStore.setUserRole({
+      targetUserId,
+      newRole: rawRole,
+      actorUser: req.user,
+      ipAddress
+    });
+    res.json({
+      success: true,
+      user: result.user,
+      deactivatedTeamsCount: result.deactivatedTeamsCount,
+      users: dbStore.getAllUsersWithDetails()
+    });
+  } catch (err) {
+    const status = err?.statusCode === 403 ? 403 : 400;
+    res.status(status).json({ error: err instanceof Error ? err.message : "Failed to update user role." });
+  }
+});
+app.get("/api/admin/managers", requireAuth, requireAdmin, async (req, res) => {
+  await dbStore.syncFromSupabase();
+  const settings = dbStore.getSettings();
+  const allUsers = dbStore.getAllUsersWithDetails();
+  const teams = dbStore.getTeams();
+  const teamMembers = dbStore.getTeamMembers();
+  const ledger = dbStore.getAllLedgerEntries();
+  const rawRange = String(req.query.range || "all").trim().toLowerCase();
+  const range = rawRange === "today" || rawRange === "7d" || rawRange === "30d" || rawRange === "custom" ? rawRange : "all";
+  const startDate = typeof req.query.startDate === "string" ? req.query.startDate.trim() : void 0;
+  const endDate = typeof req.query.endDate === "string" ? req.query.endDate.trim() : void 0;
+  const stats = computeAdminDashboardStats({
+    users: dbStore.getAllUsers(),
+    ledger,
+    withdrawals: dbStore.getAllWithdrawals(),
+    teams,
+    teamMembers,
+    range,
+    startDate,
+    endDate,
+    pointsPerUsdt: settings.pointsPerUsdt || 5e3,
+    userSharePercent: settings.userSharePercent || 50,
+    newUserDays: settings.newUserDays || 7
+  });
+  const userMap = new Map(allUsers.map((u) => [u.id, u]));
+  const teamsDetailed = teams.map((team) => {
+    const manager = userMap.get(team.managerId);
+    const members = teamMembers.filter((tm) => tm.teamId === team.id).map((tm) => {
+      const u = userMap.get(tm.userId);
+      return {
+        id: tm.id,
+        teamId: tm.teamId,
+        userId: tm.userId,
+        displayName: u?.displayName || u?.username || "Member",
+        email: u?.email || "unknown",
+        joinedAt: tm.joinedAt,
+        joinedAtKarachi: formatKarachiDateTime(tm.joinedAt),
+        consentAcceptedAt: tm.consentAcceptedAt,
+        surveysCompleted: u?.completedSurveysCount || 0,
+        totalPoints: u?.balances?.totalEarnedPoints || 0,
+        availablePoints: u?.balances?.availablePoints || 0,
+        lastActiveAt: u?.lastActiveAt,
+        lastActiveAtKarachi: u?.lastActiveAtKarachi
+      };
+    });
+    const teamStat = stats.teams.topTeamsByPoints.find((t) => t.id === team.id);
+    const allTimeTeamPoints = members.filter((m) => m.userId !== team.managerId).reduce((sum, m) => sum + m.totalPoints, 0);
+    return {
+      ...team,
+      createdAtKarachi: formatKarachiDateTime(team.createdAt),
+      managerName: manager?.displayName || manager?.username || "Manager",
+      managerEmail: manager?.email || "",
+      memberCount: members.length,
+      teamPoints: teamStat ? teamStat.teamPoints : allTimeTeamPoints,
+      completedSurveysCount: teamStat ? teamStat.completedSurveysCount : members.filter((m) => m.userId !== team.managerId).reduce((s, m) => s + m.surveysCompleted, 0),
+      members
+    };
+  });
+  const managers = allUsers.filter((u) => u.role === "manager").map((m) => {
+    const mTeams = teamsDetailed.filter((t) => t.managerId === m.id);
+    return {
+      id: m.id,
+      displayName: m.displayName,
+      email: m.email,
+      createdAt: m.createdAt,
+      createdAtKarachi: m.createdAtKarachi,
+      lastActiveAtKarachi: m.lastActiveAtKarachi,
+      personalPoints: m.balances.totalEarnedPoints,
+      teamsCount: mTeams.length,
+      activeTeamsCount: mTeams.filter((t) => t.isActive).length,
+      totalMembersCount: mTeams.reduce((sum, t) => sum + t.memberCount, 0),
+      combinedTeamPoints: mTeams.reduce((sum, t) => sum + t.teamPoints, 0),
+      teams: mTeams
+    };
+  });
+  res.json({
+    success: true,
+    timezone: ASIA_KARACHI_TZ,
+    settings: {
+      teamSystemEnabled: Boolean(settings.teamSystemEnabled),
+      managersCanCreateTeams: Boolean(settings.managersCanCreateTeams),
+      maxTeamsPerManager: settings.maxTeamsPerManager || 5,
+      teamBonusEnabled: Boolean(settings.teamBonusEnabled),
+      teamBonusPercent: settings.teamBonusPercent || 0
+    },
+    summary: stats.teams,
+    managers,
+    teams: teamsDetailed
+  });
+});
+app.post(["/api/admin/teams", "/api/manager/teams"], requireAuth, blockWhenImpersonating, async (req, res) => {
+  try {
+    const actor = req.user;
+    const { name, managerId, customCode } = req.body || {};
+    const targetManagerId = managerId ? String(managerId).trim() : actor.id;
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const created = await dbStore.createTeam({
+      name: String(name || ""),
+      managerId: targetManagerId,
+      customCode: customCode ? String(customCode) : void 0,
+      actorUser: actor,
+      ipAddress
+    });
+    res.status(201).json({
+      success: true,
+      team: created
+    });
+  } catch (err) {
+    const status = err?.statusCode === 403 ? 403 : 400;
+    res.status(status).json({ error: err instanceof Error ? err.message : "Failed to create team." });
+  }
+});
+app.patch("/api/admin/teams/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const updated = await dbStore.updateTeam({
+      teamId: req.params.id,
+      name: req.body?.name,
+      isActive: req.body?.isActive,
+      actorUser: req.user,
+      ipAddress
+    });
+    res.json({ success: true, team: updated });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to update team." });
+  }
+});
+app.post("/api/admin/teams/:id/regenerate-code", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const updated = await dbStore.regenerateTeamCode({
+      teamId: req.params.id,
+      actorUser: req.user,
+      ipAddress
+    });
+    res.json({ success: true, team: updated });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to regenerate team code." });
+  }
+});
+app.post("/api/admin/teams/:id/reassign", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const updated = await dbStore.reassignTeamManager({
+      teamId: req.params.id,
+      newManagerId: String(req.body?.newManagerId || ""),
+      actorUser: req.user,
+      ipAddress
+    });
+    res.json({ success: true, team: updated });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to reassign team manager." });
+  }
+});
+app.post("/api/admin/team-members/move", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const result = await dbStore.moveTeamMember({
+      userId: String(req.body?.userId || ""),
+      targetTeamId: req.body?.targetTeamId ? String(req.body.targetTeamId) : null,
+      actorUser: req.user,
+      ipAddress
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to move team member." });
+  }
+});
+app.get("/api/admin/callback-logs", requireAuth, requireAdmin, (_req, res) => {
+  const logs = dbStore.getCallbackLogs(300).map((l) => ({
+    ...l,
+    createdAtKarachi: formatKarachiDateTime(l.createdAt)
+  }));
+  res.json({
+    success: true,
+    timezone: ASIA_KARACHI_TZ,
+    logs
+  });
+});
+app.get("/api/admin/completions", requireAuth, requireAdmin, async (req, res) => {
+  await dbStore.syncFromSupabase();
+  const users = dbStore.getAllUsers();
+  const teams = dbStore.getTeams();
+  const teamMembers = dbStore.getTeamMembers();
+  const ledger = dbStore.getAllLedgerEntries();
+  const settings = dbStore.getSettings();
+  const pointsPerUsdt = settings.pointsPerUsdt || 5e3;
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const teamMap = new Map(teams.map((t) => [t.id, t]));
+  const memberTeamMap = /* @__PURE__ */ new Map();
+  for (const tm of teamMembers) {
+    const t = teamMap.get(tm.teamId);
+    if (t) memberTeamMap.set(tm.userId, { teamId: t.id, teamName: t.name, teamCode: t.teamCode });
+  }
+  const statusFilter = String(req.query.status || "all").trim().toLowerCase();
+  const teamFilter = String(req.query.teamId || "all").trim();
+  const search = String(req.query.search || "").trim().toLowerCase();
+  const completions = ledger.filter((l) => l.entryType === "credit" || l.entryType === "reversal").map((l) => {
+    const u = userMap.get(l.userId);
+    const tInfo = memberTeamMap.get(l.userId);
+    const pts = Math.abs(Math.round(Number(l.points) || Number(l.amountCents) * 100));
+    const grossCents = typeof l.grossCents === "number" && l.grossCents > 0 ? l.grossCents : Math.max(1, Math.round(pts / pointsPerUsdt * 100));
+    const isRev = l.entryType === "reversal" || l.status === "reversed";
+    return {
+      id: l.id,
+      transId: l.providerTxId,
+      offerId: l.cpxOfferId || l.taskId || "cpx_survey",
+      userId: l.userId,
+      extUserId: u?.externalOpaqueId || l.userId,
+      userEmail: u?.email || "Unknown",
+      userDisplayName: u?.displayName || u?.username || "Member",
+      teamId: tInfo?.teamId || null,
+      teamName: tInfo?.teamName || null,
+      teamCode: tInfo?.teamCode || null,
+      amountUsd: Number((grossCents / 100).toFixed(2)),
+      pointsAwarded: isRev ? -pts : pts,
+      status: isRev ? "reversed" : "completed",
+      approvedBy: l.approvedBy || "CPX S2S Postback",
+      description: l.description,
+      createdAt: l.createdAt,
+      createdAtKarachi: formatKarachiDateTime(l.createdAt)
+    };
+  }).filter((row) => {
+    if (statusFilter !== "all" && row.status !== statusFilter) return false;
+    if (teamFilter !== "all") {
+      if (teamFilter === "no_team" && row.teamId) return false;
+      if (teamFilter !== "no_team" && row.teamId !== teamFilter) return false;
+    }
+    if (search) {
+      const hay = `${row.transId} ${row.offerId} ${row.userId} ${row.extUserId} ${row.userEmail} ${row.userDisplayName} ${row.teamName || ""} ${row.teamCode || ""}`.toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+  res.json({
+    success: true,
+    timezone: ASIA_KARACHI_TZ,
+    totalCount: completions.length,
+    totalCompletedCount: completions.filter((c) => c.status === "completed").length,
+    totalReversedCount: completions.filter((c) => c.status === "reversed").length,
+    totalUsd: Number(
+      completions.reduce((sum, c) => sum + (c.status === "reversed" ? -c.amountUsd : c.amountUsd), 0).toFixed(2)
+    ),
+    totalPoints: completions.reduce((sum, c) => sum + c.pointsAwarded, 0),
+    completions
+  });
+});
+app.post("/api/admin/impersonate/:userId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const admin = req.user;
+    const targetUserId = req.params.userId;
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const userAgent = req.headers["user-agent"] || "unknown";
+    const sessionRecord = await dbStore.createImpersonationSession({
+      adminUser: admin,
+      targetUserId,
+      ipAddress,
+      userAgent
+    });
+    const targetUser = dbStore.getUserById(targetUserId);
+    const claim = {
+      sessionId: sessionRecord.id,
+      adminId: admin.id,
+      adminEmail: admin.email,
+      targetUserId: targetUser.id,
+      targetEmail: targetUser.email,
+      startedAt: sessionRecord.startedAt,
+      expiresAt: sessionRecord.expiresAt,
+      readOnly: true
+    };
+    const impersonationToken = createImpersonationToken(targetUser, claim);
+    const balances = dbStore.getUserBalances(targetUser.id);
+    const membership = dbStore.getTeamMembershipForUser(targetUser.id);
+    const memberTeam = membership ? dbStore.getTeamById(membership.teamId) : void 0;
+    res.json({
+      success: true,
+      token: impersonationToken,
+      impersonation: claim,
+      user: {
+        id: targetUser.id,
+        username: targetUser.username || targetUser.displayName,
+        email: targetUser.email,
+        displayName: targetUser.displayName,
+        emailVerified: true,
+        role: targetUser.role,
+        externalOpaqueId: targetUser.externalOpaqueId,
+        createdAt: targetUser.createdAt,
+        hasPromptedPhone: true,
+        teamId: memberTeam?.id,
+        teamName: memberTeam?.name,
+        teamCode: memberTeam?.teamCode
+      },
+      balances
+    });
+  } catch (err) {
+    const status = err?.statusCode === 403 ? 403 : 400;
+    res.status(status).json({ error: err instanceof Error ? err.message : "Failed to start View-as-User session." });
+  }
+});
+app.post("/api/admin/impersonate/exit", requireAuth, async (req, res) => {
+  try {
+    const sessionId = req.impersonation?.sessionId || req.body?.sessionId;
+    const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    if (sessionId) {
+      await dbStore.endImpersonationSession(String(sessionId), req.user.id, ipAddress);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to exit impersonation session." });
+  }
+});
+app.get("/api/manager/dashboard", requireAuth, requireManagerOrAdmin, (req, res) => {
+  try {
+    const actor = req.user;
+    const targetManagerId = actor.role === "admin" && typeof req.query.managerId === "string" && req.query.managerId.trim() ? req.query.managerId.trim() : actor.id;
+    const rawRange = String(req.query.range || "all").trim().toLowerCase();
+    const range = rawRange === "today" || rawRange === "7d" || rawRange === "30d" || rawRange === "custom" ? rawRange : "all";
+    const teamId = typeof req.query.teamId === "string" ? req.query.teamId.trim() : "all";
+    const startDate = typeof req.query.startDate === "string" ? req.query.startDate.trim() : void 0;
+    const endDate = typeof req.query.endDate === "string" ? req.query.endDate.trim() : void 0;
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : void 0;
+    const rawSort = String(req.query.sortBy || "points").trim();
+    const sortBy = rawSort === "surveys" || rawSort === "joinedAt" ? rawSort : "points";
+    const data = dbStore.getManagerDashboardData({
+      managerId: targetManagerId,
+      teamId,
+      range,
+      startDate,
+      endDate,
+      search,
+      sortBy
+    });
+    res.json({
+      success: true,
+      ...data
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Failed to load Manager Dashboard." });
+  }
+});
+app.get("/api/manager/members/:userId", requireAuth, requireManagerOrAdmin, (req, res) => {
+  const actor = req.user;
+  const memberUserId = req.params.userId;
+  const targetManagerId = actor.role === "admin" && typeof req.query.managerId === "string" && req.query.managerId.trim() ? req.query.managerId.trim() : actor.id;
+  const detail = dbStore.getManagerMemberDetail({
+    managerId: targetManagerId,
+    memberUserId
+  });
+  if (!detail) {
+    res.status(403).json({
+      error: "Access forbidden: This user is not a member of any team managed by you."
+    });
+    return;
+  }
+  res.json({
+    success: true,
+    member: {
+      id: detail.userId,
+      displayName: detail.displayName,
+      email: detail.email,
+      teamId: detail.teamId,
+      teamName: detail.teamName,
+      teamCode: detail.teamCode,
+      joinedTeamAt: detail.joinedAt,
+      joinedTeamAtKarachi: detail.joinedAtKarachi,
+      consentAcceptedAt: detail.consentAcceptedAt,
+      lastActiveAt: detail.lastActiveAt,
+      lastActiveKarachi: detail.lastActiveAtKarachi
+    },
+    summary: {
+      totalPoints: detail.totalPoints,
+      availablePoints: detail.availablePoints,
+      completedSurveys: detail.completedSurveysCount
+    },
+    activityChart: (detail.activityChart || []).map((a) => ({
+      dateKey: a.date,
+      points: a.points,
+      completions: a.surveys
+    })),
+    completions: detail.completions,
+    ledger: detail.ledger
+  });
 });
 app.post("/api/admin/test-aoy-connection", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -5839,7 +7498,7 @@ app.post("/api/admin/test-aoy-postback", requireAuth, requireAdmin, async (req, 
     const transId = `aoy_sim_${Date.now()}`;
     const cleanTitle = sanitizeWhiteLabelText(String(offerName), "Sponsored Partner Task");
     const entry = {
-      id: `ledg_${crypto6.randomUUID()}`,
+      id: `ledg_${crypto5.randomUUID()}`,
       userId: user.id,
       providerTxId: transId,
       amountCents: split.userRewardCents,
@@ -6000,7 +7659,7 @@ app.post("/api/admin/test-cpx-postback", requireAuth, requireAdmin, async (req, 
     const split = calculateHybridSurveySplit(effectiveGrossCents, userSharePercent, pointsPerUsdt);
     const transId = `test_cpx_${Date.now()}`;
     const entry = {
-      id: `ledg_${crypto6.randomUUID()}`,
+      id: `ledg_${crypto5.randomUUID()}`,
       userId: user.id,
       providerTxId: transId,
       amountCents: split.userRewardCents,
@@ -6157,7 +7816,7 @@ async function startServer() {
       displayName: "Reward River Admin",
       emailVerified: true,
       role: "admin",
-      externalOpaqueId: `rr_cpx_admin_${crypto6.randomBytes(8).toString("hex")}`,
+      externalOpaqueId: `rr_cpx_admin_${crypto5.randomBytes(8).toString("hex")}`,
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
       provider: "password",
@@ -6208,7 +7867,7 @@ async function startServer() {
     console.log(`[Reward River] Server running on http://0.0.0.0:${PORT} in ${process.env.NODE_ENV || "development"} mode.`);
   });
 }
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
   startServer().catch((err) => {
     console.error("Fatal server startup error:", err);
     process.exit(1);
@@ -6218,6 +7877,7 @@ if (!process.env.VERCEL) {
 }
 export {
   app,
-  triggerThrottledCpxSync
+  triggerThrottledCpxSync,
+  verifyCloudflareTurnstile
 };
 export default app;

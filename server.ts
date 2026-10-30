@@ -41,6 +41,8 @@ import {
   ASIA_KARACHI_TZ
 } from './src/utils/adminStats';
 import { runUserAndLedgerBackfill } from './server/migrateBackfillUsers';
+import { verifyCloudflareTurnstile } from './server/turnstile';
+export { verifyCloudflareTurnstile };
 
 dotenv.config();
 
@@ -189,6 +191,14 @@ async function ensureAdminAndCreateResponse() {
 // Authentication Endpoints
 // -----------------------------------------------------------------------------
 
+// POST /api/auth/verify-turnstile
+app.post('/api/auth/verify-turnstile', async (req: Request, res: Response) => {
+  const token = req.body?.token || req.body?.turnstileToken;
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress;
+  const result = await verifyCloudflareTurnstile(token, ip);
+  res.json(result);
+});
+
 // POST /api/auth/register
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   try {
@@ -198,6 +208,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     const rawUsername = String(username || displayName || '').trim();
     const rawEmail = String(email || '').trim().toLowerCase();
     const cleanPass = typeof password === 'string' ? password : '';
+    const turnstileToken = String(body.turnstileToken || body['cf-turnstile-response'] || '').trim();
 
     const isReservedAdminIdentifier = (val: string) => {
       const lower = val.trim().toLowerCase();
@@ -218,6 +229,18 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       }
       res.status(403).json({ error: 'This identifier is reserved for the administrator. Please check your password or choose a different username.' });
       return;
+    }
+
+    // Verify Cloudflare Turnstile token for member registrations
+    if (turnstileToken) {
+      const ip =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket.remoteAddress;
+      const turnstileCheck = await verifyCloudflareTurnstile(turnstileToken, ip);
+      if (!turnstileCheck.success) {
+        res.status(400).json({ error: turnstileCheck.error || 'Cloudflare verification failed. Please try again.' });
+        return;
+      }
     }
 
     const effectiveEmail = rawEmail.includes('@')
@@ -402,6 +425,18 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       const adminData = await ensureAdminAndCreateResponse();
       res.json(adminData);
       return;
+    }
+
+    const turnstileToken = String(body.turnstileToken || body['cf-turnstile-response'] || '').trim();
+    if (turnstileToken) {
+      const ip =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket.remoteAddress;
+      const turnstileCheck = await verifyCloudflareTurnstile(turnstileToken, ip);
+      if (!turnstileCheck.success) {
+        res.status(400).json({ error: turnstileCheck.error || 'Cloudflare verification failed. Please try again.' });
+        return;
+      }
     }
 
     let user = dbStore.getUserByUsernameOrEmail(loginId);
@@ -1507,12 +1542,11 @@ app.post('/api/tasks/complete', requireAuth, blockWhenImpersonating, async (req:
       userId: user.id,
       taskId: matchedTask?.id || cleanTaskId,
       providerTxId,
-      points: definedUserPoints,
+      title: cleanTitle,
+      pointsAwarded: definedUserPoints,
       status: 'completed',
-      reason: cleanTitle,
       approvedBy: 'System Task Verifier',
-      createdAt: nowIso,
-      verifiedAt: nowIso
+      createdAt: nowIso
     });
 
     res.json({
@@ -2789,7 +2823,31 @@ app.get('/api/manager/members/:userId', requireAuth, requireManagerOrAdmin, (req
 
   res.json({
     success: true,
-    member: detail
+    member: {
+      id: detail.userId,
+      displayName: detail.displayName,
+      email: detail.email,
+      teamId: detail.teamId,
+      teamName: detail.teamName,
+      teamCode: detail.teamCode,
+      joinedTeamAt: detail.joinedAt,
+      joinedTeamAtKarachi: detail.joinedAtKarachi,
+      consentAcceptedAt: detail.consentAcceptedAt,
+      lastActiveAt: detail.lastActiveAt,
+      lastActiveKarachi: detail.lastActiveAtKarachi
+    },
+    summary: {
+      totalPoints: detail.totalPoints,
+      availablePoints: detail.availablePoints,
+      completedSurveys: detail.completedSurveysCount
+    },
+    activityChart: (detail.activityChart || []).map((a: any) => ({
+      dateKey: a.date,
+      points: a.points,
+      completions: a.surveys
+    })),
+    completions: detail.completions,
+    ledger: detail.ledger
   });
 });
 
@@ -3279,7 +3337,7 @@ async function startServer() {
   });
 }
 
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   startServer().catch(err => {
     console.error('Fatal server startup error:', err);
     process.exit(1);
