@@ -190,16 +190,23 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
 
 ALTER TABLE public.admin_audit_logs ADD COLUMN IF NOT EXISTS ip_address TEXT;
 
+ALTER TABLE public.reward_ledger ADD COLUMN IF NOT EXISTS completion_id TEXT;
+ALTER TABLE public.task_completions ADD COLUMN IF NOT EXISTS offer_id TEXT;
+ALTER TABLE public.task_completions ADD COLUMN IF NOT EXISTS payout_usd NUMERIC(12, 4) DEFAULT 0;
+
 -- 7. STANDARD VIEWS FOR POINTS_LEDGER AND AUDIT_LOG
 CREATE OR REPLACE VIEW public.points_ledger AS
 SELECT
   id,
   user_id,
+  COALESCE(completion_id, provider_tx_id) AS completion_id,
   COALESCE(task_id, cpx_offer_id, 'task_cpx_survey') AS task_id,
+  provider_tx_id AS trans_id,
   provider_tx_id,
+  CASE WHEN entry_type IN ('debit', 'reversal') THEN -ABS(points) ELSE ABS(points) END AS points,
   CASE WHEN entry_type IN ('debit', 'reversal') THEN -ABS(points) ELSE ABS(points) END AS points_delta,
-  points,
   amount_cents,
+  gross_cents,
   entry_type,
   status,
   description AS reason,
@@ -264,13 +271,16 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_reward_ledger_user_id ON public.reward_ledger(user_id);
-CREATE INDEX IF NOT EXISTS idx_reward_ledger_provider_tx_id ON public.reward_ledger(provider_tx_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reward_ledger_provider_tx_id_unique ON public.reward_ledger(provider_tx_id);
 CREATE INDEX IF NOT EXISTS idx_task_completions_user_id ON public.task_completions(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_completions_provider_tx_id_unique ON public.task_completions(provider_tx_id);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON public.withdrawal_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
 CREATE INDEX IF NOT EXISTS idx_users_external_opaque_id ON public.users(external_opaque_id);
 
--- Enable Row Level Security (RLS)
+-- =============================================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES - USERS CAN NEVER WRITE TO POINTS TABLES
+-- =============================================================================
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.task_completions ENABLE ROW LEVEL SECURITY;
@@ -280,9 +290,195 @@ ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_treasury ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Allow public read access on system settings and active tasks
+-- Public read on non-sensitive settings & active tasks
 DROP POLICY IF EXISTS "Public System Settings Read" ON public.system_settings;
 CREATE POLICY "Public System Settings Read" ON public.system_settings FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Public Tasks Read" ON public.tasks;
 CREATE POLICY "Public Tasks Read" ON public.tasks FOR SELECT USING (true);
+
+-- Users can only read their own ledger and completions; zero INSERT/UPDATE/DELETE for non-admin
+DROP POLICY IF EXISTS "Users Read Own Ledger" ON public.reward_ledger;
+CREATE POLICY "Users Read Own Ledger" ON public.reward_ledger
+  FOR SELECT USING (auth.uid()::text = user_id);
+
+DROP POLICY IF EXISTS "Users Read Own Completions" ON public.task_completions;
+CREATE POLICY "Users Read Own Completions" ON public.task_completions
+  FOR SELECT USING (auth.uid()::text = user_id);
+
+-- =============================================================================
+-- ATOMIC POSTGRESQL RPC FUNCTIONS (TASK 1, TASK 3, TASK 4)
+-- =============================================================================
+
+-- 8A. Atomic CPX Postback Transaction RPC:
+-- Saves survey completion + points_ledger (reward_ledger) entry + recalculates user total in ONE atomic transaction.
+CREATE OR REPLACE FUNCTION public.process_cpx_postback(
+  p_trans_id TEXT,
+  p_ext_user_id TEXT,
+  p_offer_id TEXT,
+  p_amount_usd NUMERIC,
+  p_status INTEGER,
+  p_approved_by TEXT DEFAULT 'CPX S2S Verified Postback'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_user_id TEXT;
+  v_conv_rate INTEGER;
+  v_share_percent INTEGER;
+  v_points BIGINT;
+  v_gross_cents INTEGER;
+  v_user_cents INTEGER;
+  v_profit_cents INTEGER;
+  v_completion_id TEXT;
+  v_ledger_id TEXT;
+  v_existing_credit RECORD;
+  v_new_total_points BIGINT;
+  v_new_total_earned BIGINT;
+BEGIN
+  -- 1. Resolve matching user by id or external_opaque_id
+  SELECT id INTO v_user_id
+  FROM public.users
+  WHERE id = p_ext_user_id
+     OR external_opaque_id = p_ext_user_id
+     OR external_opaque_id = ('rr_cpx_' || p_ext_user_id)
+  LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object('status', 'user_not_found', 'credited', false);
+  END IF;
+
+  -- 2. Read conversion rate from admin-editable system_settings table (not hardcoded)
+  SELECT COALESCE(points_rate_per_usd, 5000), COALESCE(default_user_share_percent, 50)
+  INTO v_conv_rate, v_share_percent
+  FROM public.system_settings
+  WHERE id = 'global'
+  LIMIT 1;
+
+  IF v_conv_rate IS NULL OR v_conv_rate <= 0 THEN
+    v_conv_rate := 5000;
+  END IF;
+  IF v_share_percent IS NULL OR v_share_percent <= 0 THEN
+    v_share_percent := 50;
+  END IF;
+
+  v_points := GREATEST(1, ROUND(COALESCE(p_amount_usd, 0) * v_conv_rate)::BIGINT);
+  v_gross_cents := GREATEST(1, ROUND(COALESCE(p_amount_usd, 0) * 100)::INTEGER);
+  v_user_cents := GREATEST(1, ROUND((v_points::NUMERIC / v_conv_rate) * (v_share_percent::NUMERIC / 100) * 100)::INTEGER);
+  v_profit_cents := GREATEST(0, v_gross_cents - v_user_cents);
+
+  -- 3. Handle Status = 1 (Completed Survey)
+  IF p_status = 1 THEN
+    -- Idempotency check: trans_id is UNIQUE
+    IF EXISTS (SELECT 1 FROM public.reward_ledger WHERE provider_tx_id = p_trans_id) THEN
+      RETURN jsonb_build_object('status', 'duplicate', 'credited', false, 'trans_id', p_trans_id);
+    END IF;
+
+    v_completion_id := 'tc_cpx_' || p_trans_id;
+    v_ledger_id := 'le_cpx_' || p_trans_id;
+
+    INSERT INTO public.task_completions (
+      id, user_id, task_id, offer_id, provider_tx_id, points, payout_usd, status, reason, approved_by, created_at, verified_at
+    ) VALUES (
+      v_completion_id, v_user_id, 'task_cpx_survey', COALESCE(p_offer_id, p_trans_id), p_trans_id,
+      v_points, COALESCE(p_amount_usd, 0), 'completed',
+      'CPX Survey #' || COALESCE(p_offer_id, p_trans_id) || ' Completed',
+      p_approved_by, NOW(), NOW()
+    )
+    ON CONFLICT (provider_tx_id) DO NOTHING;
+
+    INSERT INTO public.reward_ledger (
+      id, user_id, completion_id, task_id, cpx_offer_id, provider_tx_id,
+      amount_cents, points, gross_cents, admin_profit_cents, applied_share_percent,
+      entry_type, status, description, approved_by, created_at, processed_at
+    ) VALUES (
+      v_ledger_id, v_user_id, v_completion_id, 'task_cpx_survey', COALESCE(p_offer_id, p_trans_id), p_trans_id,
+      v_user_cents, v_points, v_gross_cents, v_profit_cents, v_share_percent,
+      'credit', 'confirmed',
+      'CPX Research Survey #' || COALESCE(p_offer_id, p_trans_id) || ' Completed (+' || v_points || ' Pts)',
+      p_approved_by, NOW(), NOW()
+    );
+
+  -- 4. Handle Status = 2 (Canceled / Reversed Survey)
+  ELSIF p_status = 2 THEN
+    -- Only deduct if the original transaction was credited before
+    SELECT * INTO v_existing_credit
+    FROM public.reward_ledger
+    WHERE provider_tx_id = p_trans_id AND entry_type = 'credit' AND status = 'confirmed'
+    LIMIT 1;
+
+    IF v_existing_credit IS NULL THEN
+      RETURN jsonb_build_object('status', 'ignored_not_credited', 'credited', false, 'trans_id', p_trans_id);
+    END IF;
+
+    -- Idempotency check for reversal
+    IF EXISTS (SELECT 1 FROM public.reward_ledger WHERE provider_tx_id = (p_trans_id || '_rev')) THEN
+      RETURN jsonb_build_object('status', 'duplicate_reversal', 'credited', false, 'trans_id', p_trans_id);
+    END IF;
+
+    v_points := COALESCE(v_existing_credit.points, v_points);
+    v_user_cents := COALESCE(v_existing_credit.amount_cents, v_user_cents);
+    v_gross_cents := COALESCE(v_existing_credit.gross_cents, v_gross_cents);
+    v_profit_cents := COALESCE(v_existing_credit.admin_profit_cents, v_profit_cents);
+
+    UPDATE public.task_completions
+    SET status = 'reversed'
+    WHERE provider_tx_id = p_trans_id;
+
+    INSERT INTO public.reward_ledger (
+      id, user_id, completion_id, task_id, cpx_offer_id, provider_tx_id, reversal_ref,
+      amount_cents, points, gross_cents, admin_profit_cents, applied_share_percent,
+      entry_type, status, description, approved_by, created_at, processed_at
+    ) VALUES (
+      'le_cpx_' || p_trans_id || '_rev', v_user_id, v_existing_credit.completion_id, 'task_cpx_survey',
+      COALESCE(p_offer_id, v_existing_credit.cpx_offer_id, p_trans_id), p_trans_id || '_rev', p_trans_id,
+      v_user_cents, v_points, v_gross_cents, v_profit_cents, v_share_percent,
+      'reversal', 'confirmed',
+      'CPX Survey #' || COALESCE(p_offer_id, p_trans_id) || ' Reversed (-' || v_points || ' Pts)',
+      p_approved_by, NOW(), NOW()
+    );
+  ELSE
+    RETURN jsonb_build_object('status', 'unsupported_status', 'credited', false);
+  END IF;
+
+  -- 5. Recompute user total points directly from ledger sum in the same atomic transaction
+  SELECT
+    GREATEST(0, COALESCE(SUM(
+      CASE
+        WHEN entry_type = 'credit' AND status = 'confirmed' THEN ABS(points)
+        WHEN entry_type IN ('reversal', 'debit') AND status IN ('confirmed', 'reversed') THEN -ABS(points)
+        ELSE 0
+      END
+    ), 0)),
+    GREATEST(0, COALESCE(SUM(
+      CASE
+        WHEN entry_type = 'credit' AND status = 'confirmed' THEN ABS(points)
+        WHEN entry_type = 'reversal' AND status IN ('confirmed', 'reversed') THEN -ABS(points)
+        ELSE 0
+      END
+    ), 0))
+  INTO v_new_total_points, v_new_total_earned
+  FROM public.reward_ledger
+  WHERE user_id = v_user_id;
+
+  UPDATE public.users
+  SET
+    points = v_new_total_points,
+    balance_cents = GREATEST(0, ROUND(v_new_total_points::NUMERIC / 100)::INTEGER),
+    total_earned_points = v_new_total_earned,
+    updated_at = NOW()
+  WHERE id = v_user_id;
+
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'credited', (p_status = 1),
+    'reversed', (p_status = 2),
+    'user_id', v_user_id,
+    'points_delta', CASE WHEN p_status = 2 THEN -v_points ELSE v_points END,
+    'new_total_points', v_new_total_points
+  );
+END;
+$$;
+
 

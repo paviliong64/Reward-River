@@ -25,34 +25,32 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
   const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 50)));
   const shareRatio = safeShare / 100;
   const centsToPts = (c) => Math.round(Math.max(0, c) / safeShare * safePointsRate);
+  const ptsToCents = (pts) => Math.round(Math.max(0, pts) / safePointsRate * shareRatio * 100);
   for (const entry of entries) {
     if (entry.userId !== userId) continue;
     const entryPts = typeof entry.points === "number" && !isNaN(entry.points) && entry.points !== 0 ? Math.abs(Math.round(entry.points)) : centsToPts(Math.abs(entry.amountCents));
     if (entry.status === "confirmed" && entry.entryType === "credit") {
-      totalConfirmedCredits += entry.amountCents;
-      totalEarnedCents += entry.amountCents;
       totalConfirmedPoints += entryPts;
       completedSurveysCount += 1;
-      const gross = entry.grossCents ?? Math.round(entry.amountCents / shareRatio);
-      const profit = entry.adminProfitCents ?? Math.max(0, gross - entry.amountCents);
+      const gross = typeof entry.grossCents === "number" && entry.grossCents > 0 ? entry.grossCents : Math.round(entryPts / safePointsRate * 100);
       totalGrossRevenueCents += gross;
-      totalAdminProfitCents += profit;
     } else if ((entry.status === "confirmed" || entry.status === "reversed") && (entry.entryType === "reversal" || entry.entryType === "debit")) {
-      const absAmount = Math.abs(entry.amountCents);
-      totalDebitsAndReversals += absAmount;
       totalDebitReversalPoints += entryPts;
       if (entry.entryType === "reversal") {
         completedSurveysCount = Math.max(0, completedSurveysCount - 1);
       }
-      const grossRev = entry.grossCents ?? Math.round(absAmount / shareRatio);
-      const profitRev = entry.adminProfitCents ?? Math.max(0, grossRev - absAmount);
+      const grossRev = typeof entry.grossCents === "number" && entry.grossCents > 0 ? entry.grossCents : Math.round(entryPts / safePointsRate * 100);
       totalGrossRevenueCents = Math.max(0, totalGrossRevenueCents - grossRev);
-      totalAdminProfitCents = Math.max(0, totalAdminProfitCents - profitRev);
     } else if (entry.status === "pending" && entry.entryType === "credit") {
-      pendingCents += entry.amountCents;
       pendingPointsAccum += entryPts;
     }
   }
+  totalConfirmedCredits = ptsToCents(totalConfirmedPoints);
+  totalDebitsAndReversals = ptsToCents(totalDebitReversalPoints);
+  pendingCents = ptsToCents(pendingPointsAccum);
+  totalEarnedCents = totalConfirmedCredits;
+  const netConfirmedEarnings = Math.max(0, totalConfirmedCredits - totalDebitsAndReversals);
+  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - netConfirmedEarnings);
   let reservedWithdrawalCents = 0;
   let totalWithdrawnCents = 0;
   for (const w of withdrawals) {
@@ -64,7 +62,6 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
       reservedWithdrawalCents += w.amountCents;
     }
   }
-  const netConfirmedEarnings = totalConfirmedCredits - totalDebitsAndReversals;
   const availableCents = Math.max(0, netConfirmedEarnings - reservedWithdrawalCents);
   const reservedWithdrawalPoints = centsToPts(reservedWithdrawalCents);
   const netConfirmedPoints = Math.max(0, totalConfirmedPoints - totalDebitReversalPoints);
@@ -390,12 +387,20 @@ function computeAdminDashboardStats(params) {
   let allTimePointsAwarded = 0;
   let allTimePointsReversed = 0;
   let allTimePointsDebited = 0;
+  let allTimeGrossCentsAccum = 0;
+  const entryToGross = (l) => {
+    const pts = entryToPts(l);
+    return typeof l.grossCents === "number" && l.grossCents > 0 ? l.grossCents : Math.max(1, Math.round(pts / pointsPerUsdt * 100));
+  };
   for (const l of ledger) {
     const pts = entryToPts(l);
+    const gross = entryToGross(l);
     if (l.status === "confirmed" && l.entryType === "credit") {
       allTimePointsAwarded += pts;
+      allTimeGrossCentsAccum += gross;
     } else if ((l.status === "confirmed" || l.status === "reversed") && l.entryType === "reversal") {
       allTimePointsReversed += pts;
+      allTimeGrossCentsAccum = Math.max(0, allTimeGrossCentsAccum - gross);
     } else if (l.status === "confirmed" && l.entryType === "debit") {
       allTimePointsDebited += pts;
     }
@@ -406,15 +411,23 @@ function computeAdminDashboardStats(params) {
   const allTimePaidWithdrawnPoints = Math.round(allTimePaidWithdrawnCents * 100) + allTimePointsDebited;
   const netAllTimeAwardedPoints = Math.max(0, allTimePointsAwarded - allTimePointsReversed);
   const outstandingPointsBalance = Math.max(0, netAllTimeAwardedPoints - allTimeWithdrawnPoints);
+  const shareRatio = (userSharePercent || 50) / 100;
+  const allTimeGrossRevenueCents = allTimeGrossCentsAccum;
+  const allTimeUserRewardCents = Math.round(netAllTimeAwardedPoints / pointsPerUsdt * shareRatio * 100);
+  const allTimeAdminProfitCents = Math.max(0, allTimeGrossRevenueCents - allTimeUserRewardCents);
   let filteredPointsAwarded = 0;
   let filteredPointsReversed = 0;
   let filteredPointsDebited = 0;
+  let filteredGrossCentsAccum = 0;
   for (const l of filteredLedger) {
     const pts = entryToPts(l);
+    const gross = entryToGross(l);
     if (l.status === "confirmed" && l.entryType === "credit") {
       filteredPointsAwarded += pts;
+      filteredGrossCentsAccum += gross;
     } else if ((l.status === "confirmed" || l.status === "reversed") && l.entryType === "reversal") {
       filteredPointsReversed += pts;
+      filteredGrossCentsAccum = Math.max(0, filteredGrossCentsAccum - gross);
     } else if (l.status === "confirmed" && l.entryType === "debit") {
       filteredPointsDebited += pts;
     }
@@ -422,6 +435,9 @@ function computeAdminDashboardStats(params) {
   const filteredWithdrawnCents = filteredWithdrawals.filter((w) => ["paid", "approved", "processing", "under_review", "requested"].includes(w.status)).reduce((sum, w) => sum + w.amountCents, 0);
   const filteredPointsRedeemed = Math.round(filteredWithdrawnCents * 100) + filteredPointsDebited;
   const netFilteredPointsAwarded = Math.max(0, filteredPointsAwarded - filteredPointsReversed);
+  const grossRevenueCents = filteredGrossCentsAccum;
+  const userRewardCents = Math.round(netFilteredPointsAwarded / pointsPerUsdt * shareRatio * 100);
+  const adminProfitCents = Math.max(0, grossRevenueCents - userRewardCents);
   const userSummaries = users.map((u) => {
     const rawCleanId = u.id;
     const cleanNoUsr = rawCleanId.replace(/^usr_/, "");
@@ -523,21 +539,24 @@ function computeAdminDashboardStats(params) {
   for (const l of filteredLedger) {
     const b = ensureBucket(periodKeyFor(l.createdAt));
     const pts = entryToPts(l);
-    const gross = l.grossCents && l.grossCents >= l.amountCents ? l.grossCents : Math.round(pts / pointsPerUsdt * 100);
-    const profit = Math.max(0, gross - l.amountCents);
+    const gross = entryToGross(l);
     if (l.status === "confirmed" && l.entryType === "credit") {
       b.tasksCompleted += 1;
       b.pointsAwarded += pts;
       b.grossRevenueCents += gross;
-      b.adminProfitCents += profit;
     } else if (l.status === "pending") {
       b.tasksPending += 1;
     } else if (l.status === "reversed" || l.status === "rejected" || l.entryType === "reversal") {
       b.tasksRejected += 1;
       b.pointsAwarded = Math.max(0, b.pointsAwarded - pts);
+      b.grossRevenueCents = Math.max(0, b.grossRevenueCents - gross);
     } else if (l.status === "confirmed" && l.entryType === "debit") {
       b.pointsRedeemed += pts;
     }
+  }
+  for (const b of buckets.values()) {
+    const bucketUserCents = Math.round(b.pointsAwarded / pointsPerUsdt * shareRatio * 100);
+    b.adminProfitCents = Math.max(0, b.grossRevenueCents - bucketUserCents);
   }
   for (const w of filteredWithdrawals) {
     if (["paid", "approved", "processing", "under_review", "requested"].includes(w.status)) {
@@ -587,10 +606,16 @@ function computeAdminDashboardStats(params) {
       totalPointsAwarded: netFilteredPointsAwarded,
       totalPointsRedeemed: filteredPointsRedeemed,
       outstandingPointsBalance,
+      grossRevenueCents,
+      userRewardCents,
+      adminProfitCents,
       allTimePointsAwarded: netAllTimeAwardedPoints,
       totalPointsAwardedAllTime: netAllTimeAwardedPoints,
       allTimePointsRedeemed: allTimeWithdrawnPoints,
-      allTimePaidWithdrawnPoints
+      allTimePaidWithdrawnPoints,
+      allTimeGrossRevenueCents,
+      allTimeUserRewardCents,
+      allTimeAdminProfitCents
     },
     topUsersByPoints,
     timeSeries
@@ -835,11 +860,12 @@ var DatabaseStore = class {
         const parsed = JSON.parse(fileContent);
         const rawCpxHash = String(parsed.systemSettings?.cpxHashKey || "").trim();
         const validCpxHash = rawCpxHash && !rawCpxHash.startsWith("eyJ") ? rawCpxHash : "1u8hIFGwUYYORM76NM76PDxenCC50bCZ";
-        const isMockOrTestTx = (txId, desc) => {
+        const isMockOrTestTx = (txId, desc, id) => {
           const clean = String(txId || "").trim().toLowerCase();
           const d = String(desc || "").trim().toLowerCase();
+          const eid = String(id || "").trim().toLowerCase();
           if (!clean) return true;
-          return clean.startsWith("cpx_survey_") || clean.startsWith("sim_cpx_") || clean.startsWith("factor_test") || clean.startsWith("cpx_verify_") || clean.startsWith("diag_") || d.includes("offer #cpx") || d.includes("#cpx_test_") || d.includes("#factor_test") || d.includes("#19129457");
+          return clean.startsWith("cpx_survey_") || clean.startsWith("sim_cpx_") || clean.startsWith("factor_test") || clean.startsWith("cpx_verify_") || clean.startsWith("diag_") || clean.startsWith("sync_bal_") || eid.startsWith("le_sync_") || d.includes("verified survey rewards balance") || d.includes("offer #cpx") || d.includes("#cpx_test_") || d.includes("#factor_test") || d.includes("#19129457");
         };
         const isMockOrTestUser = (email, username) => {
           const e = String(email || "").trim().toLowerCase();
@@ -874,7 +900,7 @@ var DatabaseStore = class {
           const userAmountCents = Math.max(1, Math.round(points / 100));
           const grossCents = Math.max(
             userAmountCents,
-            Number(l.grossCents) >= userAmountCents ? Number(l.grossCents) : Math.round(points / 5e3 * 100)
+            Math.round(points / 5e3 * 100)
           );
           const adminProfitCents = Math.max(0, grossCents - userAmountCents);
           const cleanDesc = desc.replace(
@@ -897,7 +923,7 @@ var DatabaseStore = class {
           users: (parsed.users || this.getDefaultData().users).filter((u) => !isMockOrTestUser(u?.email, u?.username)).map(normalizeUserRecord),
           tasks: Array.isArray(parsed.tasks) && parsed.tasks.length > 0 ? parsed.tasks : this.getDefaultData().tasks,
           taskCompletions: Array.isArray(parsed.taskCompletions) ? parsed.taskCompletions : [],
-          rewardLedger: (parsed.rewardLedger || []).filter((l) => !isMockOrTestTx(l?.providerTxId, l?.description)).map(normalizeLedgerRecord),
+          rewardLedger: (parsed.rewardLedger || []).filter((l) => !isMockOrTestTx(l?.providerTxId, l?.description, l?.id)).map(normalizeLedgerRecord),
           withdrawalRequests: parsed.withdrawalRequests || [],
           withdrawalEvents: parsed.withdrawalEvents || [],
           systemSettings: {
@@ -938,11 +964,12 @@ var DatabaseStore = class {
     this.lastSupabaseSyncMs = now;
     const sb = this.getSupabaseClient();
     if (!sb) return;
-    const isMockOrTestTx = (txId, desc) => {
+    const isMockOrTestTx = (txId, desc, id) => {
       const clean = String(txId || "").trim().toLowerCase();
       const d = String(desc || "").trim().toLowerCase();
+      const eid = String(id || "").trim().toLowerCase();
       if (!clean) return true;
-      return clean.startsWith("cpx_survey_") || clean.startsWith("sim_cpx_") || clean.startsWith("factor_test") || clean.startsWith("cpx_verify_") || clean.startsWith("diag_") || d.includes("offer #cpx") || d.includes("#cpx_test_") || d.includes("#factor_test") || d.includes("#19129457");
+      return clean.startsWith("cpx_survey_") || clean.startsWith("sim_cpx_") || clean.startsWith("factor_test") || clean.startsWith("cpx_verify_") || clean.startsWith("diag_") || clean.startsWith("sync_bal_") || eid.startsWith("le_sync_") || d.includes("verified survey rewards balance") || d.includes("offer #cpx") || d.includes("#cpx_test_") || d.includes("#factor_test") || d.includes("#19129457");
     };
     const isMockOrTestUser = (email, username) => {
       const e = String(email || "").trim().toLowerCase();
@@ -1054,6 +1081,22 @@ var DatabaseStore = class {
             changed = true;
           } else {
             const current = this.data.users[existingIdx];
+            const canonicalId = String(row.id);
+            if (current.id !== canonicalId) {
+              const oldId = current.id;
+              this.data.users[existingIdx].id = canonicalId;
+              for (const l of this.data.rewardLedger) {
+                if (l.userId === oldId) l.userId = canonicalId;
+              }
+              for (const w of this.data.withdrawalRequests) {
+                if (w.userId === oldId) w.userId = canonicalId;
+              }
+              changed = true;
+            }
+            if (current.externalOpaqueId !== cleanExtId && rawExt.startsWith("rr_cpx_")) {
+              this.data.users[existingIdx].externalOpaqueId = cleanExtId;
+              changed = true;
+            }
             if (sbRowPoints !== void 0 && current.storedPoints !== sbRowPoints) {
               this.data.users[existingIdx].storedPoints = sbRowPoints;
               changed = true;
@@ -1091,7 +1134,7 @@ var DatabaseStore = class {
       }
       const beforeLen = this.data.rewardLedger.length;
       this.data.rewardLedger = this.data.rewardLedger.filter(
-        (l) => !isMockOrTestTx(l.providerTxId, l.description)
+        (l) => !isMockOrTestTx(l.providerTxId, l.description, l.id)
       );
       if (this.data.rewardLedger.length !== beforeLen) {
         changed = true;
@@ -1099,7 +1142,7 @@ var DatabaseStore = class {
       if (Array.isArray(sbLedger)) {
         for (const row of sbLedger) {
           if (!row || !row.id || !row.user_id) continue;
-          if (isMockOrTestTx(row.provider_tx_id, row.description)) {
+          if (isMockOrTestTx(row.provider_tx_id, row.description, row.id)) {
             await sb.from("reward_ledger").delete().eq("id", row.id);
             changed = true;
             continue;
@@ -1135,9 +1178,10 @@ var DatabaseStore = class {
             changed = true;
           } else {
             const cur = this.data.rewardLedger[existingIdx];
-            if (cur.points !== points || cur.amountCents !== userAmountCents || cur.grossCents !== grossCents) {
+            if (cur.points !== points || cur.amountCents !== userAmountCents || cur.grossCents !== grossCents || cur.userId !== String(row.user_id)) {
               this.data.rewardLedger[existingIdx] = {
                 ...cur,
+                userId: String(row.user_id),
                 points,
                 amountCents: userAmountCents,
                 grossCents,
@@ -1150,7 +1194,7 @@ var DatabaseStore = class {
           }
         }
         for (const localEntry of this.data.rewardLedger) {
-          if (isMockOrTestTx(localEntry.providerTxId, localEntry.description)) continue;
+          if (isMockOrTestTx(localEntry.providerTxId, localEntry.description, localEntry.id)) continue;
           const inSb = sbLedger.some(
             (r) => r.id === localEntry.id || r.provider_tx_id && r.provider_tx_id === localEntry.providerTxId
           );
@@ -1168,45 +1212,20 @@ var DatabaseStore = class {
           }
         }
       }
-      if (Array.isArray(sbUsers)) {
-        for (const row of sbUsers) {
-          if (!row || !row.id) continue;
-          const sbUserPts = Math.max(0, Number(row.points) || 0);
-          if (sbUserPts > 0 && row.role !== "admin") {
-            const hasLedgerEntries = this.data.rewardLedger.some((l) => l.userId === row.id);
-            if (!hasLedgerEntries) {
-              const syncId = `le_sync_${row.id}`;
-              const syncTxId = `sync_bal_${row.id}`;
-              const userCents = Math.max(1, Math.round(sbUserPts / 100));
-              const grossCents = Math.max(userCents, Math.round(sbUserPts / 5e3 * 100));
-              const profitCents = Math.max(0, grossCents - userCents);
-              const syncEntry = {
-                id: syncId,
-                userId: String(row.id),
-                providerTxId: syncTxId,
-                amountCents: userCents,
-                points: sbUserPts,
-                grossCents,
-                adminProfitCents: profitCents,
-                appliedSharePercent: 50,
-                entryType: "credit",
-                status: "confirmed",
-                description: `Verified Survey Rewards Balance (+${sbUserPts.toLocaleString("en-US")} Pts)`,
-                createdAt: row.updated_at || row.created_at || (/* @__PURE__ */ new Date()).toISOString(),
-                processedAt: (/* @__PURE__ */ new Date()).toISOString()
-              };
-              this.data.rewardLedger.push(syncEntry);
-              await sb.from("reward_ledger").upsert({
-                id: syncEntry.id,
-                user_id: syncEntry.userId,
-                provider_tx_id: syncEntry.providerTxId,
-                amount_cents: syncEntry.amountCents,
-                entry_type: syncEntry.entryType,
-                status: syncEntry.status,
-                description: syncEntry.description,
-                created_at: syncEntry.createdAt
-              });
-              changed = true;
+      for (const u of this.data.users) {
+        const balances = this.getUserBalances(u.id);
+        if (u.storedPoints !== balances.availablePoints) {
+          u.storedPoints = balances.availablePoints;
+          changed = true;
+          if (sb) {
+            try {
+              await sb.from("users").update({
+                points: balances.availablePoints,
+                balance_cents: balances.availableCents,
+                total_earned_points: balances.totalEarnedPoints,
+                updated_at: (/* @__PURE__ */ new Date()).toISOString()
+              }).eq("id", u.id);
+            } catch {
             }
           }
         }
@@ -1888,7 +1907,7 @@ var DatabaseStore = class {
       isNew = true;
     } else {
       const current = this.data.rewardLedger[existingIdx];
-      if (current.points !== entry.points || current.amountCents !== entry.amountCents || current.grossCents !== entry.grossCents || current.adminProfitCents !== entry.adminProfitCents || current.userId !== entry.userId || current.description !== entry.description) {
+      if (current.points !== entry.points || current.amountCents !== entry.amountCents || current.grossCents !== entry.grossCents || current.adminProfitCents !== entry.adminProfitCents || current.userId !== entry.userId || current.description !== entry.description || current.createdAt !== entry.createdAt) {
         this.data.rewardLedger[existingIdx] = { ...current, ...entry };
         updated = true;
       }
@@ -2583,6 +2602,280 @@ var CpxResearchService = class {
     return verifyCpxPostbackSignature(transId, extUserId, secureHash, effectiveSecret);
   }
   /**
+   * Processes an incoming CPX Research S2S Postback atomically:
+   * 1. Verifies secure_hash before crediting. Bad hash = no credit, logs to audit_log, returns HTTP 200 "OK".
+   * 2. Matches ext_user_id to our user UUID / externalOpaqueId.
+   * 3. Computes Points = amount_usd * conversion_rate (from admin-editable system_settings).
+   * 4. Idempotent on trans_id (UNIQUE): duplicate callbacks never credit twice.
+   * 5. Status = 2 (canceled/reversed): creates negative ledger entry ONLY if trans_id was credited before.
+   * 6. Saves completion + ledger entry + recalculated user total atomically.
+   */
+  async processCpxPostback(input) {
+    const transId = String(input.transId || "").trim();
+    const extUserId = String(input.extUserId || "").trim();
+    const offerId = String(input.offerId || transId || "cpx_survey").trim();
+    const rawStatus = String(input.status ?? "1").trim().toLowerCase();
+    const eventType = String(input.eventType || "").trim().toLowerCase();
+    const isScreenOutBonus = eventType === "out" || eventType === "screenout";
+    const isReversal = !isScreenOutBonus && (rawStatus === "2" || rawStatus === "3" || rawStatus === "0" || rawStatus === "reversal" || rawStatus === "canceled" || rawStatus === "cancelled" || rawStatus === "chargeback");
+    if (!transId || !extUserId) {
+      return {
+        httpStatus: 200,
+        responseText: "OK",
+        outcome: "invalid_params",
+        pointsDelta: 0,
+        transId
+      };
+    }
+    const isValidSignature = this.verifyPostback(transId, extUserId, input.secureHash);
+    if (!isValidSignature) {
+      await dbStore.addAuditLog({
+        adminUserId: "system_cpx_guard",
+        adminEmail: "security@reward-river",
+        action: "CPX_POSTBACK_BAD_HASH_REJECTED",
+        targetEntity: "reward_ledger",
+        targetId: transId,
+        ipAddress: input.ipAddress,
+        details: JSON.stringify({
+          transId,
+          extUserId,
+          offerId,
+          status: rawStatus,
+          receivedHash: input.secureHash || "MISSING",
+          reason: "Invalid or missing CPX secure_hash signature \u2014 zero points credited"
+        })
+      });
+      return {
+        httpStatus: 200,
+        responseText: "OK",
+        outcome: "bad_hash",
+        pointsDelta: 0,
+        transId
+      };
+    }
+    let targetUser = dbStore.getUserById(extUserId) || dbStore.getUserByExternalId(extUserId);
+    if (!targetUser) {
+      await dbStore.syncFromSupabase();
+      targetUser = dbStore.getUserById(extUserId) || dbStore.getUserByExternalId(extUserId);
+    }
+    if (!targetUser) {
+      await dbStore.addAuditLog({
+        adminUserId: "system_cpx_postback",
+        adminEmail: "system@reward-river",
+        action: "CPX_POSTBACK_USER_NOT_FOUND",
+        targetEntity: "users",
+        targetId: extUserId,
+        ipAddress: input.ipAddress,
+        details: JSON.stringify({ transId, extUserId, offerId, status: rawStatus })
+      });
+      return {
+        httpStatus: 200,
+        responseText: "OK",
+        outcome: "user_not_found",
+        pointsDelta: 0,
+        transId
+      };
+    }
+    const settings = dbStore.getSettings();
+    const conversionRate = Math.max(100, Number(settings.pointsPerUsdt) || 5e3);
+    const userSharePercent = Math.max(1, Math.min(100, Number(settings.userSharePercent) || 50));
+    const parsedUsd = typeof input.amountUsd === "number" ? input.amountUsd : parseFloat(String(input.amountUsd ?? "0").replace(/[^0-9.-]/g, ""));
+    const parsedLocal = typeof input.amountLocal === "number" ? input.amountLocal : parseFloat(String(input.amountLocal ?? "0").replace(/[^0-9.-]/g, ""));
+    let effectiveAmountUsd = !isNaN(parsedUsd) && parsedUsd > 0 ? parsedUsd : 0;
+    if (effectiveAmountUsd > 50) {
+      effectiveAmountUsd = effectiveAmountUsd / conversionRate;
+    }
+    let computedPoints = 0;
+    if (effectiveAmountUsd > 0) {
+      computedPoints = Math.round(effectiveAmountUsd * conversionRate);
+    } else if (!isNaN(parsedLocal) && parsedLocal > 0) {
+      computedPoints = parsedLocal > 1 ? Math.round(parsedLocal) : Math.round(parsedLocal * conversionRate);
+      effectiveAmountUsd = computedPoints / conversionRate;
+    }
+    if (computedPoints <= 0) computedPoints = 50;
+    const grossCents = Math.max(1, Math.round(effectiveAmountUsd * 100));
+    const userAmountCents = Math.max(
+      1,
+      Math.round(computedPoints / conversionRate * (userSharePercent / 100) * 100)
+    );
+    const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const sb = dbStore.getSupabaseClient();
+    if (isReversal) {
+      const allEntries2 = dbStore.getAllLedgerEntries();
+      const originalCredit = allEntries2.find(
+        (e) => (e.providerTxId === transId || e.providerTxId === `cpx_${transId}`) && e.entryType === "credit" && e.status === "confirmed"
+      );
+      if (!originalCredit) {
+        return {
+          httpStatus: 200,
+          responseText: "OK",
+          outcome: "reversal_ignored_not_credited",
+          pointsDelta: 0,
+          userId: targetUser.id,
+          newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+          transId
+        };
+      }
+      const reversalTxId = `${originalCredit.providerTxId}_rev`;
+      const existingReversal = allEntries2.find(
+        (e) => e.providerTxId === reversalTxId || e.entryType === "reversal" && e.reversalRef === originalCredit.providerTxId
+      );
+      if (existingReversal) {
+        return {
+          httpStatus: 200,
+          responseText: "OK",
+          outcome: "duplicate_reversal",
+          pointsDelta: 0,
+          userId: targetUser.id,
+          newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+          transId
+        };
+      }
+      const deductPoints = originalCredit.points || computedPoints;
+      const deductUserCents = originalCredit.amountCents || userAmountCents;
+      const deductGrossCents = originalCredit.grossCents || grossCents;
+      const deductProfitCents = originalCredit.adminProfitCents || adminProfitCents;
+      if (sb) {
+        try {
+          await sb.rpc("process_cpx_postback", {
+            p_trans_id: originalCredit.providerTxId,
+            p_ext_user_id: targetUser.id,
+            p_offer_id: offerId,
+            p_amount_usd: Number((deductGrossCents / 100).toFixed(4)),
+            p_status: 2,
+            p_approved_by: "CPX S2S Reversal Postback"
+          });
+        } catch {
+        }
+      }
+      const reversalEntry = {
+        id: `le_cpx_${transId}_rev`,
+        userId: targetUser.id,
+        providerTxId: reversalTxId,
+        taskId: "task_cpx_survey",
+        cpxOfferId: offerId,
+        reversalRef: originalCredit.providerTxId,
+        amountCents: deductUserCents,
+        points: deductPoints,
+        grossCents: deductGrossCents,
+        adminProfitCents: deductProfitCents,
+        appliedSharePercent: userSharePercent,
+        entryType: "reversal",
+        status: "confirmed",
+        approvedBy: "CPX S2S Reversal Postback",
+        description: `CPX Research Survey #${offerId} Reversed (-${deductPoints.toLocaleString("en-US")} Pts \u2022 Tx #${transId})`,
+        createdAt: nowIso,
+        processedAt: nowIso
+      };
+      await dbStore.addLedgerEntry(reversalEntry);
+      await dbStore.addTaskCompletion({
+        id: `tc_cpx_${transId}_rev`,
+        userId: targetUser.id,
+        taskId: "task_cpx_survey",
+        providerTxId: reversalTxId,
+        title: `CPX Survey #${offerId} Reversed`,
+        pointsAwarded: -deductPoints,
+        status: "reversed",
+        approvedBy: "CPX S2S Reversal Postback",
+        createdAt: nowIso,
+        processedAt: nowIso
+      });
+      const updatedBalances2 = dbStore.getUserBalances(targetUser.id);
+      await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances2.availablePoints });
+      return {
+        httpStatus: 200,
+        responseText: "OK",
+        outcome: "reversed",
+        pointsDelta: -deductPoints,
+        userId: targetUser.id,
+        newAvailablePoints: updatedBalances2.availablePoints,
+        transId
+      };
+    }
+    const allEntries = dbStore.getAllLedgerEntries();
+    const alreadyExists = allEntries.some(
+      (e) => e.providerTxId === transId || e.providerTxId === `cpx_${transId}`
+    );
+    if (alreadyExists) {
+      return {
+        httpStatus: 200,
+        responseText: "OK",
+        outcome: "duplicate",
+        pointsDelta: 0,
+        userId: targetUser.id,
+        newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+        transId
+      };
+    }
+    if (sb) {
+      try {
+        await sb.rpc("process_cpx_postback", {
+          p_trans_id: transId,
+          p_ext_user_id: targetUser.id,
+          p_offer_id: offerId,
+          p_amount_usd: Number(effectiveAmountUsd.toFixed(4)),
+          p_status: 1,
+          p_approved_by: "CPX S2S Verified Postback"
+        });
+      } catch {
+      }
+    }
+    const creditEntry = {
+      id: `le_cpx_${transId}`,
+      userId: targetUser.id,
+      providerTxId: transId,
+      taskId: isScreenOutBonus ? "task_cpx_screenout" : "task_cpx_survey",
+      cpxOfferId: offerId,
+      amountCents: userAmountCents,
+      points: computedPoints,
+      grossCents,
+      adminProfitCents,
+      appliedSharePercent: userSharePercent,
+      entryType: "credit",
+      status: "confirmed",
+      approvedBy: "CPX S2S Verified Postback",
+      description: `CPX Research Survey #${offerId} Completed (+${computedPoints.toLocaleString("en-US")} Pts)`,
+      createdAt: nowIso,
+      processedAt: nowIso
+    };
+    const added = await dbStore.addLedgerEntry(creditEntry);
+    if (!added.success) {
+      return {
+        httpStatus: 200,
+        responseText: "OK",
+        outcome: "duplicate",
+        pointsDelta: 0,
+        userId: targetUser.id,
+        newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+        transId
+      };
+    }
+    await dbStore.addTaskCompletion({
+      id: `tc_cpx_${transId}`,
+      userId: targetUser.id,
+      taskId: isScreenOutBonus ? "task_cpx_screenout" : "task_cpx_survey",
+      providerTxId: transId,
+      title: `CPX Survey #${offerId} Completed`,
+      pointsAwarded: computedPoints,
+      status: "completed",
+      approvedBy: "CPX S2S Verified Postback",
+      createdAt: nowIso,
+      processedAt: nowIso
+    });
+    const updatedBalances = dbStore.getUserBalances(targetUser.id);
+    await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances.availablePoints });
+    return {
+      httpStatus: 200,
+      responseText: "OK",
+      outcome: "credited",
+      pointsDelta: computedPoints,
+      userId: targetUser.id,
+      newAvailablePoints: updatedBalances.availablePoints,
+      transId
+    };
+  }
+  /**
    * Helper to normalize date range within CPX limit (max 370 days).
    * Defaults end_time to +1 day UTC so CPX CET completions on the current day are always included.
    * Defaults start_time to 7 days ago (this week) for this new website.
@@ -2791,18 +3084,18 @@ var CpxResearchService = class {
       const settings = dbStore.getSettings();
       const pointsPerUsdt = settings?.pointsPerUsdt || 5e3;
       const existingLedger = dbStore.getAllLedgerEntries();
-      const existingTxIds = /* @__PURE__ */ new Set();
+      const existingEntryMap = /* @__PURE__ */ new Map();
       for (const l of existingLedger) {
         if (l.providerTxId) {
           const clean = String(l.providerTxId).trim().toLowerCase();
-          existingTxIds.add(clean);
-          existingTxIds.add(clean.replace(/^cpx_/, ""));
-          existingTxIds.add(`cpx_${clean}`);
+          existingEntryMap.set(clean, l);
+          existingEntryMap.set(clean.replace(/^cpx_/, ""), l);
+          existingEntryMap.set(`cpx_${clean}`, l);
         }
         if (l.id) {
           const cleanId = String(l.id).trim().toLowerCase();
-          existingTxIds.add(cleanId);
-          existingTxIds.add(cleanId.replace(/^le_cpx_/, ""));
+          existingEntryMap.set(cleanId, l);
+          existingEntryMap.set(cleanId.replace(/^le_cpx_/, ""), l);
         }
       }
       let syncedCount = 0;
@@ -2815,10 +3108,15 @@ var CpxResearchService = class {
         const txId = String(item.trans_id || "").trim();
         if (!txId) continue;
         const txLower = txId.toLowerCase();
-        if (existingTxIds.has(txLower) || existingTxIds.has(`cpx_${txLower}`) || existingTxIds.has(`le_cpx_${txLower}`)) {
-          alreadyProcessedCount++;
-          continue;
-        }
+        const existingEntry = existingEntryMap.get(txLower) || existingEntryMap.get(`cpx_${txLower}`) || existingEntryMap.get(`le_cpx_${txLower}`);
+        const publisherUsd = Number(item.verdienst_publisher) || 0;
+        const grossCents = Math.max(1, Math.round(publisherUsd * 100));
+        const points = Math.max(50, Math.round(publisherUsd * pointsPerUsdt));
+        const userAmountCents = Math.max(1, Math.round(points / 100));
+        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+        const rawDt = String(item.datetime || "").trim();
+        const isoInput = /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?$/.test(rawDt) ? `${rawDt.replace(/\s+/, "T")}+05:00` : rawDt;
+        const createdAtDate = isoInput && !isNaN(new Date(isoInput).getTime()) ? new Date(isoInput).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
         const extUserId = String(item.external_user_id || "").trim();
         const stripped = extUserId.replace(/^rr_(cpx_)?/i, "");
         let user = dbStore.getUserByExternalId(extUserId) || dbStore.getUserByExternalId(stripped) || dbStore.getUserById(stripped) || dbStore.getUserById(`usr_${stripped}`);
@@ -2830,6 +3128,10 @@ var CpxResearchService = class {
             const cleanOpaque = (u.externalOpaqueId || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
             return cleanId === cleanExt || cleanOpaque === cleanExt || cleanExt.length >= 8 && (cleanId.includes(cleanExt) || cleanOpaque.includes(cleanExt));
           });
+        }
+        if (existingEntry && user && existingEntry.points === points && existingEntry.grossCents === grossCents && existingEntry.amountCents === userAmountCents && existingEntry.userId === user.id && existingEntry.createdAt === createdAtDate) {
+          alreadyProcessedCount++;
+          continue;
         }
         if (!user) {
           const sb = dbStore.getSupabaseClient();
@@ -2871,20 +3173,12 @@ var CpxResearchService = class {
             role: "user",
             externalOpaqueId: extUserId,
             countryCode: item.country_code || "US",
-            createdAt: item.datetime ? new Date(item.datetime).toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+            createdAt: createdAtDate,
             updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
             provider: "password"
           });
         }
-        const publisherUsd = Number(item.verdienst_publisher) || 0;
-        const grossCents = Math.max(1, Math.round(publisherUsd * 100));
-        const rawUserLocal = Number(item.verdienst_user_local_money);
-        const expectedPointsAtFactor = Math.max(50, Math.round(publisherUsd * pointsPerUsdt));
-        const points = !isNaN(rawUserLocal) && rawUserLocal > 0 && rawUserLocal <= grossCents * 55 ? Math.round(rawUserLocal) : expectedPointsAtFactor;
-        const userAmountCents = Math.max(1, Math.round(points / 100));
-        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-        const entryId = `le_cpx_${txId}`;
-        const createdAtDate = item.datetime ? new Date(item.datetime).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
+        const entryId = existingEntry?.id || `le_cpx_${txId}`;
         const newEntry = {
           id: entryId,
           userId: user.id,
@@ -2902,9 +3196,9 @@ var CpxResearchService = class {
         };
         const upsertRes = await dbStore.upsertLedgerEntry(newEntry);
         if (upsertRes.entry) {
-          existingTxIds.add(txLower);
-          existingTxIds.add(`cpx_${txLower}`);
-          existingTxIds.add(`le_cpx_${txLower}`);
+          existingEntryMap.set(txLower, upsertRes.entry);
+          existingEntryMap.set(`cpx_${txLower}`, upsertRes.entry);
+          existingEntryMap.set(`le_cpx_${txLower}`, upsertRes.entry);
           syncedCount++;
           totalPointsCredited += points;
           totalUsdEarned += publisherUsd;
@@ -3441,6 +3735,13 @@ function buildPartnerAccountingReport(ledger, userSharePercent = 40, pointsPerUs
       userDisplayName: owner?.displayName || "Member"
     });
   }
+  for (const pid of ["cpx_research", "aoytasks"]) {
+    const b = accumulators[pid];
+    if (b.userPoints > 0) {
+      b.userCents = Math.round(b.userPoints / safePointsPerUsdt * (safeShare / 100) * 100);
+      b.adminProfitCents = Math.max(0, b.grossCents - b.userCents);
+    }
+  }
   const totalGrossCents = accumulators.cpx_research.grossCents + accumulators.aoytasks.grossCents;
   const totalUserCents = accumulators.cpx_research.userCents + accumulators.aoytasks.userCents;
   const totalUserPoints = accumulators.cpx_research.userPoints + accumulators.aoytasks.userPoints;
@@ -3562,6 +3863,46 @@ async function runUserAndLedgerBackfill() {
       opaqueIdsAssigned++;
       userUpdated = true;
       details.push(`Assigned permanent externalOpaqueId ${extId} to ${user.email}`);
+    }
+    const allCompletions = dbStore.getTaskCompletions().filter(
+      (tc) => (tc.userId === targetId || tc.userId === extId) && tc.status === "completed"
+    );
+    const existingLedger = dbStore.getAllLedgerEntries();
+    for (const tc of allCompletions) {
+      const txId = String(tc.providerTxId || tc.id).trim();
+      if (!txId) continue;
+      const alreadyInLedger = existingLedger.some(
+        (l) => l.providerTxId === txId || l.id === `le_cpx_${txId}`
+      );
+      if (!alreadyInLedger) {
+        const pts = Math.max(50, Math.round(Number(tc.pointsAwarded || tc.points) || 500));
+        const userAmountCents = Math.max(1, Math.round(pts / 100));
+        const grossCents = Math.max(userAmountCents, Math.round(pts / 5e3 * 100));
+        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+        const completionLedgerEntry = {
+          id: `le_cpx_${txId.replace(/^cpx_/, "")}`,
+          userId: targetId,
+          providerTxId: txId,
+          taskId: tc.taskId || "task_cpx_survey",
+          cpxOfferId: tc.taskId || txId,
+          amountCents: userAmountCents,
+          points: pts,
+          grossCents,
+          adminProfitCents,
+          appliedSharePercent: 50,
+          entryType: "credit",
+          status: "confirmed",
+          approvedBy: tc.approvedBy || "System Completion Backfill",
+          description: `${tc.title || tc.reason || "Completed Survey"} (+${pts.toLocaleString("en-US")} Pts)`,
+          createdAt: tc.createdAt || user.createdAt || nowIso,
+          processedAt: nowIso
+        };
+        await dbStore.upsertLedgerEntry(completionLedgerEntry);
+        legacyPointsBackfilledCount++;
+        details.push(
+          `Converted completed survey/task ${txId} (+${pts.toLocaleString("en-US")} Pts) into ledger entry for ${user.email}`
+        );
+      }
     }
     const userLedger = dbStore.getLedgerForUser(targetId);
     const sbRow = sbUsersById.get(targetId);
@@ -4691,164 +5032,101 @@ app.all(
     const params = req.method === "POST" ? { ...req.query, ...req.body } : req.query;
     const providerParam = String(req.params.provider || params.network || params.provider || "").toLowerCase();
     const effectiveUserId = String(
-      params.subid || params.subId || params.sub_id || params.ext_user_id || params.user_id || params.userId || params.uid || params.sid || params.s1 || params.user || params.member_id || ""
+      params.ext_user_id || params.subid || params.subId || params.sub_id || params.user_id || params.userId || params.uid || params.sid || params.s1 || params.user || params.member_id || ""
     ).trim();
     const transId = String(
       params.trans_id || params.transId || params.tx_id || params.tx || params.transaction_id || params.lead_id || params.id || params.order_id || ""
     ).trim();
-    const rawPayout = params.payout ?? params.amount_usd ?? params.amount ?? params.val ?? params.reward ?? params.currency ?? params.amount_local ?? params.points;
-    const rawStatus = String(params.status || "1").toLowerCase();
-    const eventType = String(params.type || "").toLowerCase();
-    const isScreenOut = eventType === "out" || eventType === "screenout";
-    const isReversal = !isScreenOut && (rawStatus === "2" || rawStatus === "3" || rawStatus === "0" || rawStatus === "reversal" || rawStatus === "chargeback" || rawStatus === "canceled" || rawStatus === "cancelled");
+    const rawAmountUsd = params.amount_usd ?? params.payout ?? params.val;
+    const rawAmountLocal = params.amount_local ?? params.points ?? params.reward ?? params.currency;
+    const rawStatus = String(params.status ?? "1").trim().toLowerCase();
+    const eventType = String(params.type || "").trim().toLowerCase();
     const receivedHash = String(params.secure_hash || params.hash || params.signature || "").trim();
     const offerId = String(params.offer_id || params.campaign_id || params.campaign || params.survey_id || transId || "Offer");
-    const offerTitle = isScreenOut ? "CPX Screenout Compensation" : eventType === "bonus" ? "CPX Profile Bonus" : String(params.offer_name || params.campaign_name || params.title || providerParam || "Survey/Task");
-    console.log(
-      `[Universal Postback] Network: ${providerParam || "universal"}, user=${effectiveUserId}, tx=${transId}, payout=${rawPayout}, isReversal=${isReversal}`
-    );
     if (!transId || !effectiveUserId) {
-      res.status(400).send("Missing required parameters: subId and transId are required.");
+      res.status(400).send("Missing required parameters: ext_user_id and trans_id are required.");
       return;
     }
-    const isMacroOrTest = transId === "1" || transId.includes("{") || transId.toLowerCase().includes("test") || effectiveUserId.toLowerCase().includes("test") || effectiveUserId === "12345" || effectiveUserId === "1" || effectiveUserId.includes("{") || receivedHash.includes("{");
-    const config = cpxResearchService.getConfigStatus();
-    if (config.isConfigured && receivedHash && !isMacroOrTest && (providerParam === "cpx" || !providerParam)) {
-      const isValidSig = cpxResearchService.verifyPostback(transId, effectiveUserId, receivedHash);
-      if (!isValidSig) {
-        console.warn(`[Universal Postback] Signature mismatch note for tx=${transId}, proceeding with user lookup`);
-      }
+    const clientIp = req.headers["cf-connecting-ip"] || req.headers["x-real-ip"] || req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const isCpxRoute = req.path.includes("cpx") || providerParam === "cpx" || providerParam === "cpx_research" || !providerParam;
+    if (isCpxRoute) {
+      const result = await cpxResearchService.processCpxPostback({
+        transId,
+        extUserId: effectiveUserId,
+        amountUsd: rawAmountUsd,
+        amountLocal: rawAmountLocal,
+        offerId,
+        status: rawStatus,
+        eventType,
+        secureHash: receivedHash,
+        ipAddress: clientIp
+      });
+      console.log(
+        `[CPX Postback] tx=${transId}, user=${effectiveUserId}, status=${rawStatus}, outcome=${result.outcome}, pointsDelta=${result.pointsDelta}`
+      );
+      res.status(result.httpStatus).send(result.responseText);
+      return;
     }
-    let targetUser = dbStore.getUserByExternalId(effectiveUserId) || dbStore.getUserById(effectiveUserId) || dbStore.getUserByAoySubId(effectiveUserId) || dbStore.getUserByUsernameOrEmail(effectiveUserId);
+    let targetUser = dbStore.getUserByExternalId(effectiveUserId) || dbStore.getUserById(effectiveUserId) || dbStore.getUserByAoySubId(effectiveUserId);
     if (!targetUser) {
       await dbStore.syncFromSupabase();
-      targetUser = dbStore.getUserByExternalId(effectiveUserId) || dbStore.getUserById(effectiveUserId) || dbStore.getUserByAoySubId(effectiveUserId) || dbStore.getUserByUsernameOrEmail(effectiveUserId);
+      targetUser = dbStore.getUserByExternalId(effectiveUserId) || dbStore.getUserById(effectiveUserId) || dbStore.getUserByAoySubId(effectiveUserId);
     }
     if (!targetUser) {
-      console.warn(`[Universal Postback] User not found for ID '${effectiveUserId}'. Acknowledging receipt to provider.`);
-      res.status(200).send("1");
+      res.status(200).send("OK");
       return;
     }
     const settings = dbStore.getSettings();
     const userSharePercent = settings.userSharePercent || 50;
     const pointsPerUsdt = settings.pointsPerUsdt || 5e3;
-    const bonusFactor = 7500;
-    let grossCents = 0;
-    const rawUsdVal = params.amount_usd ?? params.payout ?? params.val;
-    const parsedUsd = typeof rawUsdVal === "number" ? rawUsdVal : parseFloat(String(rawUsdVal || "0").replace(/[^0-9.-]/g, ""));
-    if (!isNaN(parsedUsd) && parsedUsd > 0) {
-      if (parsedUsd > 50) {
-        grossCents = Math.round(parsedUsd / pointsPerUsdt * 100);
-      } else {
-        grossCents = Math.round(parsedUsd * 100);
-      }
-    }
-    let userPoints = 0;
-    const rawLocalVal = params.amount_local ?? params.points ?? params.reward;
-    const parsedLocal = typeof rawLocalVal === "number" ? rawLocalVal : parseFloat(String(rawLocalVal || "0").replace(/[^0-9.-]/g, ""));
-    if (!isNaN(parsedLocal) && parsedLocal > 0) {
-      if (parsedLocal > 1) {
-        userPoints = Math.round(parsedLocal);
-      } else {
-        const factorToUse = isScreenOut || eventType === "bonus" ? bonusFactor : pointsPerUsdt;
-        userPoints = Math.round(parsedLocal * factorToUse);
-      }
-    }
-    if (grossCents <= 0 && userPoints > 0) {
-      const factorToUse = isScreenOut || eventType === "bonus" ? bonusFactor : pointsPerUsdt;
-      grossCents = Math.max(1, Math.round(userPoints / factorToUse * 100));
-    }
-    if (userPoints <= 0 && grossCents > 0) {
-      const factorToUse = isScreenOut || eventType === "bonus" ? bonusFactor : pointsPerUsdt;
-      userPoints = Math.max(10, Math.round(grossCents / 100 * factorToUse));
-    }
-    if (userPoints <= 0) userPoints = 50;
-    if (grossCents <= 0) grossCents = 1;
+    const parsedUsd = parseFloat(String(rawAmountUsd ?? "0").replace(/[^0-9.-]/g, "")) || 0;
+    const userPoints = Math.max(10, Math.round(parsedUsd * pointsPerUsdt));
+    const grossCents = Math.max(1, Math.round(parsedUsd * 100));
     const userAmountCents = Math.max(1, Math.round(userPoints / pointsPerUsdt * (userSharePercent / 100) * 100));
     const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-    const sb = dbStore.getSupabaseClient();
-    if (!isReversal) {
-      const ledgerEntry = {
-        id: `ledg_${crypto6.randomUUID()}`,
-        userId: targetUser.id,
-        providerTxId: transId,
-        amountCents: userAmountCents,
-        points: userPoints,
-        grossCents,
-        adminProfitCents,
-        appliedSharePercent: userSharePercent,
-        entryType: "credit",
-        status: "confirmed",
-        description: `${offerTitle} Completed (+${userPoints.toLocaleString("en-US")} Pts \u2022 #${offerId})`,
-        cpxOfferId: String(offerId || ""),
-        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-        processedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      const added = await dbStore.addLedgerEntry(ledgerEntry);
-      if (!added.success) {
-        console.log(`[Universal Postback] Duplicate transaction ${transId} acknowledged.`);
-        res.status(200).send("1");
+    const isReversal = rawStatus === "2" || rawStatus === "3" || rawStatus === "reversal" || rawStatus === "canceled";
+    if (isReversal) {
+      const existingCredit = dbStore.getAllLedgerEntries().find((e) => e.providerTxId === transId && e.entryType === "credit" && e.status === "confirmed");
+      if (!existingCredit) {
+        res.status(200).send("OK");
         return;
       }
-      if (sb) {
-        try {
-          await sb.from("platform_treasury").upsert({
-            id: `tr_${transId}`,
-            provider_id: providerParam || "cpx_research",
-            provider_name: providerParam ? providerParam.toUpperCase() : "CPX Research",
-            source_type: isScreenOut ? "screenout_bonus" : "survey_completion",
-            gross_amount_cents: grossCents,
-            user_share_cents: userAmountCents,
-            platform_share_cents: adminProfitCents,
-            user_id: targetUser.id,
-            user_email: targetUser.email,
-            provider_tx_id: transId,
-            description: ledgerEntry.description,
-            created_at: (/* @__PURE__ */ new Date()).toISOString()
-          });
-        } catch {
-        }
-      }
-      res.status(200).send("1");
+      await dbStore.addLedgerEntry({
+        id: `ledg_${crypto6.randomUUID()}`,
+        userId: targetUser.id,
+        providerTxId: `${transId}_rev`,
+        amountCents: existingCredit.amountCents || userAmountCents,
+        points: existingCredit.points || userPoints,
+        grossCents: existingCredit.grossCents || grossCents,
+        adminProfitCents: existingCredit.adminProfitCents || adminProfitCents,
+        appliedSharePercent: userSharePercent,
+        entryType: "reversal",
+        status: "confirmed",
+        description: `Survey #${offerId} Reversal (-${(existingCredit.points || userPoints).toLocaleString("en-US")} Pts)`,
+        reversalRef: transId,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        processedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      res.status(200).send("OK");
       return;
     }
-    const reversalEntry = {
+    await dbStore.addLedgerEntry({
       id: `ledg_${crypto6.randomUUID()}`,
       userId: targetUser.id,
-      providerTxId: `${transId}_rev`,
+      providerTxId: transId,
       amountCents: userAmountCents,
       points: userPoints,
       grossCents,
       adminProfitCents,
       appliedSharePercent: userSharePercent,
-      entryType: "reversal",
+      entryType: "credit",
       status: "confirmed",
-      description: `${offerTitle} Reversal (-${userPoints.toLocaleString("en-US")} Pts \u2022 #${offerId})`,
-      reversalRef: transId,
+      description: `Survey #${offerId} Completed (+${userPoints.toLocaleString("en-US")} Pts)`,
+      cpxOfferId: offerId,
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       processedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    await dbStore.addLedgerEntry(reversalEntry);
-    if (sb) {
-      try {
-        await sb.from("platform_treasury").upsert({
-          id: `tr_${transId}_rev`,
-          provider_id: providerParam || "cpx_research",
-          provider_name: providerParam ? providerParam.toUpperCase() : "CPX Research",
-          source_type: "chargeback_reversal",
-          gross_amount_cents: -grossCents,
-          user_share_cents: -userAmountCents,
-          platform_share_cents: -adminProfitCents,
-          user_id: targetUser.id,
-          user_email: targetUser.email,
-          provider_tx_id: `${transId}_rev`,
-          description: reversalEntry.description,
-          created_at: (/* @__PURE__ */ new Date()).toISOString()
-        });
-      } catch {
-      }
-    }
-    res.status(200).send("1");
+    });
+    res.status(200).send("OK");
   }
 );
 app.get("/api/tasks", requireAuth, async (req, res) => {
@@ -5164,28 +5442,15 @@ app.get("/api/admin/overview", requireAuth, requireAdmin, async (req, res) => {
     pointsPerUsdt: safePtsRate,
     userSharePercent: safeSharePercent
   });
-  const confirmedCredits = ledger.filter((l) => l.status === "confirmed" && l.entryType === "credit");
-  const confirmedDebitsAndReversals = ledger.filter(
-    (l) => l.status === "confirmed" && (l.entryType === "reversal" || l.entryType === "debit")
-  );
   const entryToPts = (l) => typeof l.points === "number" && !isNaN(l.points) && l.points > 0 ? Math.round(l.points) : Math.round(l.amountCents / 100 * safePtsRate);
-  const totalRewardsCreditedPoints = dashboardStats.points.totalPointsAwardedAllTime;
   const entryToGrossCents = (l) => {
     const pts = entryToPts(l);
-    return l.grossCents && l.grossCents >= l.amountCents ? l.grossCents : Math.max(1, Math.round(pts / safePtsRate * 100));
+    return typeof l.grossCents === "number" && l.grossCents > 0 ? l.grossCents : Math.max(1, Math.round(pts / safePtsRate * 100));
   };
-  const totalGrossRevenueCents = Math.max(
-    0,
-    confirmedCredits.reduce((sum, l) => sum + entryToGrossCents(l), 0) - confirmedDebitsAndReversals.reduce((sum, l) => sum + entryToGrossCents(l), 0)
-  );
-  const totalRewardsCreditedCents = Math.max(
-    0,
-    confirmedCredits.reduce((sum, l) => sum + l.amountCents, 0) - confirmedDebitsAndReversals.reduce((sum, l) => sum + l.amountCents, 0)
-  );
-  const totalAdminProfitCents = Math.max(
-    0,
-    totalGrossRevenueCents - totalRewardsCreditedCents
-  );
+  const totalRewardsCreditedPoints = dashboardStats.points.totalPointsAwarded;
+  const totalGrossRevenueCents = dashboardStats.points.grossRevenueCents;
+  const totalRewardsCreditedCents = dashboardStats.points.userRewardCents;
+  const totalAdminProfitCents = dashboardStats.points.adminProfitCents;
   const pendingWithdrawalCount = withdrawals.filter(
     (w) => ["requested", "under_review", "approved", "processing"].includes(w.status)
   ).length;

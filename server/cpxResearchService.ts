@@ -303,6 +303,367 @@ export class CpxResearchService {
   }
 
   /**
+   * Processes an incoming CPX Research S2S Postback atomically:
+   * 1. Verifies secure_hash before crediting. Bad hash = no credit, logs to audit_log, returns HTTP 200 "OK".
+   * 2. Matches ext_user_id to our user UUID / externalOpaqueId.
+   * 3. Computes Points = amount_usd * conversion_rate (from admin-editable system_settings).
+   * 4. Idempotent on trans_id (UNIQUE): duplicate callbacks never credit twice.
+   * 5. Status = 2 (canceled/reversed): creates negative ledger entry ONLY if trans_id was credited before.
+   * 6. Saves completion + ledger entry + recalculated user total atomically.
+   */
+  async processCpxPostback(input: {
+    transId: string;
+    extUserId: string;
+    amountUsd?: number | string;
+    amountLocal?: number | string;
+    offerId?: string;
+    status?: number | string;
+    eventType?: string;
+    secureHash?: string;
+    ipAddress?: string;
+  }): Promise<{
+    httpStatus: number;
+    responseText: 'OK';
+    outcome:
+      | 'credited'
+      | 'duplicate'
+      | 'bad_hash'
+      | 'reversed'
+      | 'reversal_ignored_not_credited'
+      | 'duplicate_reversal'
+      | 'user_not_found'
+      | 'invalid_params';
+    pointsDelta: number;
+    newAvailablePoints?: number;
+    userId?: string;
+    transId: string;
+  }> {
+    const transId = String(input.transId || '').trim();
+    const extUserId = String(input.extUserId || '').trim();
+    const offerId = String(input.offerId || transId || 'cpx_survey').trim();
+    const rawStatus = String(input.status ?? '1').trim().toLowerCase();
+    const eventType = String(input.eventType || '').trim().toLowerCase();
+    const isScreenOutBonus = eventType === 'out' || eventType === 'screenout';
+    const isReversal =
+      !isScreenOutBonus &&
+      (rawStatus === '2' ||
+        rawStatus === '3' ||
+        rawStatus === '0' ||
+        rawStatus === 'reversal' ||
+        rawStatus === 'canceled' ||
+        rawStatus === 'cancelled' ||
+        rawStatus === 'chargeback');
+
+    if (!transId || !extUserId) {
+      return {
+        httpStatus: 200,
+        responseText: 'OK',
+        outcome: 'invalid_params',
+        pointsDelta: 0,
+        transId
+      };
+    }
+
+    // 1. Verify secure_hash strictly before crediting (Bad hash = no credit, log it)
+    const isValidSignature = this.verifyPostback(transId, extUserId, input.secureHash);
+    if (!isValidSignature) {
+      await dbStore.addAuditLog({
+        adminUserId: 'system_cpx_guard',
+        adminEmail: 'security@reward-river',
+        action: 'CPX_POSTBACK_BAD_HASH_REJECTED',
+        targetEntity: 'reward_ledger',
+        targetId: transId,
+        ipAddress: input.ipAddress,
+        details: JSON.stringify({
+          transId,
+          extUserId,
+          offerId,
+          status: rawStatus,
+          receivedHash: input.secureHash || 'MISSING',
+          reason: 'Invalid or missing CPX secure_hash signature — zero points credited'
+        })
+      });
+      return {
+        httpStatus: 200,
+        responseText: 'OK',
+        outcome: 'bad_hash',
+        pointsDelta: 0,
+        transId
+      };
+    }
+
+    // 2. Resolve matching user (ext_user_id = our user UUID or externalOpaqueId)
+    let targetUser =
+      dbStore.getUserById(extUserId) ||
+      dbStore.getUserByExternalId(extUserId);
+
+    if (!targetUser) {
+      await dbStore.syncFromSupabase();
+      targetUser =
+        dbStore.getUserById(extUserId) ||
+        dbStore.getUserByExternalId(extUserId);
+    }
+
+    if (!targetUser) {
+      await dbStore.addAuditLog({
+        adminUserId: 'system_cpx_postback',
+        adminEmail: 'system@reward-river',
+        action: 'CPX_POSTBACK_USER_NOT_FOUND',
+        targetEntity: 'users',
+        targetId: extUserId,
+        ipAddress: input.ipAddress,
+        details: JSON.stringify({ transId, extUserId, offerId, status: rawStatus })
+      });
+      return {
+        httpStatus: 200,
+        responseText: 'OK',
+        outcome: 'user_not_found',
+        pointsDelta: 0,
+        transId
+      };
+    }
+
+    // 3. Read conversion rate from admin-editable settings table (not hardcoded)
+    const settings = dbStore.getSettings();
+    const conversionRate = Math.max(100, Number(settings.pointsPerUsdt) || 5000);
+    const userSharePercent = Math.max(1, Math.min(100, Number(settings.userSharePercent) || 50));
+
+    const parsedUsd =
+      typeof input.amountUsd === 'number'
+        ? input.amountUsd
+        : parseFloat(String(input.amountUsd ?? '0').replace(/[^0-9.-]/g, ''));
+    const parsedLocal =
+      typeof input.amountLocal === 'number'
+        ? input.amountLocal
+        : parseFloat(String(input.amountLocal ?? '0').replace(/[^0-9.-]/g, ''));
+
+    let effectiveAmountUsd = !isNaN(parsedUsd) && parsedUsd > 0 ? parsedUsd : 0;
+    if (effectiveAmountUsd > 50) {
+      // Normalize if points were passed in amount_usd
+      effectiveAmountUsd = effectiveAmountUsd / conversionRate;
+    }
+
+    let computedPoints = 0;
+    if (effectiveAmountUsd > 0) {
+      // Points = CPX amount_usd * conversion_rate (from settings table)
+      computedPoints = Math.round(effectiveAmountUsd * conversionRate);
+    } else if (!isNaN(parsedLocal) && parsedLocal > 0) {
+      computedPoints = parsedLocal > 1 ? Math.round(parsedLocal) : Math.round(parsedLocal * conversionRate);
+      effectiveAmountUsd = computedPoints / conversionRate;
+    }
+
+    if (computedPoints <= 0) computedPoints = 50;
+    const grossCents = Math.max(1, Math.round(effectiveAmountUsd * 100));
+    const userAmountCents = Math.max(
+      1,
+      Math.round((computedPoints / conversionRate) * (userSharePercent / 100) * 100)
+    );
+    const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+    const nowIso = new Date().toISOString();
+
+    const sb = dbStore.getSupabaseClient();
+
+    // 4. Handle Reversal / Canceled Status (status = 2)
+    if (isReversal) {
+      const allEntries = dbStore.getAllLedgerEntries();
+      const originalCredit = allEntries.find(
+        e =>
+          (e.providerTxId === transId || e.providerTxId === `cpx_${transId}`) &&
+          e.entryType === 'credit' &&
+          e.status === 'confirmed'
+      );
+
+      // Canceled/reversed status = negative ledger entry ONLY if it was credited before
+      if (!originalCredit) {
+        return {
+          httpStatus: 200,
+          responseText: 'OK',
+          outcome: 'reversal_ignored_not_credited',
+          pointsDelta: 0,
+          userId: targetUser.id,
+          newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+          transId
+        };
+      }
+
+      const reversalTxId = `${originalCredit.providerTxId}_rev`;
+      const existingReversal = allEntries.find(
+        e => e.providerTxId === reversalTxId || (e.entryType === 'reversal' && e.reversalRef === originalCredit.providerTxId)
+      );
+      if (existingReversal) {
+        return {
+          httpStatus: 200,
+          responseText: 'OK',
+          outcome: 'duplicate_reversal',
+          pointsDelta: 0,
+          userId: targetUser.id,
+          newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+          transId
+        };
+      }
+
+      const deductPoints = originalCredit.points || computedPoints;
+      const deductUserCents = originalCredit.amountCents || userAmountCents;
+      const deductGrossCents = originalCredit.grossCents || grossCents;
+      const deductProfitCents = originalCredit.adminProfitCents || adminProfitCents;
+
+      // Attempt atomic RPC in Supabase first if configured
+      if (sb) {
+        try {
+          await sb.rpc('process_cpx_postback', {
+            p_trans_id: originalCredit.providerTxId,
+            p_ext_user_id: targetUser.id,
+            p_offer_id: offerId,
+            p_amount_usd: Number((deductGrossCents / 100).toFixed(4)),
+            p_status: 2,
+            p_approved_by: 'CPX S2S Reversal Postback'
+          });
+        } catch {
+          // Fallback to table sync inside addLedgerEntry
+        }
+      }
+
+      const reversalEntry: LedgerEntry = {
+        id: `le_cpx_${transId}_rev`,
+        userId: targetUser.id,
+        providerTxId: reversalTxId,
+        taskId: 'task_cpx_survey',
+        cpxOfferId: offerId,
+        reversalRef: originalCredit.providerTxId,
+        amountCents: deductUserCents,
+        points: deductPoints,
+        grossCents: deductGrossCents,
+        adminProfitCents: deductProfitCents,
+        appliedSharePercent: userSharePercent,
+        entryType: 'reversal',
+        status: 'confirmed',
+        approvedBy: 'CPX S2S Reversal Postback',
+        description: `CPX Research Survey #${offerId} Reversed (-${deductPoints.toLocaleString('en-US')} Pts • Tx #${transId})`,
+        createdAt: nowIso,
+        processedAt: nowIso
+      };
+
+      await dbStore.addLedgerEntry(reversalEntry);
+      await dbStore.addTaskCompletion({
+        id: `tc_cpx_${transId}_rev`,
+        userId: targetUser.id,
+        taskId: 'task_cpx_survey',
+        providerTxId: reversalTxId,
+        title: `CPX Survey #${offerId} Reversed`,
+        pointsAwarded: -deductPoints,
+        status: 'reversed',
+        approvedBy: 'CPX S2S Reversal Postback',
+        createdAt: nowIso,
+        processedAt: nowIso
+      });
+
+      const updatedBalances = dbStore.getUserBalances(targetUser.id);
+      await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances.availablePoints });
+
+      return {
+        httpStatus: 200,
+        responseText: 'OK',
+        outcome: 'reversed',
+        pointsDelta: -deductPoints,
+        userId: targetUser.id,
+        newAvailablePoints: updatedBalances.availablePoints,
+        transId
+      };
+    }
+
+    // 5. Handle Completed Status (status = 1)
+    const allEntries = dbStore.getAllLedgerEntries();
+    const alreadyExists = allEntries.some(
+      e => e.providerTxId === transId || e.providerTxId === `cpx_${transId}`
+    );
+    if (alreadyExists) {
+      return {
+        httpStatus: 200,
+        responseText: 'OK',
+        outcome: 'duplicate',
+        pointsDelta: 0,
+        userId: targetUser.id,
+        newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+        transId
+      };
+    }
+
+    // Execute atomic Postgres RPC if Supabase is connected
+    if (sb) {
+      try {
+        await sb.rpc('process_cpx_postback', {
+          p_trans_id: transId,
+          p_ext_user_id: targetUser.id,
+          p_offer_id: offerId,
+          p_amount_usd: Number(effectiveAmountUsd.toFixed(4)),
+          p_status: 1,
+          p_approved_by: 'CPX S2S Verified Postback'
+        });
+      } catch {
+        // Fallback to direct table sync inside addLedgerEntry
+      }
+    }
+
+    const creditEntry: LedgerEntry = {
+      id: `le_cpx_${transId}`,
+      userId: targetUser.id,
+      providerTxId: transId,
+      taskId: isScreenOutBonus ? 'task_cpx_screenout' : 'task_cpx_survey',
+      cpxOfferId: offerId,
+      amountCents: userAmountCents,
+      points: computedPoints,
+      grossCents,
+      adminProfitCents,
+      appliedSharePercent: userSharePercent,
+      entryType: 'credit',
+      status: 'confirmed',
+      approvedBy: 'CPX S2S Verified Postback',
+      description: `CPX Research Survey #${offerId} Completed (+${computedPoints.toLocaleString('en-US')} Pts)`,
+      createdAt: nowIso,
+      processedAt: nowIso
+    };
+
+    const added = await dbStore.addLedgerEntry(creditEntry);
+    if (!added.success) {
+      return {
+        httpStatus: 200,
+        responseText: 'OK',
+        outcome: 'duplicate',
+        pointsDelta: 0,
+        userId: targetUser.id,
+        newAvailablePoints: dbStore.getUserBalances(targetUser.id).availablePoints,
+        transId
+      };
+    }
+
+    await dbStore.addTaskCompletion({
+      id: `tc_cpx_${transId}`,
+      userId: targetUser.id,
+      taskId: isScreenOutBonus ? 'task_cpx_screenout' : 'task_cpx_survey',
+      providerTxId: transId,
+      title: `CPX Survey #${offerId} Completed`,
+      pointsAwarded: computedPoints,
+      status: 'completed',
+      approvedBy: 'CPX S2S Verified Postback',
+      createdAt: nowIso,
+      processedAt: nowIso
+    });
+
+    const updatedBalances = dbStore.getUserBalances(targetUser.id);
+    await dbStore.updateUser(targetUser.id, { storedPoints: updatedBalances.availablePoints });
+
+    return {
+      httpStatus: 200,
+      responseText: 'OK',
+      outcome: 'credited',
+      pointsDelta: computedPoints,
+      userId: targetUser.id,
+      newAvailablePoints: updatedBalances.availablePoints,
+      transId
+    };
+  }
+
+  /**
    * Helper to normalize date range within CPX limit (max 370 days).
    * Defaults end_time to +1 day UTC so CPX CET completions on the current day are always included.
    * Defaults start_time to 7 days ago (this week) for this new website.

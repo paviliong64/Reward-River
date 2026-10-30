@@ -156,3 +156,137 @@ test('getUserBalances tracks availablePoints and completedSurveysCount accuratel
 
   await dbStore.deleteUser(userId);
 });
+
+test('CPX Postback Handler covers completed, duplicate, bad hash, and reversed callback cases accurately', async () => {
+  const { cpxResearchService } = await import('./cpxResearchService');
+  const crypto = await import('crypto');
+
+  const userId = 'u_cpx_postback_e2e_1';
+  const extUserId = 'rr_cpx_ucpxpostbacke2e1';
+  const secret = cpxResearchService.hashKey;
+
+  await dbStore.createUser({
+    id: userId,
+    username: 'cpx_verifier',
+    email: 'cpx_verifier@example.com',
+    passwordHash: 'hash123',
+    salt: 'salt123',
+    displayName: 'CPX Verifier',
+    emailVerified: true,
+    externalOpaqueId: extUserId,
+    role: 'user',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+
+  const transId = `cpx_test_tx_${Date.now()}`;
+  const validHash = crypto.createHash('md5').update(`${transId}-${secret}`).digest('hex');
+
+  // CASE 1: BAD HASH CALLBACK -> Rejected, 0 points credited, logged in audit_log, HTTP 200 "OK"
+  const badHashResult = await cpxResearchService.processCpxPostback({
+    status: 1,
+    transId,
+    extUserId,
+    amountLocal: 4000,
+    amountUsd: 0.80,
+    offerId: 'offer_999',
+    secureHash: 'forged_invalid_md5_signature_0000'
+  });
+  assert.equal(badHashResult.httpStatus, 200);
+  assert.equal(badHashResult.responseText, 'OK');
+  assert.equal(badHashResult.outcome, 'bad_hash');
+  assert.equal(badHashResult.pointsDelta, 0);
+  assert.equal(dbStore.getUserBalances(userId).availablePoints, 0);
+
+  // Verify audit log recorded the rejected bad hash attempt
+  const auditLogs = dbStore.getAuditLogs();
+  assert.ok(
+    auditLogs.some((l) => l.action === 'CPX_POSTBACK_BAD_HASH_REJECTED' && l.details.includes(transId)),
+    'Bad hash attempt must be recorded in audit_log'
+  );
+
+  // CASE 2: COMPLETED CALLBACK (status=1, valid secure_hash, amount_usd=0.80)
+  // Points = amount_usd ($0.80) * conversion_rate (5,000 Pts/$1 from settings) = 4,000 Points
+  const completedResult = await cpxResearchService.processCpxPostback({
+    status: 1,
+    transId,
+    extUserId,
+    amountLocal: 4000,
+    amountUsd: 0.80,
+    offerId: 'offer_999',
+    secureHash: validHash
+  });
+  assert.equal(completedResult.httpStatus, 200);
+  assert.equal(completedResult.responseText, 'OK');
+  assert.equal(completedResult.outcome, 'credited');
+  assert.equal(completedResult.pointsDelta, 4000);
+  assert.equal(dbStore.getUserBalances(userId).availablePoints, 4000);
+  assert.equal(dbStore.getUserBalances(userId).completedSurveysCount, 1);
+
+  // CASE 3: DUPLICATE CALLBACK (same trans_id sent again) -> Idempotent, 0 points added, HTTP 200 "OK"
+  const duplicateResult = await cpxResearchService.processCpxPostback({
+    status: 1,
+    transId,
+    extUserId,
+    amountLocal: 4000,
+    amountUsd: 0.80,
+    offerId: 'offer_999',
+    secureHash: validHash
+  });
+  assert.equal(duplicateResult.httpStatus, 200);
+  assert.equal(duplicateResult.responseText, 'OK');
+  assert.equal(duplicateResult.outcome, 'duplicate');
+  assert.equal(duplicateResult.pointsDelta, 0);
+  assert.equal(dbStore.getUserBalances(userId).availablePoints, 4000);
+
+  // CASE 4A: REVERSED CALLBACK ON UNCREDITED TRANS_ID -> Ignored, 0 deducted
+  const unknownTransId = `cpx_never_credited_${Date.now()}`;
+  const unknownValidHash = crypto.createHash('md5').update(`${unknownTransId}-${secret}`).digest('hex');
+  const uncreditedRevResult = await cpxResearchService.processCpxPostback({
+    status: 2,
+    transId: unknownTransId,
+    extUserId,
+    amountLocal: 4000,
+    amountUsd: 0.80,
+    offerId: 'offer_999',
+    secureHash: unknownValidHash
+  });
+  assert.equal(uncreditedRevResult.httpStatus, 200);
+  assert.equal(uncreditedRevResult.outcome, 'reversal_ignored_not_credited');
+  assert.equal(uncreditedRevResult.pointsDelta, 0);
+  assert.equal(dbStore.getUserBalances(userId).availablePoints, 4000);
+
+  // CASE 4B: REVERSED CALLBACK ON CREDITED TRANS_ID (status=2) -> Negative ledger entry (-4,000 Pts), balance = 0
+  const reversedResult = await cpxResearchService.processCpxPostback({
+    status: 2,
+    transId,
+    extUserId,
+    amountLocal: 4000,
+    amountUsd: 0.80,
+    offerId: 'offer_999',
+    secureHash: validHash
+  });
+  assert.equal(reversedResult.httpStatus, 200);
+  assert.equal(reversedResult.responseText, 'OK');
+  assert.equal(reversedResult.outcome, 'reversed');
+  assert.equal(reversedResult.pointsDelta, -4000);
+  assert.equal(dbStore.getUserBalances(userId).availablePoints, 0);
+  assert.equal(dbStore.getUserBalances(userId).completedSurveysCount, 0);
+
+  // CASE 4C: DUPLICATE REVERSAL -> Idempotent, cannot deduct twice
+  const duplicateRevResult = await cpxResearchService.processCpxPostback({
+    status: 2,
+    transId,
+    extUserId,
+    amountLocal: 4000,
+    amountUsd: 0.80,
+    offerId: 'offer_999',
+    secureHash: validHash
+  });
+  assert.equal(duplicateRevResult.outcome, 'duplicate_reversal');
+  assert.equal(duplicateRevResult.pointsDelta, 0);
+  assert.equal(dbStore.getUserBalances(userId).availablePoints, 0);
+
+  await dbStore.deleteUser(userId);
+});
+

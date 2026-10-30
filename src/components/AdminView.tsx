@@ -97,7 +97,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     maxWithdrawalCents: 50000,
     feeCentsTrc20: 100,
     feeCentsErc20: 250,
-    userSharePercent: 40,
+    userSharePercent: 50,
     pointsPerUsdt: 5000,
     surveyDisplayMode: 'points_only',
     cpxAppId: '37699',
@@ -228,7 +228,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [adjustPointsReason, setAdjustPointsReason] = useState<string>('');
   const [adjustPointsTaskId, setAdjustPointsTaskId] = useState<string>('admin_manual_adjustment');
   const [adjustingPoints, setAdjustingPoints] = useState(false);
-  const [userDetailTab, setUserDetailTab] = useState<'ledger' | 'withdrawals' | 'adjust'>('ledger');
+  const [userDetailTab, setUserDetailTab] = useState<'surveys' | 'ledger' | 'withdrawals' | 'adjust'>('surveys');
+  const [cpxCompletionSearch, setCpxCompletionSearch] = useState<string>('');
+  const [cpxCompletionStatusFilter, setCpxCompletionStatusFilter] = useState<'all' | 'credited' | 'reversed'>('all');
+  const [cpxCompletionCountryFilter, setCpxCompletionCountryFilter] = useState<string>('ALL');
 
   const postbackWebhookUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/cpx/postback?status={status}&trans_id={trans_id}&ext_user_id={user_id}&amount_usd={amount_usd}&amount_local={amount_local}&offer_id={offer_id}&secure_hash={secure_hash}`;
   const aoyPostbackWebhookUrl = typeof window !== 'undefined' && window.location.hostname === 'rewardriver.online'
@@ -2650,29 +2653,77 @@ export const AdminView: React.FC<AdminViewProps> = ({
               )}
 
               {/* =========================================================================
-                  SUBTAB 2: LIVE COMPLETES LOG & USER PROFILE SYNC (api-statistics-completes)
+                  SUBTAB 2: SURVEY COMPLETIONS (OUR USER DATA & CPX DATA SIDE BY SIDE + FILTERS)
                  ========================================================================= */}
               {cpxActiveSubTab === 'completes' && (
                 <div className="space-y-4">
-                  <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-base font-bold text-slate-900">
-                        CPX Completed Surveys List ({cpxCompletes.length} Recorded)
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Real-time completed surveys from CPX Research. Every complete is synced to the member's profile at <strong>5,000 Points per $1.00 USD</strong>.
-                      </p>
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h2 className="text-base font-bold text-slate-900">
+                          Survey Completions — Our User Data &amp; CPX Data Side by Side ({cpxCompletes.length} Recorded)
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Privacy enforced: CPX receives only the user UUID (<code className="font-mono">ext_user_id</code>); name &amp; email stay strictly in our database and Admin Portal. Conversion rate: <strong>{(settings?.pointsPerUsdt || 5000).toLocaleString('en-US')} Points per $1.00 USD</strong>.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSyncCpxCompletes}
+                        disabled={syncingCpxCompletes}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm shrink-0"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${syncingCpxCompletes ? 'animate-spin' : ''}`} />
+                        <span>{syncingCpxCompletes ? 'Syncing...' : 'Sync Missing Points to Users'}</span>
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleSyncCpxCompletes}
-                      disabled={syncingCpxCompletes}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm shrink-0"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${syncingCpxCompletes ? 'animate-spin' : ''}`} />
-                      <span>{syncingCpxCompletes ? 'Syncing...' : 'Sync Missing Points to Users'}</span>
-                    </button>
+                    {/* Side-by-Side Completions Filters */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100 text-xs">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={cpxCompletionSearch}
+                          onChange={(e) => setCpxCompletionSearch(e.target.value)}
+                          placeholder="Filter by trans_id, User UUID, name, or email..."
+                          className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-600 shrink-0">Ledger Status:</span>
+                        {(['all', 'credited', 'reversed'] as const).map((st) => (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => setCpxCompletionStatusFilter(st)}
+                            className={`px-2.5 py-1.5 rounded-lg font-bold capitalize transition-colors ${
+                              cpxCompletionStatusFilter === st
+                                ? 'bg-slate-900 text-white'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            }`}
+                          >
+                            {st}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-600 shrink-0">Country:</span>
+                        <select
+                          value={cpxCompletionCountryFilter}
+                          onChange={(e) => setCpxCompletionCountryFilter(e.target.value)}
+                          className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                        >
+                          <option value="ALL">All Countries</option>
+                          {Array.from(new Set(cpxCompletes.map(c => c.country_code || 'US'))).map(code => (
+                            <option key={code} value={code}>{code}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
@@ -2680,66 +2731,151 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
                           <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                            <th className="py-3 px-4">Transaction ID</th>
-                            <th className="py-3 px-4">Date &amp; Time</th>
-                            <th className="py-3 px-4">User / External ID</th>
-                            <th className="py-3 px-4 text-center">Duration (LOI)</th>
-                            <th className="py-3 px-4 text-center">Country &amp; IP</th>
-                            <th className="py-3 px-4 text-right">Publisher USD</th>
-                            <th className="py-3 px-4 text-right">Points to User</th>
-                            <th className="py-3 px-4 text-center">Profile Credit</th>
+                            <th className="py-3 px-4">CPX Trans ID &amp; Offer</th>
+                            <th className="py-3 px-4">Date &amp; Time (PKT)</th>
+                            <th className="py-3 px-4 bg-blue-50/40">Our User (UUID / Name / Email)</th>
+                            <th className="py-3 px-4">CPX Ext User ID</th>
+                            <th className="py-3 px-4 text-center">Country / LOI</th>
+                            <th className="py-3 px-4 text-right">CPX Payout (USD)</th>
+                            <th className="py-3 px-4 text-right bg-emerald-50/40">Our Ledger Points</th>
+                            <th className="py-3 px-4 text-center">Ledger Status</th>
                             <th className="py-3 px-4 text-center">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {cpxCompletes.length > 0 ? (
-                            cpxCompletes.map((record) => {
+                          {(() => {
+                            const convRate = settings?.pointsPerUsdt || 5000;
+                            const enrichedRows = cpxCompletes.map((record) => {
+                              const extId = String(record.external_user_id || '').trim();
+                              const stripped = extId.replace(/^rr_(cpx_)?/i, '');
+                              const matchedUser = usersList.find(
+                                u =>
+                                  u.externalOpaqueId === extId ||
+                                  u.id === extId ||
+                                  u.id === stripped ||
+                                  u.externalOpaqueId === `rr_cpx_${stripped}` ||
+                                  (u.fullLedger || []).some(l => l.providerTxId === record.trans_id)
+                              );
+                              const matchedLedger = matchedUser?.fullLedger?.find(
+                                l => l.providerTxId === record.trans_id || l.providerTxId === `cpx_${record.trans_id}`
+                              );
+                              const isReversed = matchedUser?.fullLedger?.some(
+                                l =>
+                                  l.providerTxId === `${record.trans_id}_rev` ||
+                                  (l.entryType === 'reversal' && l.reversalRef === record.trans_id)
+                              );
                               const publisherUsd = Number(record.verdienst_publisher) || 0;
-                              const localPoints = Number(record.verdienst_user_local_money);
-                              const points =
-                                !isNaN(localPoints) && localPoints > 0 && localPoints <= publisherUsd * 5500
-                                  ? Math.round(localPoints)
-                                  : Math.round(publisherUsd * 5000);
-                              const loiMin = record.loi_secounds ? (record.loi_secounds / 60).toFixed(1) : '—';
+                              const points = matchedLedger?.points || Math.max(50, Math.round(publisherUsd * convRate));
+                              return {
+                                record,
+                                matchedUser,
+                                matchedLedger,
+                                isReversed: Boolean(isReversed),
+                                publisherUsd,
+                                points
+                              };
+                            });
 
+                            const filteredRows = enrichedRows.filter((item) => {
+                              if (
+                                cpxCompletionCountryFilter !== 'ALL' &&
+                                (item.record.country_code || 'US') !== cpxCompletionCountryFilter
+                              ) {
+                                return false;
+                              }
+                              if (cpxCompletionStatusFilter === 'credited' && item.isReversed) return false;
+                              if (cpxCompletionStatusFilter === 'reversed' && !item.isReversed) return false;
+
+                              const q = cpxCompletionSearch.trim().toLowerCase();
+                              if (!q) return true;
+                              return (
+                                String(item.record.trans_id || '').toLowerCase().includes(q) ||
+                                String(item.record.id || '').toLowerCase().includes(q) ||
+                                String(item.record.external_user_id || '').toLowerCase().includes(q) ||
+                                String(item.matchedUser?.id || '').toLowerCase().includes(q) ||
+                                String(item.matchedUser?.displayName || '').toLowerCase().includes(q) ||
+                                String(item.matchedUser?.email || '').toLowerCase().includes(q)
+                              );
+                            });
+
+                            if (filteredRows.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={9} className="py-8 text-center text-slate-500 font-semibold">
+                                    {loadingCpxStats ? 'Loading live CPX completes...' : 'No completed surveys match the active filters.'}
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return filteredRows.map(({ record, matchedUser, isReversed, publisherUsd, points }) => {
+                              const loiMin = record.loi_secounds ? (record.loi_secounds / 60).toFixed(1) : '—';
                               return (
                                 <tr key={record.id || record.trans_id} className="hover:bg-slate-50/60 transition-colors">
-                                  <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                                    {record.trans_id}
+                                  <td className="py-3 px-4 font-mono">
+                                    <div className="font-bold text-slate-900">Tx #{record.trans_id}</div>
+                                    <div className="text-[10px] text-slate-400">Offer #{record.id || record.trans_id}</div>
                                   </td>
-                                  <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                                  <td className="py-3 px-4 text-slate-600 font-mono text-[11px] whitespace-nowrap">
                                     {record.datetime}
                                   </td>
+                                  <td className="py-3 px-4 bg-blue-50/20">
+                                    {matchedUser ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setUserDetailTab('surveys');
+                                          setSelectedUserDetail(matchedUser);
+                                        }}
+                                        className="text-left group cursor-pointer"
+                                      >
+                                        <div className="font-bold text-blue-700 group-hover:underline">
+                                          {matchedUser.displayName}
+                                        </div>
+                                        <div className="text-[10px] font-mono text-slate-600">
+                                          {matchedUser.email}
+                                        </div>
+                                        <div className="text-[10px] font-mono text-slate-400 select-all">
+                                          UUID: {matchedUser.id}
+                                        </div>
+                                      </button>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-400 font-mono">Unlinked Profile</span>
+                                    )}
+                                  </td>
                                   <td className="py-3 px-4">
-                                    <div className="font-mono text-slate-900 font-semibold truncate max-w-[180px]">
+                                    <div className="font-mono text-slate-900 font-semibold truncate max-w-[160px] select-all">
                                       {record.external_user_id}
                                     </div>
-                                    <div className="text-[10px] text-slate-400">
+                                    <div className="text-[10px] text-slate-400 font-mono">
                                       CPX #{record.internal_user_id}
                                     </div>
-                                  </td>
-                                  <td className="py-3 px-4 text-center font-mono text-slate-700">
-                                    {loiMin} min
                                   </td>
                                   <td className="py-3 px-4 text-center">
                                     <span className="inline-block px-2 py-0.5 rounded font-mono font-bold bg-slate-100 text-slate-700 text-[10px]">
                                       {record.country_code || 'US'}
                                     </span>
-                                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                                      {record.ip}
+                                    <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                                      {loiMin} min
                                     </div>
                                   </td>
                                   <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
                                     ${publisherUsd.toFixed(2)}
                                   </td>
-                                  <td className="py-3 px-4 text-right font-mono font-black text-emerald-700">
-                                    +{points.toLocaleString()} Pts
+                                  <td className="py-3 px-4 text-right font-mono font-black text-emerald-700 bg-emerald-50/20">
+                                    {isReversed ? `-${points.toLocaleString()} Pts` : `+${points.toLocaleString()} Pts`}
                                   </td>
                                   <td className="py-3 px-4 text-center">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                                      <Check className="w-3 h-3 text-emerald-600" />
-                                      Credited
-                                    </span>
+                                    {isReversed ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold">
+                                        Reversed
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                        <Check className="w-3 h-3 text-emerald-600" />
+                                        Credited
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="py-3 px-4 text-center">
                                     <button
@@ -2756,14 +2892,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                   </td>
                                 </tr>
                               );
-                            })
-                          ) : (
-                            <tr>
-                              <td colSpan={9} className="py-8 text-center text-slate-500 font-semibold">
-                                {loadingCpxStats ? 'Loading live CPX completes...' : 'No completed surveys recorded.'}
-                              </td>
-                            </tr>
-                          )}
+                            });
+                          })()}
                         </tbody>
                       </table>
                     </div>
@@ -4739,7 +4869,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </div>
 
               {/* Sub-Navigation Tabs inside Modal */}
-              <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setUserDetailTab('surveys')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                    userDetailTab === 'surveys'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
+                >
+                  Completed Surveys ({selectedUserDetail.completedSurveysCount})
+                </button>
                 <button
                   type="button"
                   onClick={() => setUserDetailTab('ledger')}
@@ -4749,7 +4890,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Points Ledger &amp; Task History ({(selectedUserDetail.fullLedger || selectedUserDetail.recentEntries || []).length})
+                  Full Points Ledger ({(selectedUserDetail.fullLedger || selectedUserDetail.recentEntries || []).length})
                 </button>
                 <button
                   type="button"
@@ -4774,6 +4915,70 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   + / - Manual Point Adjustment
                 </button>
               </div>
+
+              {/* Tab 0: Completed Surveys with CPX trans_id / offer_id / payout / status / time */}
+              {userDetailTab === 'surveys' && (
+                <div className="space-y-2">
+                  {(selectedUserDetail.fullLedger || selectedUserDetail.recentEntries || []).length > 0 ? (
+                    <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 overflow-x-auto text-xs">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                            <th className="py-2.5 px-3">CPX Trans ID</th>
+                            <th className="py-2.5 px-3">Offer ID</th>
+                            <th className="py-2.5 px-3 text-right">CPX Payout (USD)</th>
+                            <th className="py-2.5 px-3 text-right">Points</th>
+                            <th className="py-2.5 px-3 text-center">Status</th>
+                            <th className="py-2.5 px-3 text-right">Time (PKT)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {(selectedUserDetail.fullLedger || selectedUserDetail.recentEntries || []).map((item) => {
+                            const isReversal = item.entryType === 'reversal' || item.status === 'reversed';
+                            const pts = item.points || 0;
+                            const grossUsd = ((item.grossCents || Math.round((pts / 5000) * 100)) / 100).toFixed(2);
+                            const offerId = item.cpxOfferId || item.taskId || item.providerTxId;
+                            return (
+                              <tr key={item.id} className="hover:bg-slate-50/70">
+                                <td className="py-2.5 px-3 font-bold text-slate-900 select-all">
+                                  {item.providerTxId}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-600 select-all">
+                                  #{offerId}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-bold text-slate-800">
+                                  ${grossUsd}
+                                </td>
+                                <td className={`py-2.5 px-3 text-right font-extrabold ${isReversal ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                  {isReversal ? '-' : '+'}{pts.toLocaleString('en-US')} Pts
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                      isReversal
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : 'bg-emerald-100 text-emerald-800'
+                                    }`}
+                                  >
+                                    {isReversal ? 'Reversed' : 'Completed'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right text-[11px] text-slate-500 whitespace-nowrap">
+                                  {new Date(item.createdAt).toLocaleString('en-GB', { timeZone: 'Asia/Karachi' })} PKT
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="p-8 rounded-xl bg-slate-50 border border-slate-200/70 text-center text-xs text-slate-400">
+                      No completed surveys recorded for this user yet.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Tab 1: Full Points Ledger & Task History */}
               {userDetailTab === 'ledger' && (

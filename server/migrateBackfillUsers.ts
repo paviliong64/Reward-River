@@ -79,7 +79,51 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
       details.push(`Assigned permanent externalOpaqueId ${extId} to ${user.email}`);
     }
 
-    // Check if user had historical points in Supabase or storedPoints but 0 ledger records
+    // 1. Convert any past completed survey/task records (task_completions) into ledger entries once (idempotent, no data loss)
+    const allCompletions = dbStore.getTaskCompletions().filter(
+      tc =>
+        (tc.userId === targetId || tc.userId === extId) &&
+        tc.status === 'completed'
+    );
+    const existingLedger = dbStore.getAllLedgerEntries();
+    for (const tc of allCompletions) {
+      const txId = String(tc.providerTxId || tc.id).trim();
+      if (!txId) continue;
+      const alreadyInLedger = existingLedger.some(
+        l => l.providerTxId === txId || l.id === `le_cpx_${txId}`
+      );
+      if (!alreadyInLedger) {
+        const pts = Math.max(50, Math.round(Number(tc.pointsAwarded || (tc as any).points) || 500));
+        const userAmountCents = Math.max(1, Math.round(pts / 100));
+        const grossCents = Math.max(userAmountCents, Math.round((pts / 5000) * 100));
+        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+        const completionLedgerEntry: LedgerEntry = {
+          id: `le_cpx_${txId.replace(/^cpx_/, '')}`,
+          userId: targetId,
+          providerTxId: txId,
+          taskId: tc.taskId || 'task_cpx_survey',
+          cpxOfferId: tc.taskId || txId,
+          amountCents: userAmountCents,
+          points: pts,
+          grossCents,
+          adminProfitCents,
+          appliedSharePercent: 50,
+          entryType: 'credit',
+          status: 'confirmed',
+          approvedBy: tc.approvedBy || 'System Completion Backfill',
+          description: `${tc.title || (tc as any).reason || 'Completed Survey'} (+${pts.toLocaleString('en-US')} Pts)`,
+          createdAt: tc.createdAt || user.createdAt || nowIso,
+          processedAt: nowIso
+        };
+        await dbStore.upsertLedgerEntry(completionLedgerEntry);
+        legacyPointsBackfilledCount++;
+        details.push(
+          `Converted completed survey/task ${txId} (+${pts.toLocaleString('en-US')} Pts) into ledger entry for ${user.email}`
+        );
+      }
+    }
+
+    // 2. Check if user had historical points in Supabase or storedPoints but 0 ledger records
     const userLedger = dbStore.getLedgerForUser(targetId);
     const sbRow = sbUsersById.get(targetId);
     const historicalPoints = Math.max(
@@ -117,7 +161,7 @@ export async function runUserAndLedgerBackfill(): Promise<BackfillResultSummary>
       );
     }
 
-    // Recompute authoritative balance from ledger entries
+    // 3. Recompute authoritative balance from ledger entries
     const balances = dbStore.getUserBalances(targetId);
     const currentStoredPts = sbRow !== undefined ? Number(sbRow.points) || 0 : user.storedPoints;
 
