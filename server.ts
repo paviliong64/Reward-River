@@ -80,6 +80,22 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Throttled background auto-synchronization for CPX completes (runs seamlessly on Vercel and Node)
+let lastAutoSyncMs = 0;
+export async function triggerThrottledCpxSync(minIntervalMs = 30000): Promise<void> {
+  const now = Date.now();
+  if (now - lastAutoSyncMs < minIntervalMs) return;
+  lastAutoSyncMs = now;
+  try {
+    const res = await cpxResearchService.syncCompletesToUserBalances();
+    if (res.syncedCount > 0) {
+      console.log(`[CPX Auto-Sync] Automatically credited ${res.syncedCount} new completes (${res.totalPointsCredited} Pts) to member profiles.`);
+    }
+  } catch (e) {
+    console.warn('[CPX Auto-Sync Throttled Note]:', e);
+  }
+}
+
 // Helper to ensure and return Admin user + session
 async function ensureAdminAndCreateResponse() {
   let adminUser =
@@ -399,6 +415,8 @@ app.get('/api/auth/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
   } catch (e) {
     console.warn('[auth/me] Supabase sync note:', e);
   }
+  // Auto-sync CPX completes in background (throttled to once per 30s)
+  triggerThrottledCpxSync(30000).catch(() => {});
   const settings = dbStore.getSettings();
   const rawBalances = dbStore.getUserBalances(user.id);
   const { totalAdminProfitCents: _a, totalGrossRevenueCents: _g, ...userSafeBalances } = rawBalances;
@@ -1151,6 +1169,9 @@ app.post('/api/surveys/complete', requireAuth, async (req: AuthenticatedRequest,
     const clientIp = isPrivateOrLoopback ? '5.146.176.100' : rawIp;
     const userAgent =
       req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+    // Auto-sync any fresh CPX completions immediately
+    await triggerThrottledCpxSync(2000).catch(() => {});
 
     // 1. Poll live CPX Research API to see if CPX reported any real completed transactions for this user
     const liveData = await cpxResearchService.fetchEligibleSurveys({

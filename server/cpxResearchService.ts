@@ -305,7 +305,7 @@ export class CpxResearchService {
   /**
    * Helper to normalize date range within CPX limit (max 370 days).
    * Defaults end_time to +1 day UTC so CPX CET completions on the current day are always included.
-   * Defaults start_time to 14 days ago for active recent data.
+   * Defaults start_time to 7 days ago (this week) for this new website.
    */
   normalizeDateRange(start?: string, end?: string): { startTime: string; endTime: string } {
     const now = new Date();
@@ -314,7 +314,8 @@ export class CpxResearchService {
     
     let startStr = start && /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : '';
     if (!startStr) {
-      const d = new Date(new Date(endStr).getTime() - 14 * 24 * 60 * 60 * 1000);
+      // Default to 7 days (this active week) so requests never ask for old non-existent data
+      const d = new Date(new Date(endStr).getTime() - 7 * 24 * 60 * 60 * 1000);
       startStr = d.toISOString().slice(0, 10);
     }
 
@@ -521,11 +522,7 @@ export class CpxResearchService {
    * Real-time Synchronization:
    * Syncs real CPX survey completes directly into user balances and profile ledgers!
    * Guarantees that any completed survey awards exact CPX Points and USD directly to the member profile.
-   */
-  /**
-   * Real-time Synchronization:
-   * Syncs real CPX survey completes directly into user balances and profile ledgers!
-   * Guarantees that any completed survey awards exact CPX Points and USD directly to the member profile.
+   * Fast, non-blocking: skips already processed records in 0ms, avoids timeout on serverless/Vercel.
    */
   async syncCompletesToUserBalances(options?: { startTime?: string; endTime?: string }): Promise<{
     syncedCount: number;
@@ -537,6 +534,9 @@ export class CpxResearchService {
     error?: string;
   }> {
     try {
+      // Ensure dbStore is initialized and synced
+      await dbStore.init();
+
       const completes = await this.fetchCompletes(options);
       
       // Check if CPX returned an error object instead of a list
@@ -556,11 +556,22 @@ export class CpxResearchService {
       const settings = dbStore.getSettings();
       const pointsPerUsdt = settings?.pointsPerUsdt || 5000; // 5,000 Points = 1.00 USD
       const existingLedger = dbStore.getAllLedgerEntries();
-      const existingTxIds = new Set(
-        existingLedger
-          .filter(l => Boolean(l.providerTxId))
-          .map(l => String(l.providerTxId).trim().toLowerCase())
-      );
+      
+      // Build instant lookup set for existing transactions (both in memory and Supabase)
+      const existingTxIds = new Set<string>();
+      for (const l of existingLedger) {
+        if (l.providerTxId) {
+          const clean = String(l.providerTxId).trim().toLowerCase();
+          existingTxIds.add(clean);
+          existingTxIds.add(clean.replace(/^cpx_/, ''));
+          existingTxIds.add(`cpx_${clean}`);
+        }
+        if (l.id) {
+          const cleanId = String(l.id).trim().toLowerCase();
+          existingTxIds.add(cleanId);
+          existingTxIds.add(cleanId.replace(/^le_cpx_/, ''));
+        }
+      }
 
       let syncedCount = 0;
       let alreadyProcessedCount = 0;
@@ -568,53 +579,92 @@ export class CpxResearchService {
       let totalUsdEarned = 0;
       const userSummaryMap: Record<string, { id: string; email: string; points: number; completes: number }> = {};
 
-      const resolveCleanIdentity = (extUserId: string): { email: string; username: string; displayName: string } => {
-        const stripped = extUserId.replace(/^rr_(cpx_)?/i, '');
-        
-        // If it looks like a hex UUID, it's likely a direct ID
-        const isHexUuid = /^[0-9a-f]{8,32}$/i.test(stripped);
-        if (isHexUuid) {
-          const handle = stripped.slice(0, 12);
-          return { email: `${handle}@rewardriver.online`, username: stripped, displayName: handle };
-        }
+      const completesList = Array.isArray(completes) ? completes : [];
 
-        const gmailMatch = stripped.match(/^([a-z0-9._-]+?)gm(?:a(?:i(?:l(?:c(?:o(?:m)?)?)?)?)?)?$/i);
-        if (gmailMatch && gmailMatch[1]) {
-          const handle = gmailMatch[1].toLowerCase();
-          return { email: `${handle}@gmail.com`, username: handle, displayName: handle };
-        }
-        const handle = stripped.toLowerCase();
-        return { email: `${handle}@gmail.com`, username: handle, displayName: handle };
-      };
-
-      for (const item of (Array.isArray(completes) ? completes : [])) {
+      for (const item of completesList) {
         const txId = String(item.trans_id || '').trim();
         if (!txId) continue;
 
         const txLower = txId.toLowerCase();
-        const wasAlreadyInLedger = existingTxIds.has(txLower) || existingTxIds.has(`cpx_${txLower}`);
+        // 1. FAST CHECK FIRST: If transaction is already processed, skip immediately! Zero DB roundtrips!
+        if (
+          existingTxIds.has(txLower) ||
+          existingTxIds.has(`cpx_${txLower}`) ||
+          existingTxIds.has(`le_cpx_${txLower}`)
+        ) {
+          alreadyProcessedCount++;
+          continue;
+        }
 
-        // Match or identify recipient user
+        // 2. Identify target user
         const extUserId = String(item.external_user_id || '').trim();
-        const cleanIdentity = resolveCleanIdentity(extUserId);
-        
-        // UPGRADED LOOKUP: Try exact external ID, then stripped, then clean UUID
-        let user =
-          dbStore.getUserByExternalId(extUserId) ||
-          dbStore.getUserByExternalId(extUserId.replace(/^rr_cpx_/i, '')) ||
-          dbStore.getUserByUsernameOrEmail(cleanIdentity.email) ||
-          dbStore.getUserByUsernameOrEmail(cleanIdentity.username);
+        const stripped = extUserId.replace(/^rr_(cpx_)?/i, '');
 
-        // If user not found, provision verified profile for this member
+        let user: any =
+          dbStore.getUserByExternalId(extUserId) ||
+          dbStore.getUserByExternalId(stripped) ||
+          dbStore.getUserById(stripped) ||
+          dbStore.getUserById(`usr_${stripped}`);
+
+        // If not found in memory, try matching against all existing users by ID substring or email
         if (!user) {
-          console.log(`[CPX Sync] Provisioning new user for unknown CPX ID: ${extUserId}`);
+          const allUsers = dbStore.getAllUsers();
+          const cleanExt = stripped.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          user = allUsers.find(u => {
+            const cleanId = u.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const cleanOpaque = (u.externalOpaqueId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            return (
+              cleanId === cleanExt ||
+              cleanOpaque === cleanExt ||
+              (cleanExt.length >= 8 && (cleanId.includes(cleanExt) || cleanOpaque.includes(cleanExt)))
+            );
+          });
+        }
+
+        // If still not found, check Supabase users table directly
+        if (!user) {
+          const sb = dbStore.getSupabaseClient();
+          if (sb) {
+            try {
+              const { data: supaUsers } = await sb
+                .from('users')
+                .select('*')
+                .or(`external_opaque_id.eq.${extUserId},external_opaque_id.eq.rr_cpx_${stripped},id.eq.${stripped}`)
+                .limit(1);
+              if (supaUsers && supaUsers[0]) {
+                const row = supaUsers[0];
+                user = {
+                  id: row.id,
+                  username: row.display_name || row.email.split('@')[0],
+                  email: row.email,
+                  passwordHash: row.password_hash || '',
+                  salt: row.salt || '',
+                  displayName: row.display_name || row.email.split('@')[0],
+                  emailVerified: row.email_verified !== false,
+                  role: row.role || 'user',
+                  externalOpaqueId: row.external_opaque_id || extUserId,
+                  createdAt: row.created_at,
+                  updatedAt: row.updated_at
+                };
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        // If user genuinely not found in database, provision unique non-colliding profile
+        if (!user) {
+          const safePrefix = stripped.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) || crypto.randomUUID().slice(0, 12);
+          const safeEmail = `cpx_${safePrefix}@rewardriver.online`;
+          const safeDisplay = `RiverEarner_${safePrefix.slice(0, 6)}`;
           user = await dbStore.createUser({
             id: `usr_${crypto.randomUUID()}`,
-            username: cleanIdentity.username,
-            email: cleanIdentity.email,
+            username: safeDisplay,
+            email: safeEmail,
             passwordHash: '',
             salt: '',
-            displayName: cleanIdentity.displayName,
+            displayName: safeDisplay,
             emailVerified: true,
             role: 'user',
             externalOpaqueId: extUserId,
@@ -623,21 +673,6 @@ export class CpxResearchService {
             updatedAt: new Date().toISOString(),
             provider: 'password'
           });
-        } else if (user.email.endsWith('@rewardriver.online') && !cleanIdentity.email.endsWith('@rewardriver.online')) {
-          user = (await dbStore.updateUser(user.id, {
-            email: cleanIdentity.email,
-            username: cleanIdentity.username,
-            displayName: cleanIdentity.displayName
-          })) || user;
-        }
-
-        if (wasAlreadyInLedger) {
-          alreadyProcessedCount++;
-          if (!userSummaryMap[user.id]) {
-            userSummaryMap[user.id] = { id: user.id, email: user.email, points: 0, completes: 0 };
-          }
-          userSummaryMap[user.id].completes += 1;
-          continue;
         }
 
         // Apply 50% Margin Plan:
@@ -674,6 +709,8 @@ export class CpxResearchService {
         const upsertRes = await dbStore.upsertLedgerEntry(newEntry);
         if (upsertRes.entry) {
           existingTxIds.add(txLower);
+          existingTxIds.add(`cpx_${txLower}`);
+          existingTxIds.add(`le_cpx_${txLower}`);
           syncedCount++;
           totalPointsCredited += points;
           totalUsdEarned += publisherUsd;
@@ -689,7 +726,7 @@ export class CpxResearchService {
       return {
         syncedCount,
         alreadyProcessedCount,
-        totalCompletes: (Array.isArray(completes) ? completes : []).length,
+        totalCompletes: completesList.length,
         totalPointsCredited,
         totalUsdEarned: Number(totalUsdEarned.toFixed(2)),
         creditedUsers: Object.values(userSummaryMap)

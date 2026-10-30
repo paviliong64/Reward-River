@@ -528,12 +528,14 @@ class DatabaseStore {
           }
         }
 
-        // Push any local users not yet in Supabase or whose normalized email changed up to Supabase
+        // Only push local users up to Supabase if their email does NOT already exist in Supabase
+        const sbEmailSet = new Set(sbUsers.map((r: any) => String(r.email || '').trim().toLowerCase()));
         for (const localUser of this.data.users) {
           if (isMockOrTestUser(localUser.email, localUser.username)) continue;
-          const sbMatch = sbUsers.find((r: any) => r && r.id === localUser.id);
-          if (!sbMatch || String(sbMatch.email || '').toLowerCase() !== localUser.email.toLowerCase()) {
+          const emailLower = localUser.email.toLowerCase();
+          if (!sbEmailSet.has(emailLower)) {
             await this.upsertUserToSupabase(localUser);
+            sbEmailSet.add(emailLower);
           }
         }
       }
@@ -904,8 +906,22 @@ class DatabaseStore {
 
   // --- Ledger ---
   getLedgerForUser(userId: string): LedgerEntry[] {
+    const rawCleanId = String(userId || '').trim();
+    const cleanNoUsr = rawCleanId.replace(/^usr_/, '');
+    const cleanWithUsr = rawCleanId.startsWith('usr_') ? rawCleanId : `usr_${rawCleanId}`;
+    const user = this.data.users.find(
+      u => u.id === rawCleanId || u.id === cleanNoUsr || u.id === cleanWithUsr
+    );
+    const userExtId = user?.externalOpaqueId;
+
     return this.data.rewardLedger
-      .filter(l => l.userId === userId)
+      .filter(
+        l =>
+          l.userId === rawCleanId ||
+          l.userId === cleanNoUsr ||
+          l.userId === cleanWithUsr ||
+          (userExtId && l.userId === userExtId)
+      )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
@@ -916,11 +932,30 @@ class DatabaseStore {
   }
 
   getUserBalances(userId: string) {
-    const entries = this.data.rewardLedger.filter(l => l.userId === userId);
-    const withdrawals = this.data.withdrawalRequests.filter(w => w.userId === userId);
+    const rawCleanId = String(userId || '').trim();
+    const cleanNoUsr = rawCleanId.replace(/^usr_/, '');
+    const cleanWithUsr = rawCleanId.startsWith('usr_') ? rawCleanId : `usr_${rawCleanId}`;
+
+    const user = this.data.users.find(
+      u => u.id === rawCleanId || u.id === cleanNoUsr || u.id === cleanWithUsr
+    );
+    const userExtId = user?.externalOpaqueId;
+
+    const entries = this.data.rewardLedger.filter(
+      l =>
+        l.userId === rawCleanId ||
+        l.userId === cleanNoUsr ||
+        l.userId === cleanWithUsr ||
+        (userExtId && l.userId === userExtId)
+    );
+    const withdrawals = this.data.withdrawalRequests.filter(
+      w => w.userId === rawCleanId || w.userId === cleanNoUsr || w.userId === cleanWithUsr
+    );
     const pointsPerUsdt = this.data.systemSettings?.pointsPerUsdt || 5000;
     const userSharePercent = this.data.systemSettings?.userSharePercent || 50;
-    return calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt, userSharePercent);
+    const balances = calculateUserBalances(rawCleanId, entries, withdrawals, pointsPerUsdt, userSharePercent);
+
+    return balances;
   }
 
   async addLedgerEntry(entry: LedgerEntry): Promise<{ success: boolean; error?: string; entry?: LedgerEntry }> {
