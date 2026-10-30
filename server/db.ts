@@ -183,6 +183,8 @@ export interface SystemSettings {
   ogImageUrl?: string;
   googleSearchConsoleKey?: string;
   sitemapEnabled?: boolean;
+  turnstileSiteKey?: string;
+  turnstileSecretKey?: string;
   updatedAt: string;
 }
 
@@ -333,6 +335,8 @@ class DatabaseStore {
         ogImageUrl: '/favicon.svg',
         googleSearchConsoleKey: '',
         sitemapEnabled: true,
+        turnstileSiteKey: process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || '0x4AAAAAAFsriP1bMbtMNkub',
+        turnstileSecretKey: process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw',
         updatedAt: '2026-10-20T00:00:00.000Z'
       },
       adminAuditLogs: [],

@@ -231,6 +231,8 @@ export interface SystemSettings {
   ogImageUrl?: string;
   googleSearchConsoleKey?: string;
   sitemapEnabled?: boolean;
+  turnstileSiteKey?: string;
+  turnstileSecretKey?: string;
   updatedAt: string;
 }
 

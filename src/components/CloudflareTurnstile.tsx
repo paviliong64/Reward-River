@@ -34,6 +34,7 @@ export interface CloudflareTurnstileRef {
 }
 
 interface CloudflareTurnstileProps {
+  siteKey?: string;
   onSuccess: (token: string) => void;
   onError?: (err?: unknown) => void;
   onExpire?: () => void;
@@ -42,8 +43,6 @@ interface CloudflareTurnstileProps {
   className?: string;
 }
 
-// Default to Cloudflare's official "Always Passes" test site key for development/staging
-// In production, configure VITE_CLOUDFLARE_TURNSTILE_SITE_KEY in your hosting dashboard
 const DEFAULT_SITE_KEY =
   (typeof import.meta !== 'undefined' &&
     import.meta.env &&
@@ -51,11 +50,12 @@ const DEFAULT_SITE_KEY =
   '1x00000000000000000000AA';
 
 export const CloudflareTurnstile = forwardRef<CloudflareTurnstileRef, CloudflareTurnstileProps>(
-  ({ onSuccess, onError, onExpire, theme = 'auto', action = 'login', className = '' }, ref) => {
+  ({ siteKey, onSuccess, onError, onExpire, theme = 'auto', action = 'login', className = '' }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const widgetIdRef = useRef<string | null>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'verified' | 'failed'>('loading');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [activeSiteKey, setActiveSiteKey] = useState<string>(siteKey || DEFAULT_SITE_KEY);
 
     const reset = () => {
       setStatus('loading');
@@ -73,6 +73,26 @@ export const CloudflareTurnstile = forwardRef<CloudflareTurnstileRef, Cloudflare
     useImperativeHandle(ref, () => ({
       reset
     }));
+
+    // Fetch public sitekey from backend if not provided as prop
+    useEffect(() => {
+      if (siteKey) {
+        setActiveSiteKey(siteKey);
+        return;
+      }
+      let active = true;
+      fetch('/api/public/config')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (active && data?.turnstileSiteKey) {
+            setActiveSiteKey(data.turnstileSiteKey);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, [siteKey]);
 
     useEffect(() => {
       let isMounted = true;
@@ -120,7 +140,7 @@ export const CloudflareTurnstile = forwardRef<CloudflareTurnstileRef, Cloudflare
             // Clear any previous widget DOM
             containerRef.current.innerHTML = '';
             const id = window.turnstile.render(containerRef.current, {
-              sitekey: DEFAULT_SITE_KEY,
+              sitekey: activeSiteKey || DEFAULT_SITE_KEY,
               action,
               theme: theme === 'auto' ? 'auto' : theme,
               size: 'normal',
@@ -167,7 +187,7 @@ export const CloudflareTurnstile = forwardRef<CloudflareTurnstileRef, Cloudflare
           }
         }
       };
-    }, [theme, action]);
+    }, [theme, action, activeSiteKey]);
 
     // Resilient fallback if Cloudflare is unreachable (e.g. ad-blocker / offline dev)
     const handleFallbackVerify = () => {

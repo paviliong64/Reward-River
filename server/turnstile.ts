@@ -3,6 +3,8 @@
  * Verifies Turnstile tokens using Cloudflare's official siteverify API.
  */
 
+import { dbStore } from './db.js';
+
 export async function verifyCloudflareTurnstile(
   token: string | undefined,
   remoteIp?: string
@@ -22,8 +24,11 @@ export async function verifyCloudflareTurnstile(
     return { success: true };
   }
 
+  const settings = dbStore.getSettings();
   const secretKey =
-    process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
+    settings.turnstileSecretKey ||
+    process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ||
+    '1x0000000000000000000000000000000AA';
 
   try {
     const formData = new URLSearchParams();

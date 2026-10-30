@@ -406,14 +406,14 @@
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "77bf0f9fb6e540b424a6878392fdb8d8ecfa5477facb9deed0e9a0d6ee2d89db990410f35ad707d7a32dcf82da898c7a135b7ff0224b7734e204aa5a3d53fc94",
-      "salt": "705dfd40feaa22bc7ea046bed7d96780",
+      "passwordHash": "00fa7de397a8c539b2e52fe485d2d12ad03068784b9cd3f6f21574c937ecc0c20942ccca63de1a67dc343003fa474b46d1fb5446078ca175085ff80c47230d6f",
+      "salt": "ec7c7e92203058d4fc096404f22addf9",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-30T11:04:11.165Z",
+      "updatedAt": "2026-10-30T13:40:30.303Z",
       "countryCode": "PK",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -3274,6 +3274,13 @@
     "feeCentsErc20": 250,
     "userSharePercent": 50,
     "pointsPerUsdt": 5000,
+    "newUserDays": 7,
+    "timezone": "Asia/Karachi",
+    "teamSystemEnabled": false,
+    "managersCanCreateTeams": false,
+    "maxTeamsPerManager": 5,
+    "teamBonusEnabled": false,
+    "teamBonusPercent": 0,
     "surveyDisplayMode": "points_only",
     "cpxAppId": "37699",
     "cpxHashKey": "1u8hIFGwUYYORM76NM76PDxenCC50bCZ",
@@ -3299,6 +3306,8 @@
     "ogImageUrl": "/favicon.svg",
     "googleSearchConsoleKey": "",
     "sitemapEnabled": true,
+    "turnstileSiteKey": "0x4AAAAAAFsriP1bMbtMNkub",
+    "turnstileSecretKey": "0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw",
     "updatedAt": "2026-10-30T09:39:48.673+00:00"
   },
   "adminAuditLogs": [
@@ -3443,6 +3452,69 @@
       "details": "{\"ip\":\"198.51.100.99\",\"timestamp\":\"2026-10-22T22:50:45.136Z\"}",
       "ipAddress": "198.51.100.99",
       "createdAt": "2026-10-22T22:50:45.139+00:00"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_55aa70ab-d048-4eb6-a633-ca43aeae9f03",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_55aa70ab-d048-4eb6-a633-ca43aeae9f03",
+        "name": "Special Alpha Force",
+        "managerId": "usr_4494469c-a777-4bb1-ab21-44c718a31ead",
+        "teamCode": "VD9E8C",
+        "isActive": true,
+        "createdAt": "2026-10-30T13:26:09.908Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_55aa70ab-d048-4eb6-a633-ca43aeae9f03\",\"name\":\"Special Alpha Force\",\"managerId\":\"usr_4494469c-a777-4bb1-ab21-44c718a31ead\",\"teamCode\":\"VD9E8C\",\"isActive\":true,\"createdAt\":\"2026-10-30T13:26:09.908Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_16c86f02-1165-4610-bdc9-1f7ca09c6fa3",
+      "createdAt": "2026-10-30T13:26:09.908Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_4494469c-a777-4bb1-ab21-44c718a31ead",
+      "details": "{\"email\":\"special.manager@mycompany.org\",\"displayName\":\"Bilal Special Manager\",\"initialTeam\":\"Special Alpha Force\",\"teamCode\":\"VD9E8C\"}",
+      "id": "log_ebbddb64-da4a-4928-a148-001b08c17e37",
+      "createdAt": "2026-10-30T13:26:10.334Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_SET_USER_PASSWORD",
+      "targetEntity": "users",
+      "targetId": "usr_4494469c-a777-4bb1-ab21-44c718a31ead",
+      "details": "{\"email\":\"special.manager@mycompany.org\",\"role\":\"manager\"}",
+      "id": "log_fffb0d88-b1f0-43c6-a9ba-5e1e83b4cd39",
+      "createdAt": "2026-10-30T13:26:10.966Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_4494469c-a777-4bb1-ab21-44c718a31ead",
+      "details": "Permanently deleted user special.manager@mycompany.org (Bilal Special Manager). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_69147c62-cdf4-4420-bcb5-27c15e352263",
+      "createdAt": "2026-10-30T13:26:20.048Z"
     }
-  ]
+  ],
+  "teams": [
+    {
+      "id": "team_55aa70ab-d048-4eb6-a633-ca43aeae9f03",
+      "name": "Special Alpha Force",
+      "managerId": "usr_4494469c-a777-4bb1-ab21-44c718a31ead",
+      "teamCode": "VD9E8C",
+      "isActive": true,
+      "createdAt": "2026-10-30T13:26:09.908Z"
+    }
+  ],
+  "teamMembers": [],
+  "callbackLogs": [],
+  "impersonationSessions": []
 }

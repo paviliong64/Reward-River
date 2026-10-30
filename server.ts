@@ -1004,9 +1004,21 @@ app.get('/sitemap.xml', (req: Request, res: Response) => {
   res.send(xml);
 });
 
-// -----------------------------------------------------------------------------
-// CPX Research API & Survey Marketplace Endpoints
-// -----------------------------------------------------------------------------
+// GET /api/public/config - Public configuration endpoint for Cloudflare Turnstile & platform metadata
+app.get('/api/public/config', (_req: Request, res: Response) => {
+  const settings = dbStore.getSettings();
+  const turnstileSiteKey =
+    settings.turnstileSiteKey ||
+    process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY ||
+    '1x00000000000000000000AA';
+
+  res.json({
+    turnstileSiteKey,
+    metaTitle: settings.metaTitle,
+    metaDescription: settings.metaDescription,
+    maintenanceMode: Boolean(settings.maintenanceMode)
+  });
+});
 
 // GET /api/cpx/status
 app.get('/api/cpx/status', (req: Request, res: Response) => {
@@ -2395,8 +2407,178 @@ app.post('/api/admin/users/:id/role', requireAuth, blockWhenImpersonating, async
   }
 });
 
+// POST /api/admin/create-manager - Create Manager Account with Custom Email & Password
+app.post(['/api/admin/create-manager', '/api/admin/managers'], requireAuth, requireAdmin, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { email, username, displayName, password, teamName, teamDescription } = req.body || {};
+    const rawEmail = String(email || username || '').trim();
+    const rawName = String(displayName || username || email || '').trim();
+    const cleanPass = typeof password === 'string' ? password : '';
+
+    if (!rawEmail) {
+      res.status(400).json({ error: 'Please enter a valid email or username for the manager.' });
+      return;
+    }
+    if (!cleanPass || cleanPass.length < 4) {
+      res.status(400).json({ error: 'Password must be at least 4 characters long.' });
+      return;
+    }
+
+    const lowerEmail = rawEmail.toLowerCase();
+    if (
+      lowerEmail === 'admin@reward-river' ||
+      lowerEmail === 'admin@rewardriver' ||
+      lowerEmail === 'admin'
+    ) {
+      res.status(403).json({ error: 'Cannot use reserved administrator username for a manager.' });
+      return;
+    }
+
+    const effectiveEmail = lowerEmail.includes('@')
+      ? lowerEmail
+      : `${lowerEmail.replace(/[^a-z0-9._-]/g, '')}@rewardriver.online`;
+    const effectiveName = rawName || effectiveEmail.split('@')[0];
+
+    await dbStore.syncFromSupabase();
+    let user = dbStore.getUserByEmail(effectiveEmail) || dbStore.getUserByUsernameOrEmail(rawEmail);
+
+    const { hash, salt } = hashPassword(cleanPass);
+    const nowIso = new Date().toISOString();
+
+    if (user) {
+      // Existing user: promote to manager and update password
+      user = (await dbStore.updateUser(user.id, {
+        role: 'manager',
+        passwordHash: hash,
+        salt,
+        displayName: effectiveName,
+        emailVerified: true
+      })) || user;
+    } else {
+      // Fresh user creation
+      const userId = `usr_${crypto.randomUUID()}`;
+      const externalOpaqueId = `rr_cpx_${userId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+      user = await dbStore.createUser({
+        id: userId,
+        username: effectiveName,
+        email: effectiveEmail,
+        passwordHash: hash,
+        salt,
+        displayName: effectiveName,
+        emailVerified: true,
+        role: 'manager',
+        externalOpaqueId,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        provider: 'password',
+        hasPromptedPhone: true
+      });
+    }
+
+    // Optional team creation
+    let createdTeam: any = null;
+    const cleanTeamName = String(teamName || '').trim();
+    if (cleanTeamName) {
+      const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+      createdTeam = await dbStore.createTeam({
+        name: cleanTeamName,
+        managerId: user.id,
+        actorUser: req.user!,
+        ipAddress
+      });
+    }
+
+    // Add audit log
+    await dbStore.addAuditLog({
+      adminUserId: req.user!.id,
+      adminEmail: req.user!.email,
+      action: 'ADMIN_CREATE_MANAGER',
+      targetEntity: 'users',
+      targetId: user.id,
+      details: JSON.stringify({
+        email: user.email,
+        displayName: user.displayName,
+        initialTeam: createdTeam ? createdTeam.name : null,
+        teamCode: createdTeam ? createdTeam.teamCode : null
+      })
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Manager "${user.displayName}" created successfully!`,
+      manager: {
+        id: user.id,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt
+      },
+      team: createdTeam
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to create manager account.' });
+  }
+});
+
+// POST /api/admin/users/:id/password - Admin Set/Change Password for Any User or Manager
+app.post(['/api/admin/users/:id/password', '/api/admin/managers/:id/password'], requireAuth, requireAdmin, blockWhenImpersonating, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const targetUserId = req.params.id;
+    const cleanPass = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!cleanPass || cleanPass.length < 4) {
+      res.status(400).json({ error: 'Password must be at least 4 characters long.' });
+      return;
+    }
+
+    const targetUser = dbStore.getUserById(targetUserId);
+    if (!targetUser) {
+      res.status(404).json({ error: 'Target user account not found.' });
+      return;
+    }
+
+    // Prevent changing root Admin password to non-standard from this generic admin route
+    const isMainAdmin = targetUser.id === 'usr_admin_rewardriver' || targetUser.email.toLowerCase() === 'admin@reward-river';
+    if (isMainAdmin && cleanPass !== 'Tahir@300') {
+      res.status(403).json({ error: 'Cannot change root administrator password from this endpoint.' });
+      return;
+    }
+
+    const { hash, salt } = hashPassword(cleanPass);
+    const updated = await dbStore.updateUser(targetUser.id, {
+      passwordHash: hash,
+      salt,
+      updatedAt: new Date().toISOString()
+    });
+
+    await dbStore.addAuditLog({
+      adminUserId: req.user!.id,
+      adminEmail: req.user!.email,
+      action: 'ADMIN_SET_USER_PASSWORD',
+      targetEntity: 'users',
+      targetId: targetUser.id,
+      details: JSON.stringify({
+        email: targetUser.email,
+        role: targetUser.role
+      })
+    });
+
+    res.json({
+      success: true,
+      message: `Password updated successfully for ${targetUser.displayName || targetUser.email}.`,
+      user: {
+        id: updated?.id || targetUser.id,
+        email: updated?.email || targetUser.email,
+        displayName: updated?.displayName || targetUser.displayName,
+        role: updated?.role || targetUser.role
+      }
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to update user password.' });
+  }
+});
+
 // GET /api/admin/managers - Admin Managers & Teams hierarchy (Managers -> Teams -> Members)
-app.get('/api/admin/managers', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+app.get(['/api/admin/managers', '/api/admin/managers-and-teams'], requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   await dbStore.syncFromSupabase();
   const settings = dbStore.getSettings();
   const allUsers = dbStore.getAllUsersWithDetails();

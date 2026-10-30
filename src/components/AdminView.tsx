@@ -51,7 +51,9 @@ import {
   Smartphone,
   Monitor,
   AlertTriangle,
-  CheckCheck
+  CheckCheck,
+  KeyRound,
+  UserPlus
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -124,11 +126,98 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [callbackFilterResult, setCallbackFilterResult] = useState('all');
   const [loadingCallbackLogs, setLoadingCallbackLogs] = useState(false);
 
+  const [newManagerName, setNewManagerName] = useState('');
+  const [newManagerEmail, setNewManagerEmail] = useState('');
+  const [newManagerPassword, setNewManagerPassword] = useState('');
+  const [newManagerTeamName, setNewManagerTeamName] = useState('');
+  const [creatingManager, setCreatingManager] = useState(false);
+
+  const [passwordModalUser, setPasswordModalUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+
   const teamsList = managersData?.teams || [];
   const managersList = managersData?.managers || [];
 
   const showFeedback = (type: 'success' | 'error', text: string) => {
     setActionMessage({ text, type });
+  };
+
+  const handleAdminCreateManager = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newManagerEmail.trim() || !newManagerPassword.trim()) {
+      showFeedback('error', 'Please provide an email/username and password for the manager.');
+      return;
+    }
+    if (newManagerPassword.trim().length < 4) {
+      showFeedback('error', 'Password must be at least 4 characters long.');
+      return;
+    }
+    setCreatingManager(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch('/api/admin/create-manager', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          displayName: newManagerName.trim() || newManagerEmail.trim().split('@')[0],
+          email: newManagerEmail.trim(),
+          password: newManagerPassword.trim(),
+          teamName: newManagerTeamName.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create manager.');
+      showFeedback(
+        'success',
+        `Manager "${data.manager?.displayName || newManagerEmail}" created! Email: ${data.manager?.email}, Password: ${newManagerPassword.trim()}${data.team ? `, Team Code: ${data.team.teamCode}` : ''}`
+      );
+      setNewManagerName('');
+      setNewManagerEmail('');
+      setNewManagerPassword('');
+      setNewManagerTeamName('');
+      await fetchManagersAndTeams();
+      await fetchAdminData();
+    } catch (err: any) {
+      showFeedback('error', err.message || 'Failed to create manager.');
+    } finally {
+      setCreatingManager(false);
+    }
+  };
+
+  const handleAdminSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordModalUser || !newPasswordInput.trim()) return;
+    if (newPasswordInput.trim().length < 4) {
+      showFeedback('error', 'Password must be at least 4 characters long.');
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      const token = localStorage.getItem('rr_auth_token');
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(passwordModalUser.id)}/password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          password: newPasswordInput.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update password.');
+      showFeedback('success', `Password updated successfully for ${passwordModalUser.name}! Login with password: ${newPasswordInput.trim()}`);
+      setPasswordModalUser(null);
+      setNewPasswordInput('');
+    } catch (err: any) {
+      showFeedback('error', err.message || 'Failed to update password.');
+    } finally {
+      setSavingPassword(false);
+    }
   };
 
   const fetchManagersAndTeams = async () => {
@@ -258,7 +347,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
     metaKeywords: 'surveys, cpx research, paid surveys, market research, reward points',
     ogImageUrl: '/favicon.svg',
     googleSearchConsoleKey: '',
-    sitemapEnabled: true,
+    turnstileSiteKey: '',
+    turnstileSecretKey: '',
     newUserDays: 7,
     timezone: 'Asia/Karachi',
     teamSystemEnabled: false,
@@ -4223,6 +4313,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                     <Eye className="w-3.5 h-3.5" />
                                     <span>History &amp; Points</span>
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPasswordModalUser({ id: u.id, name: u.displayName, email: u.email });
+                                      setNewPasswordInput('');
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors cursor-pointer"
+                                    title="Set Custom Password"
+                                  >
+                                    <KeyRound className="w-3.5 h-3.5 text-slate-600" />
+                                    <span>Password</span>
+                                  </button>
                                   {adminUser?.id !== u.id && adminUser?.email !== u.email && u.role !== 'admin' && (
                                     <button
                                       type="button"
@@ -4316,6 +4418,189 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     </span>
                   </div>
                 </div>
+              </div>
+
+              {/* Direct Manager Provisioning Form (Admin can set ANY custom email and password) */}
+              <form
+                onSubmit={handleAdminCreateManager}
+                className="bg-white border border-purple-200/90 rounded-2xl p-5 shadow-2xs space-y-4 relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-indigo-600" />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-3">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[11px] font-bold uppercase tracking-wider mb-1">
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Direct Manager Account Provisioning
+                    </div>
+                    <h2 className="text-sm font-bold text-slate-900">Create New Manager with Custom Email &amp; Password</h2>
+                    <p className="text-xs text-slate-500">
+                      Admin can assign <strong>any custom email/username</strong> and <strong>any custom password</strong>. The manager can immediately log in at <code className="font-mono">/login</code> and access the Manager Portal.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Manager Display Name</label>
+                    <input
+                      type="text"
+                      value={newManagerName}
+                      onChange={(e) => setNewManagerName(e.target.value)}
+                      placeholder="e.g. Asad Manager"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Custom Email / Account *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newManagerEmail}
+                      onChange={(e) => setNewManagerEmail(e.target.value)}
+                      placeholder="e.g. manager1@rewardriver.online or manager_karachi"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Custom Password *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newManagerPassword}
+                      onChange={(e) => setNewManagerPassword(e.target.value)}
+                      placeholder="e.g. Pass123! or custom"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Initial Team Name (Optional)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newManagerTeamName}
+                        onChange={(e) => setNewManagerTeamName(e.target.value)}
+                        placeholder="e.g. Karachi Alpha"
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                      />
+                      <button
+                        type="submit"
+                        disabled={creatingManager}
+                        className="px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer shadow-xs transition-colors"
+                      >
+                        {creatingManager ? 'Creating...' : '+ Create Manager'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+
+              {/* Appointed Managers Table */}
+              <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">Appointed Managers Directory</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Managers have full access to the Manager Portal, team member invite links, and performance tracking.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+                    {usersList.filter((u) => u.role === 'manager').length} Managers Appointed
+                  </span>
+                </div>
+                {usersList.filter((u) => u.role === 'manager').length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400">
+                    No managers created yet. Use the form above to create your first manager with custom credentials.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                          <th className="py-3 px-4">Manager Profile</th>
+                          <th className="py-3 px-4">User ID (Permanent UUID)</th>
+                          <th className="py-3 px-4">Teams</th>
+                          <th className="py-3 px-4">Total Members</th>
+                          <th className="py-3 px-4">Total Points</th>
+                          <th className="py-3 px-4 text-right">Admin Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {usersList
+                          .filter((u) => u.role === 'manager')
+                          .map((mgr) => {
+                            const mgrTeams = teamsList.filter((t: any) => t.managerId === mgr.id);
+                            const totalMembers = mgrTeams.reduce((acc: number, t: any) => acc + (t.memberCount || 0), 0);
+                            const totalTeamPoints = mgrTeams.reduce((acc: number, t: any) => acc + (t.totalPoints || 0), 0);
+                            return (
+                              <tr key={mgr.id} className="hover:bg-slate-50/70">
+                                <td className="py-3.5 px-4">
+                                  <div className="font-bold text-slate-900">{mgr.displayName}</div>
+                                  <div className="text-xs text-slate-600 font-mono mt-0.5">{mgr.email}</div>
+                                </td>
+                                <td className="py-3.5 px-4 font-mono text-[11px] text-slate-500">
+                                  {mgr.id}
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  {mgrTeams.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {mgrTeams.map((t: any) => (
+                                        <span
+                                          key={t.id}
+                                          className="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-[10px] font-bold"
+                                        >
+                                          {t.teamName} ({t.teamCode})
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 italic">No teams yet</span>
+                                  )}
+                                </td>
+                                <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
+                                  {totalMembers}
+                                </td>
+                                <td className="py-3.5 px-4 font-mono font-extrabold text-emerald-700">
+                                  {totalTeamPoints.toLocaleString('en-US')} Pts
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                  <div className="inline-flex items-center gap-1.5 justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPasswordModalUser({ id: mgr.id, name: mgr.displayName, email: mgr.email });
+                                        setNewPasswordInput('');
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                      title="Set Custom Password for Manager"
+                                    >
+                                      <KeyRound className="w-3.5 h-3.5" />
+                                      <span>Set Password</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setNewTeamManagerId(mgr.id)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors cursor-pointer"
+                                      title="Assign New Team to this Manager"
+                                    >
+                                      <span>+ Team</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleImpersonateUser(mgr.id)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                      title="Inspect Manager Portal as this Manager"
+                                    >
+                                      <span>View as Manager</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* Admin Create Team for Manager Form */}
@@ -5539,6 +5824,46 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                 </div>
 
+                {/* Cloudflare Turnstile CAPTCHA Live Production Keys */}
+                <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 space-y-3">
+                  <div>
+                    <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-amber-600" />
+                      <span>Cloudflare Turnstile Bot Protection (Live Production Keys)</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1">
+                      To replace Cloudflare&apos;s default testing key (<code className="font-mono text-amber-800">1x0000...</code>) and remove the red <em>&quot;For testing only&quot;</em> label on login/signup, paste your live <strong>Site Key</strong> and <strong>Secret Key</strong> from your <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer" className="font-bold text-amber-800 hover:underline">Cloudflare Dashboard &gt; Turnstile</a>.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Cloudflare Turnstile Site Key (Client-side, e.g. 0x4AAAAAA...)
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.turnstileSiteKey || ''}
+                        onChange={(e) => setSettings({ ...settings, turnstileSiteKey: e.target.value.trim() })}
+                        placeholder="0x4AAAAAAA... or 1x00000000000000000000AA"
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Cloudflare Turnstile Secret Key (Server-side, e.g. 0x4AAAAAA...)
+                      </label>
+                      <input
+                        type="password"
+                        value={settings.turnstileSecretKey || ''}
+                        onChange={(e) => setSettings({ ...settings, turnstileSecretKey: e.target.value.trim() })}
+                        placeholder="0x4AAAAAAA... or 1x0000000000000000000000000000000AA"
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Live-Site Safety Feature Flags & Points Conversion Settings */}
                 <div className="p-4 rounded-xl bg-purple-50/60 border border-purple-200/80 space-y-4">
                   <div>
@@ -6264,6 +6589,101 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <span>{deletingUser ? 'Deleting Account...' : 'Confirm Delete Account'}</span>
               </button>
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Admin Set Custom Password Modal */}
+      {passwordModalUser && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            className="fixed inset-0"
+            onClick={() => {
+              if (!savingPassword) {
+                setPasswordModalUser(null);
+                setNewPasswordInput('');
+              }
+            }}
+          />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 z-10 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-700">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Set Custom Password</h3>
+                  <p className="text-xs text-slate-500">
+                    Direct admin credential management
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={savingPassword}
+                onClick={() => {
+                  setPasswordModalUser(null);
+                  setNewPasswordInput('');
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Account Name:</span>
+                <span className="font-bold text-slate-900">{passwordModalUser.name}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Email / Login ID:</span>
+                <span className="font-mono text-slate-800 text-[11px] font-semibold">{passwordModalUser.email}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleAdminSetPassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  New Custom Password
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  placeholder="Enter any custom password (e.g. Secret123!)"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Password will be hashed and updated securely in the database and Supabase. The user or manager can log in immediately.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={savingPassword}
+                  onClick={() => {
+                    setPasswordModalUser(null);
+                    setNewPasswordInput('');
+                  }}
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPassword || !newPasswordInput.trim()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>{savingPassword ? 'Updating Password...' : 'Save New Password'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>,
         document.body
