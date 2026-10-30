@@ -2019,41 +2019,22 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req: Authentica
     userSharePercent: safeSharePercent
   });
 
-  const confirmedCredits = ledger.filter(l => l.status === 'confirmed' && l.entryType === 'credit');
-  const confirmedDebitsAndReversals = ledger.filter(
-    l => l.status === 'confirmed' && (l.entryType === 'reversal' || l.entryType === 'debit')
-  );
-
   const entryToPts = (l: typeof ledger[number]) =>
     typeof l.points === 'number' && !isNaN(l.points) && l.points > 0
       ? Math.round(l.points)
       : Math.round((l.amountCents / 100) * safePtsRate);
 
-  const totalRewardsCreditedPoints = dashboardStats.points.totalPointsAwardedAllTime;
-
   const entryToGrossCents = (l: typeof ledger[number]) => {
     const pts = entryToPts(l);
-    return l.grossCents && l.grossCents >= l.amountCents
+    return typeof l.grossCents === 'number' && l.grossCents > 0
       ? l.grossCents
       : Math.max(1, Math.round((pts / safePtsRate) * 100));
   };
 
-  const totalGrossRevenueCents = Math.max(
-    0,
-    confirmedCredits.reduce((sum, l) => sum + entryToGrossCents(l), 0) -
-      confirmedDebitsAndReversals.reduce((sum, l) => sum + entryToGrossCents(l), 0)
-  );
-
-  const totalRewardsCreditedCents = Math.max(
-    0,
-    confirmedCredits.reduce((sum, l) => sum + l.amountCents, 0) -
-      confirmedDebitsAndReversals.reduce((sum, l) => sum + l.amountCents, 0)
-  );
-
-  const totalAdminProfitCents = Math.max(
-    0,
-    totalGrossRevenueCents - totalRewardsCreditedCents
-  );
+  const totalRewardsCreditedPoints = dashboardStats.points.totalPointsAwarded;
+  const totalGrossRevenueCents = dashboardStats.points.grossRevenueCents;
+  const totalRewardsCreditedCents = dashboardStats.points.userRewardCents;
+  const totalAdminProfitCents = dashboardStats.points.adminProfitCents;
 
   const pendingWithdrawalCount = withdrawals.filter(w =>
     ['requested', 'under_review', 'approved', 'processing'].includes(w.status)

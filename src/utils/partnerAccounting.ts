@@ -265,6 +265,14 @@ export function buildPartnerAccountingReport(
     });
   }
 
+  for (const pid of ['cpx_research', 'aoytasks'] as const) {
+    const b = accumulators[pid];
+    if (b.userPoints > 0) {
+      b.userCents = Math.round((b.userPoints / safePointsPerUsdt) * (safeShare / 100) * 100);
+      b.adminProfitCents = Math.max(0, b.grossCents - b.userCents);
+    }
+  }
+
   const totalGrossCents = accumulators.cpx_research.grossCents + accumulators.aoytasks.grossCents;
   const totalUserCents = accumulators.cpx_research.userCents + accumulators.aoytasks.userCents;
   const totalUserPoints = accumulators.cpx_research.userPoints + accumulators.aoytasks.userPoints;

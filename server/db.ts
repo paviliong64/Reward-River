@@ -297,9 +297,10 @@ class DatabaseStore {
             ? rawCpxHash
             : '1u8hIFGwUYYORM76NM76PDxenCC50bCZ';
 
-        const isMockOrTestTx = (txId?: string | null, desc?: string | null) => {
+        const isMockOrTestTx = (txId?: string | null, desc?: string | null, id?: string | null) => {
           const clean = String(txId || '').trim().toLowerCase();
           const d = String(desc || '').trim().toLowerCase();
+          const eid = String(id || '').trim().toLowerCase();
           if (!clean) return true;
           return (
             clean.startsWith('cpx_survey_') ||
@@ -307,6 +308,9 @@ class DatabaseStore {
             clean.startsWith('factor_test') ||
             clean.startsWith('cpx_verify_') ||
             clean.startsWith('diag_') ||
+            clean.startsWith('sync_bal_') ||
+            eid.startsWith('le_sync_') ||
+            d.includes('verified survey rewards balance') ||
             d.includes('offer #cpx') ||
             d.includes('#cpx_test_') ||
             d.includes('#factor_test') ||
@@ -370,9 +374,7 @@ class DatabaseStore {
           // CPX gross cents: 5,000 Points = $1.00 Gross (50 Points = 1 gross cent)
           const grossCents = Math.max(
             userAmountCents,
-            Number(l.grossCents) >= userAmountCents
-              ? Number(l.grossCents)
-              : Math.round((points / 5000) * 100)
+            Math.round((points / 5000) * 100)
           );
           const adminProfitCents = Math.max(0, grossCents - userAmountCents);
           const cleanDesc = desc.replace(
@@ -403,7 +405,7 @@ class DatabaseStore {
             ? parsed.taskCompletions
             : [],
           rewardLedger: (parsed.rewardLedger || [])
-            .filter((l: LedgerEntry) => !isMockOrTestTx(l?.providerTxId, l?.description))
+            .filter((l: LedgerEntry) => !isMockOrTestTx(l?.providerTxId, l?.description, l?.id))
             .map(normalizeLedgerRecord),
           withdrawalRequests: parsed.withdrawalRequests || [],
           withdrawalEvents: parsed.withdrawalEvents || [],
@@ -450,9 +452,10 @@ class DatabaseStore {
     const sb = this.getSupabaseClient();
     if (!sb) return;
 
-    const isMockOrTestTx = (txId?: string | null, desc?: string | null) => {
+    const isMockOrTestTx = (txId?: string | null, desc?: string | null, id?: string | null) => {
       const clean = String(txId || '').trim().toLowerCase();
       const d = String(desc || '').trim().toLowerCase();
+      const eid = String(id || '').trim().toLowerCase();
       if (!clean) return true;
       return (
         clean.startsWith('cpx_survey_') ||
@@ -460,6 +463,9 @@ class DatabaseStore {
         clean.startsWith('factor_test') ||
         clean.startsWith('cpx_verify_') ||
         clean.startsWith('diag_') ||
+        clean.startsWith('sync_bal_') ||
+        eid.startsWith('le_sync_') ||
+        d.includes('verified survey rewards balance') ||
         d.includes('offer #cpx') ||
         d.includes('#cpx_test_') ||
         d.includes('#factor_test') ||
@@ -548,7 +554,7 @@ class DatabaseStore {
         }
       }
 
-      // 2. Purge Mock/Test Users and Sync Real Users
+      // 2. Purge Mock/Test Users and Sync Real Users (unifying canonical Supabase ID)
       const beforeUserCount = this.data.users.length;
       this.data.users = this.data.users.filter(u => !isMockOrTestUser(u.email, u.username));
       if (this.data.users.length !== beforeUserCount) {
@@ -615,6 +621,22 @@ class DatabaseStore {
             changed = true;
           } else {
             const current = this.data.users[existingIdx];
+            const canonicalId = String(row.id);
+            if (current.id !== canonicalId) {
+              const oldId = current.id;
+              this.data.users[existingIdx].id = canonicalId;
+              for (const l of this.data.rewardLedger) {
+                if (l.userId === oldId) l.userId = canonicalId;
+              }
+              for (const w of this.data.withdrawalRequests) {
+                if (w.userId === oldId) w.userId = canonicalId;
+              }
+              changed = true;
+            }
+            if (current.externalOpaqueId !== cleanExtId && rawExt.startsWith('rr_cpx_')) {
+              this.data.users[existingIdx].externalOpaqueId = cleanExtId;
+              changed = true;
+            }
             if (sbRowPoints !== undefined && current.storedPoints !== sbRowPoints) {
               this.data.users[existingIdx].storedPoints = sbRowPoints;
               changed = true;
@@ -652,10 +674,10 @@ class DatabaseStore {
         }
       }
 
-      // 3. Sync Reward Ledger from Supabase without halving points!
+      // 3. Sync Reward Ledger from Supabase without halving points or keeping synthetic sync_bal_ entries!
       const beforeLen = this.data.rewardLedger.length;
       this.data.rewardLedger = this.data.rewardLedger.filter(
-        l => !isMockOrTestTx(l.providerTxId, l.description)
+        l => !isMockOrTestTx(l.providerTxId, l.description, l.id)
       );
       if (this.data.rewardLedger.length !== beforeLen) {
         changed = true;
@@ -664,7 +686,7 @@ class DatabaseStore {
       if (Array.isArray(sbLedger)) {
         for (const row of sbLedger) {
           if (!row || !row.id || !row.user_id) continue;
-          if (isMockOrTestTx(row.provider_tx_id, row.description)) {
+          if (isMockOrTestTx(row.provider_tx_id, row.description, row.id)) {
             await sb.from('reward_ledger').delete().eq('id', row.id);
             changed = true;
             continue;
@@ -709,9 +731,15 @@ class DatabaseStore {
             changed = true;
           } else {
             const cur = this.data.rewardLedger[existingIdx];
-            if (cur.points !== points || cur.amountCents !== userAmountCents || cur.grossCents !== grossCents) {
+            if (
+              cur.points !== points ||
+              cur.amountCents !== userAmountCents ||
+              cur.grossCents !== grossCents ||
+              cur.userId !== String(row.user_id)
+            ) {
               this.data.rewardLedger[existingIdx] = {
                 ...cur,
+                userId: String(row.user_id),
                 points,
                 amountCents: userAmountCents,
                 grossCents,
@@ -726,7 +754,7 @@ class DatabaseStore {
 
         // Push any local ledger entries not yet in Supabase up to Supabase
         for (const localEntry of this.data.rewardLedger) {
-          if (isMockOrTestTx(localEntry.providerTxId, localEntry.description)) continue;
+          if (isMockOrTestTx(localEntry.providerTxId, localEntry.description, localEntry.id)) continue;
           const inSb = sbLedger.some(
             r => r.id === localEntry.id || (r.provider_tx_id && r.provider_tx_id === localEntry.providerTxId)
           );
@@ -747,46 +775,22 @@ class DatabaseStore {
         }
       }
 
-      // 4. Reconcile users who have points > 0 in Supabase users table but 0 ledger entries
-      if (Array.isArray(sbUsers)) {
-        for (const row of sbUsers) {
-          if (!row || !row.id) continue;
-          const sbUserPts = Math.max(0, Number(row.points) || 0);
-          if (sbUserPts > 0 && row.role !== 'admin') {
-            const hasLedgerEntries = this.data.rewardLedger.some(l => l.userId === row.id);
-            if (!hasLedgerEntries) {
-              const syncId = `le_sync_${row.id}`;
-              const syncTxId = `sync_bal_${row.id}`;
-              const userCents = Math.max(1, Math.round(sbUserPts / 100));
-              const grossCents = Math.max(userCents, Math.round((sbUserPts / 5000) * 100));
-              const profitCents = Math.max(0, grossCents - userCents);
-              const syncEntry: LedgerEntry = {
-                id: syncId,
-                userId: String(row.id),
-                providerTxId: syncTxId,
-                amountCents: userCents,
-                points: sbUserPts,
-                grossCents,
-                adminProfitCents: profitCents,
-                appliedSharePercent: 50,
-                entryType: 'credit',
-                status: 'confirmed',
-                description: `Verified Survey Rewards Balance (+${sbUserPts.toLocaleString('en-US')} Pts)`,
-                createdAt: row.updated_at || row.created_at || new Date().toISOString(),
-                processedAt: new Date().toISOString()
-              };
-              this.data.rewardLedger.push(syncEntry);
-              await sb.from('reward_ledger').upsert({
-                id: syncEntry.id,
-                user_id: syncEntry.userId,
-                provider_tx_id: syncEntry.providerTxId,
-                amount_cents: syncEntry.amountCents,
-                entry_type: syncEntry.entryType,
-                status: syncEntry.status,
-                description: syncEntry.description,
-                created_at: syncEntry.createdAt
-              });
-              changed = true;
+      // 4. Reconcile storedPoints on all users to match exact sum of their ledger entries
+      for (const u of this.data.users) {
+        const balances = this.getUserBalances(u.id);
+        if (u.storedPoints !== balances.availablePoints) {
+          u.storedPoints = balances.availablePoints;
+          changed = true;
+          if (sb) {
+            try {
+              await sb.from('users').update({
+                points: balances.availablePoints,
+                balance_cents: balances.availableCents,
+                total_earned_points: balances.totalEarnedPoints,
+                updated_at: new Date().toISOString()
+              }).eq('id', u.id);
+            } catch {
+              // ignore
             }
           }
         }
@@ -1626,7 +1630,8 @@ class DatabaseStore {
         current.grossCents !== entry.grossCents ||
         current.adminProfitCents !== entry.adminProfitCents ||
         current.userId !== entry.userId ||
-        current.description !== entry.description
+        current.description !== entry.description ||
+        current.createdAt !== entry.createdAt
       ) {
         this.data.rewardLedger[existingIdx] = { ...current, ...entry };
         updated = true;

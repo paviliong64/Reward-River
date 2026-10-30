@@ -1,7 +1,7 @@
 {
   "users": [
     {
-      "id": "usr_07aa0db2-9cf4-485f-9762-a125406ab8f8",
+      "id": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
       "username": "dda859054fed4229a12ee018",
       "email": "dda859054fed4229a12ee018@gmail.com",
       "passwordHash": "",
@@ -14,10 +14,10 @@
       "createdAt": "2026-10-29T18:23:04.000Z",
       "updatedAt": "2026-10-30T10:22:26.314Z",
       "provider": "password",
-      "storedPoints": 9150
+      "storedPoints": 7950
     },
     {
-      "id": "usr_e0ab715c-fd70-408e-8dee-1e20db57f7ca",
+      "id": "usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
       "username": "97f0ac8d5bae4334b685f071",
       "email": "97f0ac8d5bae4334b685f071@gmail.com",
       "passwordHash": "",
@@ -30,10 +30,10 @@
       "createdAt": "2026-10-29T18:19:05.000Z",
       "updatedAt": "2026-10-30T10:22:27.122Z",
       "provider": "password",
-      "storedPoints": 2950
+      "storedPoints": 5750
     },
     {
-      "id": "usr_be9fe85b-98a7-4fd8-af57-edfe0fdd454b",
+      "id": "usr_164024a3-9b3b-485d-bebc-7c803832cdcd",
       "username": "cfa1f7dd00644943a1cbdf12",
       "email": "cfa1f7dd00644943a1cbdf12@gmail.com",
       "passwordHash": "",
@@ -46,10 +46,10 @@
       "createdAt": "2026-10-29T18:18:38.000Z",
       "updatedAt": "2026-10-30T10:22:27.908Z",
       "provider": "password",
-      "storedPoints": 3350
+      "storedPoints": 2850
     },
     {
-      "id": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
+      "id": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
       "username": "0783480e86b74262b521d8b7",
       "email": "0783480e86b74262b521d8b7@gmail.com",
       "passwordHash": "",
@@ -62,10 +62,10 @@
       "createdAt": "2026-10-29T17:44:13.000Z",
       "updatedAt": "2026-10-30T10:22:28.673Z",
       "provider": "password",
-      "storedPoints": 17800
+      "storedPoints": 8900
     },
     {
-      "id": "usr_89d623a1-7259-4448-957a-165c9694d882",
+      "id": "usr_c15d5963-c63b-4a21-bf7f-83e371f8a753",
       "username": "2d177c52a7ce4a98a7f14aa4",
       "email": "2d177c52a7ce4a98a7f14aa4@gmail.com",
       "passwordHash": "",
@@ -78,10 +78,10 @@
       "createdAt": "2026-10-29T17:02:11.000Z",
       "updatedAt": "2026-10-30T10:22:29.425Z",
       "provider": "password",
-      "storedPoints": 4400
+      "storedPoints": 2200
     },
     {
-      "id": "usr_050d2fcd-e380-4eca-9ad9-1c5592c96d43",
+      "id": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
       "username": "ethanmiller482",
       "email": "ethanmiller482@gmail.com",
       "passwordHash": "",
@@ -94,10 +94,10 @@
       "createdAt": "2026-10-29T15:13:14.000Z",
       "updatedAt": "2026-10-30T10:22:30.279Z",
       "provider": "password",
-      "storedPoints": 9600
+      "storedPoints": 4800
     },
     {
-      "id": "usr_aa528286-a91f-4aa8-abef-d35f521f3059",
+      "id": "usr_24499975-58fe-425e-b00b-245791cfc926",
       "username": "david.smith234",
       "email": "david.smith234@gmail.com",
       "passwordHash": "",
@@ -110,10 +110,10 @@
       "createdAt": "2026-10-29T15:11:19.000Z",
       "updatedAt": "2026-10-30T10:22:31.054Z",
       "provider": "password",
-      "storedPoints": 8950
+      "storedPoints": 4450
     },
     {
-      "id": "usr_03d08108-e120-49c3-a303-0093921096ac",
+      "id": "usr_4d1d4804-48ec-421b-884f-6981e78059d8",
       "username": "masongmailcom",
       "email": "mason@gmail.com",
       "passwordHash": "",
@@ -121,15 +121,15 @@
       "displayName": "masongmailcom",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr03d08108e12049c3a3030",
+      "externalOpaqueId": "rr_cpx_masongmailcom",
       "countryCode": "US",
       "createdAt": "2026-10-29T02:44:52.000Z",
       "updatedAt": "2026-10-30T10:22:31.832Z",
       "provider": "password",
-      "storedPoints": 18600
+      "storedPoints": 4650
     },
     {
-      "id": "usr_31e80846-a44f-4227-a35c-ab7cadf3cdb1",
+      "id": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
       "username": "samuelbrooks315",
       "email": "samuelbrooks315@gmail.com",
       "passwordHash": "",
@@ -137,15 +137,15 @@
       "displayName": "samuelbrooks315",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr31e80846a44f4227a35ca",
+      "externalOpaqueId": "rr_cpx_samuelbrooks315gma",
       "countryCode": "US",
       "createdAt": "2026-10-29T02:23:32.000Z",
       "updatedAt": "2026-10-30T10:22:32.617Z",
       "provider": "password",
-      "storedPoints": 18800
+      "storedPoints": 4700
     },
     {
-      "id": "usr_7502d4c1-c458-462f-9cd6-d04218692b56",
+      "id": "usr_8559f325-b56a-410a-bb8a-5f637f485e70",
       "username": "liamgmailcom",
       "email": "liam@gmail.com",
       "passwordHash": "",
@@ -153,15 +153,15 @@
       "displayName": "liamgmailcom",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr7502d4c1c458462f9cd6d",
+      "externalOpaqueId": "rr_cpx_liamgmailcom",
       "countryCode": "US",
       "createdAt": "2026-10-29T02:08:22.000Z",
       "updatedAt": "2026-10-30T10:22:33.360Z",
       "provider": "password",
-      "storedPoints": 11200
+      "storedPoints": 2800
     },
     {
-      "id": "usr_6072e2e6-c397-455e-9105-57c0d58a43d0",
+      "id": "usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
       "username": "williamscott728",
       "email": "williamscott728@gmail.com",
       "passwordHash": "1b4509de4ea6d2637c6ddc71cd8c8577ba407a25fab410aef2cbdf8b5893bf6e32d30867203b30335a662f3764f838fca06855a04fc2641e9b726de67999642d",
@@ -174,10 +174,10 @@
       "createdAt": "2026-10-29T01:29:19.000Z",
       "updatedAt": "2026-10-30T10:22:34.104Z",
       "provider": "password",
-      "storedPoints": 32600
+      "storedPoints": 8150
     },
     {
-      "id": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
+      "id": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
       "username": "noahgmailcom",
       "email": "noah@gmail.com",
       "passwordHash": "",
@@ -185,15 +185,15 @@
       "displayName": "noahgmailcom",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usrb63068b55d124d98a2288",
+      "externalOpaqueId": "rr_cpx_noahgmailcom",
       "countryCode": "US",
       "createdAt": "2026-10-29T01:20:32.000Z",
       "updatedAt": "2026-10-30T10:22:34.845Z",
       "provider": "password",
-      "storedPoints": 24000
+      "storedPoints": 6000
     },
     {
-      "id": "usr_8a334fd4-69d2-4e7b-811a-c70d90ee3ed0",
+      "id": "usr_008e69e1-c67b-4ece-9368-deb068a1938d",
       "username": "henrycollins473",
       "email": "henrycollins473@gmail.com",
       "passwordHash": "",
@@ -201,15 +201,15 @@
       "displayName": "henrycollins473",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr8a334fd469d24e7b811ac",
+      "externalOpaqueId": "rr_cpx_henrycollins473gma",
       "countryCode": "US",
       "createdAt": "2026-10-29T00:45:56.000Z",
       "updatedAt": "2026-10-30T10:22:35.621Z",
       "provider": "password",
-      "storedPoints": 19600
+      "storedPoints": 4900
     },
     {
-      "id": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
+      "id": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
       "username": "ethangmailcom",
       "email": "ethan@gmail.com",
       "passwordHash": "",
@@ -217,15 +217,15 @@
       "displayName": "ethangmailcom",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usrb65197d862f24935918bc",
+      "externalOpaqueId": "rr_cpx_ethangmailcom",
       "countryCode": "US",
       "createdAt": "2026-10-29T00:04:42.000Z",
       "updatedAt": "2026-10-30T10:22:36.370Z",
       "provider": "password",
-      "storedPoints": 30600
+      "storedPoints": 7650
     },
     {
-      "id": "usr_33e2075f-3c80-4b3a-bee1-c13b8740c551",
+      "id": "usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
       "username": "alexanderward619",
       "email": "alexanderward619@gmail.com",
       "passwordHash": "",
@@ -238,10 +238,10 @@
       "createdAt": "2026-10-29T00:00:45.000Z",
       "updatedAt": "2026-10-30T10:22:37.114Z",
       "provider": "password",
-      "storedPoints": 22200
+      "storedPoints": 5550
     },
     {
-      "id": "usr_b197e50d-b8e7-4991-b742-120bccde7605",
+      "id": "usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
       "username": "josephgmailcom",
       "email": "joseph@gmail.com",
       "passwordHash": "",
@@ -249,15 +249,15 @@
       "displayName": "josephgmailcom",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usrb197e50db8e74991b7421",
+      "externalOpaqueId": "rr_cpx_josephgmailcom",
       "countryCode": "US",
       "createdAt": "2026-10-28T23:08:01.000Z",
       "updatedAt": "2026-10-30T10:22:37.857Z",
       "provider": "password",
-      "storedPoints": 19600
+      "storedPoints": 4900
     },
     {
-      "id": "usr_a79d47d2-f661-4082-8f61-e03234a0974b",
+      "id": "usr_50a2316b-8f7a-4004-83bc-6448c3ea14bf",
       "username": "liam01gmailcom",
       "email": "liam01@gmail.com",
       "passwordHash": "",
@@ -265,15 +265,15 @@
       "displayName": "liam01gmailcom",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usra79d47d2f66140828f61e",
+      "externalOpaqueId": "rr_cpx_liam01gmailcom",
       "countryCode": "US",
       "createdAt": "2026-10-28T23:03:14.000Z",
       "updatedAt": "2026-10-30T10:22:38.628Z",
       "provider": "password",
-      "storedPoints": 15600
+      "storedPoints": 3900
     },
     {
-      "id": "usr_25ad4876-ddb4-40da-a6b0-19ff5f15a7e5",
+      "id": "usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
       "username": "masonbrooks715",
       "email": "masonbrooks715@gmail.com",
       "passwordHash": "",
@@ -281,15 +281,15 @@
       "displayName": "masonbrooks715",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr25ad4876ddb440daa6b01",
+      "externalOpaqueId": "rr_cpx_masonbrooks715gmai",
       "countryCode": "US",
       "createdAt": "2026-10-28T22:42:21.000Z",
       "updatedAt": "2026-10-30T10:22:39.371Z",
       "provider": "password",
-      "storedPoints": 18800
+      "storedPoints": 4700
     },
     {
-      "id": "usr_5b118faf-e7df-4639-a7b3-b017dc19c77f",
+      "id": "usr_087d29cb-db65-4b67-8d99-598af6e41930",
       "username": "christopher01gmail",
       "email": "christopher01@gmail.com",
       "passwordHash": "",
@@ -297,15 +297,15 @@
       "displayName": "christopher01gmail",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr5b118fafe7df4639a7b3b",
+      "externalOpaqueId": "rr_cpx_christopher01gmail",
       "countryCode": "US",
       "createdAt": "2026-10-28T22:23:00.000Z",
       "updatedAt": "2026-10-30T10:22:40.115Z",
       "provider": "password",
-      "storedPoints": 19600
+      "storedPoints": 4900
     },
     {
-      "id": "usr_38545e60-8e41-466c-98a1-7efccac056eb",
+      "id": "usr_70409603-a7a5-44de-9d96-9183e0823295",
       "username": "jamesmiller2026",
       "email": "jamesmiller2026@gmail.com",
       "passwordHash": "",
@@ -313,15 +313,15 @@
       "displayName": "jamesmiller2026",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr38545e608e41466c98a17",
+      "externalOpaqueId": "rr_cpx_jamesmiller2026gma",
       "countryCode": "US",
       "createdAt": "2026-10-28T21:40:43.000Z",
       "updatedAt": "2026-10-30T10:22:40.890Z",
       "provider": "password",
-      "storedPoints": 6600
+      "storedPoints": 1650
     },
     {
-      "id": "usr_1853941c-d146-473a-a931-ff5e72938aaa",
+      "id": "usr_7b5750fe-7809-4344-9fd1-29bc9f495ee5",
       "username": "farhanali2026gmail",
       "email": "farhanali2026@gmail.com",
       "passwordHash": "",
@@ -329,15 +329,15 @@
       "displayName": "farhanali2026gmail",
       "emailVerified": true,
       "role": "user",
-      "externalOpaqueId": "rr_cpx_usr1853941cd146473aa931f",
+      "externalOpaqueId": "rr_cpx_farhanali2026gmail",
       "countryCode": "US",
       "createdAt": "2026-10-28T20:58:47.000Z",
       "updatedAt": "2026-10-30T10:22:41.714Z",
       "provider": "password",
-      "storedPoints": 6600
+      "storedPoints": 1650
     },
     {
-      "id": "usr_b3929210-6eb3-46e9-a840-8ee0e9b39cfa",
+      "id": "usr_58a4452c-947b-4096-a95b-32ae6f2ec39e",
       "username": "usr_local_1793195189787",
       "email": "usr_local_1793195189787@gmail.com",
       "passwordHash": "",
@@ -350,10 +350,10 @@
       "createdAt": "2026-10-28T15:27:08.000Z",
       "updatedAt": "2026-10-30T10:22:42.470Z",
       "provider": "password",
-      "storedPoints": 17800
+      "storedPoints": 4450
     },
     {
-      "id": "usr_b495bea7-0e71-49fc-95a0-193c9d8c7891",
+      "id": "usr_427b760c-880a-47c4-93b6-6ea322e9dafd",
       "username": "usr_local_1793190189092",
       "email": "usr_local_1793190189092@gmail.com",
       "passwordHash": "",
@@ -366,7 +366,7 @@
       "createdAt": "2026-10-28T14:07:01.000Z",
       "updatedAt": "2026-10-30T10:22:43.250Z",
       "provider": "password",
-      "storedPoints": 8200
+      "storedPoints": 2050
     },
     {
       "id": "028c2221-8d81-4893-b44c-6525f4936e10",
@@ -400,20 +400,20 @@
       "countryCode": "US",
       "provider": "supabase",
       "hasPromptedPhone": true,
-      "storedPoints": 13000
+      "storedPoints": 0
     },
     {
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "59b1a5666a7c3bf048704a8802d433d8d5ef3e7f425b7aa5c7aa1f1ba482792dad80d4543970e4e3abee96d8de029ad8add1dc4d969880499ad86b7267ce274c",
-      "salt": "05a73f982aa798f53793b41617f810bc",
+      "passwordHash": "77bf0f9fb6e540b424a6878392fdb8d8ecfa5477facb9deed0e9a0d6ee2d89db990410f35ad707d7a32dcf82da898c7a135b7ff0224b7734e204aa5a3d53fc94",
+      "salt": "705dfd40feaa22bc7ea046bed7d96780",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-30T10:30:30.696Z",
+      "updatedAt": "2026-10-30T11:04:11.165Z",
       "countryCode": "PK",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -866,7 +866,7 @@
   "rewardLedger": [
     {
       "id": "le_cpx_1001261797144",
-      "userId": "usr_07aa0db2-9cf4-485f-9762-a125406ab8f8",
+      "userId": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
       "amountCents": 17,
       "points": 1650,
       "grossCents": 33,
@@ -877,11 +877,11 @@
       "providerTxId": "1001261797144",
       "cpxOfferId": "161687235",
       "description": "CPX Research Survey #1001261797144 (US - 10 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T18:23:04.000Z"
+      "createdAt": "2026-10-29T13:23:04.000Z"
     },
     {
       "id": "le_cpx_1001261786474",
-      "userId": "usr_e0ab715c-fd70-408e-8dee-1e20db57f7ca",
+      "userId": "usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
       "amountCents": 15,
       "points": 1450,
       "grossCents": 29,
@@ -892,11 +892,11 @@
       "providerTxId": "1001261786474",
       "cpxOfferId": "161686453",
       "description": "CPX Research Survey #1001261786474 (US - 13 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T18:19:05.000Z"
+      "createdAt": "2026-10-29T13:19:05.000Z"
     },
     {
       "id": "le_cpx_1001261791103",
-      "userId": "usr_be9fe85b-98a7-4fd8-af57-edfe0fdd454b",
+      "userId": "usr_164024a3-9b3b-485d-bebc-7c803832cdcd",
       "amountCents": 17,
       "points": 1650,
       "grossCents": 33,
@@ -907,11 +907,11 @@
       "providerTxId": "1001261791103",
       "cpxOfferId": "161686347",
       "description": "CPX Research Survey #1001261791103 (US - 10 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T18:18:38.000Z"
+      "createdAt": "2026-10-29T13:18:38.000Z"
     },
     {
       "id": "le_cpx_1001261783103",
-      "userId": "usr_07aa0db2-9cf4-485f-9762-a125406ab8f8",
+      "userId": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
       "amountCents": 15,
       "points": 1450,
       "grossCents": 29,
@@ -922,11 +922,11 @@
       "providerTxId": "1001261783103",
       "cpxOfferId": "161684967",
       "description": "CPX Research Survey #1001261783103 (US - 8 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T18:11:19.000Z"
+      "createdAt": "2026-10-29T13:11:19.000Z"
     },
     {
       "id": "le_cpx_1001261755185",
-      "userId": "usr_07aa0db2-9cf4-485f-9762-a125406ab8f8",
+      "userId": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
       "amountCents": 15,
       "points": 1450,
       "grossCents": 29,
@@ -937,11 +937,11 @@
       "providerTxId": "1001261755185",
       "cpxOfferId": "161682870",
       "description": "CPX Research Survey #1001261755185 (US - 19 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T18:01:22.000Z"
+      "createdAt": "2026-10-29T13:01:22.000Z"
     },
     {
       "id": "le_cpx_1001261742690",
-      "userId": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
+      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
       "amountCents": 15,
       "points": 1450,
       "grossCents": 29,
@@ -952,11 +952,11 @@
       "providerTxId": "1001261742690",
       "cpxOfferId": "161679272",
       "description": "CPX Research Survey #1001261742690 (US - 10 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T17:44:13.000Z"
+      "createdAt": "2026-10-29T12:44:13.000Z"
     },
     {
       "id": "le_cpx_1001261731175",
-      "userId": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
+      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -967,11 +967,11 @@
       "providerTxId": "1001261731175",
       "cpxOfferId": "161676827",
       "description": "CPX Research Survey #1001261731175 (US - 8 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T17:33:15.000Z"
+      "createdAt": "2026-10-29T12:33:15.000Z"
     },
     {
       "id": "le_cpx_1001261719621",
-      "userId": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
+      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
       "amountCents": 26,
       "points": 2600,
       "grossCents": 52,
@@ -982,11 +982,11 @@
       "providerTxId": "1001261719621",
       "cpxOfferId": "161674843",
       "description": "CPX Research Survey #1001261719621 (US - 7 min • +2,600 Pts)",
-      "createdAt": "2026-10-29T17:24:21.000Z"
+      "createdAt": "2026-10-29T12:24:21.000Z"
     },
     {
       "id": "le_cpx_1001261698649",
-      "userId": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
+      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
       "amountCents": 10,
       "points": 1000,
       "grossCents": 20,
@@ -997,11 +997,11 @@
       "providerTxId": "1001261698649",
       "cpxOfferId": "161672992",
       "description": "CPX Research Survey #1001261698649 (US - 13 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T17:15:57.000Z"
+      "createdAt": "2026-10-29T12:15:57.000Z"
     },
     {
       "id": "le_cpx_1001261681067",
-      "userId": "usr_89d623a1-7259-4448-957a-165c9694d882",
+      "userId": "usr_c15d5963-c63b-4a21-bf7f-83e371f8a753",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -1012,11 +1012,11 @@
       "providerTxId": "1001261681067",
       "cpxOfferId": "161669973",
       "description": "CPX Research Survey #1001261681067 (US - 11 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T17:02:11.000Z"
+      "createdAt": "2026-10-29T12:02:11.000Z"
     },
     {
       "id": "le_cpx_1001261664842",
-      "userId": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
+      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -1027,11 +1027,11 @@
       "providerTxId": "1001261664842",
       "cpxOfferId": "161669734",
       "description": "CPX Research Survey #1001261664842 (US - 21 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T17:01:00.000Z"
+      "createdAt": "2026-10-29T12:01:00.000Z"
     },
     {
       "id": "le_cpx_1001261629936",
-      "userId": "usr_89d623a1-7259-4448-957a-165c9694d882",
+      "userId": "usr_c15d5963-c63b-4a21-bf7f-83e371f8a753",
       "amountCents": 10,
       "points": 1000,
       "grossCents": 20,
@@ -1042,11 +1042,11 @@
       "providerTxId": "1001261629936",
       "cpxOfferId": "161666254",
       "description": "CPX Research Survey #1001261629936 (US - 28 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T16:43:34.000Z"
+      "createdAt": "2026-10-29T11:43:34.000Z"
     },
     {
       "id": "le_cpx_1001261639906",
-      "userId": "usr_45ae1cbb-e593-4274-809a-90fa74d5f66c",
+      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
       "amountCents": 15,
       "points": 1450,
       "grossCents": 29,
@@ -1057,11 +1057,11 @@
       "providerTxId": "1001261639906",
       "cpxOfferId": "161664130",
       "description": "CPX Research Survey #1001261639906 (US - 10 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T16:33:00.000Z"
+      "createdAt": "2026-10-29T11:33:00.000Z"
     },
     {
       "id": "le_cpx_1001261534307",
-      "userId": "usr_050d2fcd-e380-4eca-9ad9-1c5592c96d43",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
       "amountCents": 14,
       "points": 1400,
       "grossCents": 28,
@@ -1072,11 +1072,11 @@
       "providerTxId": "1001261534307",
       "cpxOfferId": "161650407",
       "description": "CPX Research Survey #1001261534307 (US - 9 min • +1,400 Pts)",
-      "createdAt": "2026-10-29T15:13:14.000Z"
+      "createdAt": "2026-10-29T10:13:14.000Z"
     },
     {
       "id": "le_cpx_1001261527552",
-      "userId": "usr_aa528286-a91f-4aa8-abef-d35f521f3059",
+      "userId": "usr_24499975-58fe-425e-b00b-245791cfc926",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -1087,11 +1087,11 @@
       "providerTxId": "1001261527552",
       "cpxOfferId": "161650125",
       "description": "CPX Research Survey #1001261527552 (US - 12 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T15:11:19.000Z"
+      "createdAt": "2026-10-29T10:11:19.000Z"
     },
     {
       "id": "le_cpx_1001261518941",
-      "userId": "usr_050d2fcd-e380-4eca-9ad9-1c5592c96d43",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
       "amountCents": 8,
       "points": 800,
       "grossCents": 16,
@@ -1102,11 +1102,11 @@
       "providerTxId": "1001261518941",
       "cpxOfferId": "161648583",
       "description": "CPX Research Survey #1001261518941 (US - 9 min • +800 Pts)",
-      "createdAt": "2026-10-29T15:02:35.000Z"
+      "createdAt": "2026-10-29T10:02:35.000Z"
     },
     {
       "id": "le_cpx_1001261514594",
-      "userId": "usr_aa528286-a91f-4aa8-abef-d35f521f3059",
+      "userId": "usr_24499975-58fe-425e-b00b-245791cfc926",
       "amountCents": 10,
       "points": 1000,
       "grossCents": 20,
@@ -1117,11 +1117,11 @@
       "providerTxId": "1001261514594",
       "cpxOfferId": "161647833",
       "description": "CPX Research Survey #1001261514594 (US - 8 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T14:58:40.000Z"
+      "createdAt": "2026-10-29T09:58:40.000Z"
     },
     {
       "id": "le_cpx_1001261504566",
-      "userId": "usr_050d2fcd-e380-4eca-9ad9-1c5592c96d43",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
       "amountCents": 10,
       "points": 950,
       "grossCents": 19,
@@ -1132,11 +1132,11 @@
       "providerTxId": "1001261504566",
       "cpxOfferId": "161646572",
       "description": "CPX Research Survey #1001261504566 (US - 9 min • +950 Pts)",
-      "createdAt": "2026-10-29T14:52:07.000Z"
+      "createdAt": "2026-10-29T09:52:07.000Z"
     },
     {
       "id": "le_cpx_1001261498227",
-      "userId": "usr_aa528286-a91f-4aa8-abef-d35f521f3059",
+      "userId": "usr_24499975-58fe-425e-b00b-245791cfc926",
       "amountCents": 11,
       "points": 1050,
       "grossCents": 21,
@@ -1147,11 +1147,11 @@
       "providerTxId": "1001261498227",
       "cpxOfferId": "161645704",
       "description": "CPX Research Survey #1001261498227 (US - 9 min • +1,050 Pts)",
-      "createdAt": "2026-10-29T14:47:14.000Z"
+      "createdAt": "2026-10-29T09:47:14.000Z"
     },
     {
       "id": "le_cpx_1001261470632",
-      "userId": "usr_aa528286-a91f-4aa8-abef-d35f521f3059",
+      "userId": "usr_24499975-58fe-425e-b00b-245791cfc926",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -1162,11 +1162,11 @@
       "providerTxId": "1001261470632",
       "cpxOfferId": "161642798",
       "description": "CPX Research Survey #1001261470632 (US - 13 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T14:32:30.000Z"
+      "createdAt": "2026-10-29T09:32:30.000Z"
     },
     {
       "id": "le_cpx_1001261472945",
-      "userId": "usr_050d2fcd-e380-4eca-9ad9-1c5592c96d43",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
       "amountCents": 17,
       "points": 1650,
       "grossCents": 33,
@@ -1177,836 +1177,836 @@
       "providerTxId": "1001261472945",
       "cpxOfferId": "161642503",
       "description": "CPX Research Survey #1001261472945 (US - 10 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T14:31:02.000Z"
+      "createdAt": "2026-10-29T09:31:02.000Z"
     },
     {
       "id": "le_cpx_1001260846448",
-      "userId": "usr_03d08108-e120-49c3-a303-0093921096ac",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_4d1d4804-48ec-421b-884f-6981e78059d8",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260846448",
       "cpxOfferId": "161569843",
-      "description": "CPX Research Survey #1001260846448 (US - 7 min • +2,900 Pts)",
-      "createdAt": "2026-10-29T02:44:52.000Z"
+      "description": "CPX Research Survey #1001260846448 (US - 7 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T21:44:52.000Z"
     },
     {
       "id": "le_cpx_1001260842882",
-      "userId": "usr_03d08108-e120-49c3-a303-0093921096ac",
-      "amountCents": 31,
-      "points": 3100,
-      "grossCents": 62,
-      "adminProfitCents": 31,
+      "userId": "usr_4d1d4804-48ec-421b-884f-6981e78059d8",
+      "amountCents": 16,
+      "points": 1550,
+      "grossCents": 31,
+      "adminProfitCents": 15,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260842882",
       "cpxOfferId": "161569275",
-      "description": "CPX Research Survey #1001260842882 (US - 5 min • +3,100 Pts)",
-      "createdAt": "2026-10-29T02:37:22.000Z"
+      "description": "CPX Research Survey #1001260842882 (US - 5 min • +1,550 Pts)",
+      "createdAt": "2026-10-28T21:37:22.000Z"
     },
     {
       "id": "le_cpx_1001260837416",
-      "userId": "usr_03d08108-e120-49c3-a303-0093921096ac",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_4d1d4804-48ec-421b-884f-6981e78059d8",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260837416",
       "cpxOfferId": "161568852",
-      "description": "CPX Research Survey #1001260837416 (US - 8 min • +3,300 Pts)",
-      "createdAt": "2026-10-29T02:31:24.000Z"
+      "description": "CPX Research Survey #1001260837416 (US - 8 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T21:31:24.000Z"
     },
     {
       "id": "le_cpx_1001260831679",
-      "userId": "usr_31e80846-a44f-4227-a35c-ab7cadf3cdb1",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260831679",
       "cpxOfferId": "161568288",
-      "description": "CPX Research Survey #1001260831679 (US - 9 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T02:23:32.000Z"
+      "description": "CPX Research Survey #1001260831679 (US - 9 min • +800 Pts)",
+      "createdAt": "2026-10-28T21:23:32.000Z"
     },
     {
       "id": "le_cpx_1001260822933",
-      "userId": "usr_31e80846-a44f-4227-a35c-ab7cadf3cdb1",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260822933",
       "cpxOfferId": "161567175",
-      "description": "CPX Research Survey #1001260822933 (US - 10 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T02:09:44.000Z"
+      "description": "CPX Research Survey #1001260822933 (US - 10 min • +800 Pts)",
+      "createdAt": "2026-10-28T21:09:44.000Z"
     },
     {
       "id": "le_cpx_1001260823854",
-      "userId": "usr_7502d4c1-c458-462f-9cd6-d04218692b56",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_8559f325-b56a-410a-bb8a-5f637f485e70",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260823854",
       "cpxOfferId": "161567062",
-      "description": "CPX Research Survey #1001260823854 (US - 7 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T02:08:22.000Z"
+      "description": "CPX Research Survey #1001260823854 (US - 7 min • +800 Pts)",
+      "createdAt": "2026-10-28T21:08:22.000Z"
     },
     {
       "id": "le_cpx_1001260819404",
-      "userId": "usr_7502d4c1-c458-462f-9cd6-d04218692b56",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_8559f325-b56a-410a-bb8a-5f637f485e70",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260819404",
       "cpxOfferId": "161566484",
-      "description": "CPX Research Survey #1001260819404 (US - 7 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T02:00:45.000Z"
+      "description": "CPX Research Survey #1001260819404 (US - 7 min • +800 Pts)",
+      "createdAt": "2026-10-28T21:00:45.000Z"
     },
     {
       "id": "le_cpx_1001260817273",
-      "userId": "usr_31e80846-a44f-4227-a35c-ab7cadf3cdb1",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260817273",
       "cpxOfferId": "161566219",
-      "description": "CPX Research Survey #1001260817273 (US - 6 min • +2,900 Pts)",
-      "createdAt": "2026-10-29T01:57:08.000Z"
+      "description": "CPX Research Survey #1001260817273 (US - 6 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T20:57:08.000Z"
     },
     {
       "id": "le_cpx_1001260812984",
-      "userId": "usr_7502d4c1-c458-462f-9cd6-d04218692b56",
-      "amountCents": 24,
-      "points": 2400,
-      "grossCents": 48,
-      "adminProfitCents": 24,
+      "userId": "usr_8559f325-b56a-410a-bb8a-5f637f485e70",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260812984",
       "cpxOfferId": "161565676",
-      "description": "CPX Research Survey #1001260812984 (US - 6 min • +2,400 Pts)",
-      "createdAt": "2026-10-29T01:50:05.000Z"
+      "description": "CPX Research Survey #1001260812984 (US - 6 min • +1,200 Pts)",
+      "createdAt": "2026-10-28T20:50:05.000Z"
     },
     {
       "id": "le_cpx_1001260810179",
-      "userId": "usr_31e80846-a44f-4227-a35c-ab7cadf3cdb1",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260810179",
       "cpxOfferId": "161565642",
-      "description": "CPX Research Survey #1001260810179 (US - 10 min • +3,300 Pts)",
-      "createdAt": "2026-10-29T01:49:43.000Z"
+      "description": "CPX Research Survey #1001260810179 (US - 10 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T20:49:43.000Z"
     },
     {
       "id": "le_cpx_1001260797126",
-      "userId": "usr_6072e2e6-c397-455e-9105-57c0d58a43d0",
-      "amountCents": 20,
-      "points": 2000,
-      "grossCents": 40,
-      "adminProfitCents": 20,
+      "userId": "usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260797126",
       "cpxOfferId": "161563883",
-      "description": "CPX Research Survey #1001260797126 (US - 8 min • +2,000 Pts)",
-      "createdAt": "2026-10-29T01:29:19.000Z"
+      "description": "CPX Research Survey #1001260797126 (US - 8 min • +1,000 Pts)",
+      "createdAt": "2026-10-28T20:29:19.000Z"
     },
     {
       "id": "le_cpx_1001260790852",
-      "userId": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260790852",
       "cpxOfferId": "161563109",
-      "description": "CPX Research Survey #1001260790852 (US - 8 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T01:20:32.000Z"
+      "description": "CPX Research Survey #1001260790852 (US - 8 min • +800 Pts)",
+      "createdAt": "2026-10-28T20:20:32.000Z"
     },
     {
       "id": "le_cpx_1001260792715",
-      "userId": "usr_6072e2e6-c397-455e-9105-57c0d58a43d0",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260792715",
       "cpxOfferId": "161563083",
-      "description": "CPX Research Survey #1001260792715 (US - 5 min • +2,900 Pts)",
-      "createdAt": "2026-10-29T01:20:14.000Z"
+      "description": "CPX Research Survey #1001260792715 (US - 5 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T20:20:14.000Z"
     },
     {
       "id": "le_cpx_1001260786143",
-      "userId": "usr_6072e2e6-c397-455e-9105-57c0d58a43d0",
-      "amountCents": 81,
-      "points": 8100,
-      "grossCents": 162,
-      "adminProfitCents": 81,
+      "userId": "usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
+      "amountCents": 41,
+      "points": 4050,
+      "grossCents": 81,
+      "adminProfitCents": 40,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260786143",
       "cpxOfferId": "161562450",
-      "description": "CPX Research Survey #1001260786143 (US - 6 min • +8,100 Pts)",
-      "createdAt": "2026-10-29T01:12:27.000Z"
+      "description": "CPX Research Survey #1001260786143 (US - 6 min • +4,050 Pts)",
+      "createdAt": "2026-10-28T20:12:27.000Z"
     },
     {
       "id": "le_cpx_1001260786499",
-      "userId": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260786499",
       "cpxOfferId": "161562423",
-      "description": "CPX Research Survey #1001260786499 (US - 5 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T01:12:05.000Z"
+      "description": "CPX Research Survey #1001260786499 (US - 5 min • +800 Pts)",
+      "createdAt": "2026-10-28T20:12:05.000Z"
     },
     {
       "id": "le_cpx_1001260777351",
-      "userId": "usr_6072e2e6-c397-455e-9105-57c0d58a43d0",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260777351",
       "cpxOfferId": "161561747",
-      "description": "CPX Research Survey #1001260777351 (US - 11 min • +3,300 Pts)",
-      "createdAt": "2026-10-29T01:04:53.000Z"
+      "description": "CPX Research Survey #1001260777351 (US - 11 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T20:04:53.000Z"
     },
     {
       "id": "le_cpx_1001260780129",
-      "userId": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260780129",
       "cpxOfferId": "161561720",
-      "description": "CPX Research Survey #1001260780129 (US - 7 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T01:04:33.000Z"
+      "description": "CPX Research Survey #1001260780129 (US - 7 min • +800 Pts)",
+      "createdAt": "2026-10-28T20:04:33.000Z"
     },
     {
       "id": "le_cpx_1001260772227",
-      "userId": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
-      "amountCents": 20,
-      "points": 2000,
-      "grossCents": 40,
-      "adminProfitCents": 20,
+      "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260772227",
       "cpxOfferId": "161560611",
-      "description": "CPX Research Survey #1001260772227 (US - 6 min • +2,000 Pts)",
-      "createdAt": "2026-10-29T00:52:22.000Z"
+      "description": "CPX Research Survey #1001260772227 (US - 6 min • +1,000 Pts)",
+      "createdAt": "2026-10-28T19:52:22.000Z"
     },
     {
       "id": "le_cpx_1001260763385",
-      "userId": "usr_8a334fd4-69d2-4e7b-811a-c70d90ee3ed0",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_008e69e1-c67b-4ece-9368-deb068a1938d",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260763385",
       "cpxOfferId": "161560036",
-      "description": "CPX Research Survey #1001260763385 (US - 11 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T00:45:56.000Z"
+      "description": "CPX Research Survey #1001260763385 (US - 11 min • +800 Pts)",
+      "createdAt": "2026-10-28T19:45:56.000Z"
     },
     {
       "id": "le_cpx_1001260768248",
-      "userId": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
-      "amountCents": 24,
-      "points": 2400,
-      "grossCents": 48,
-      "adminProfitCents": 24,
+      "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260768248",
       "cpxOfferId": "161559982",
-      "description": "CPX Research Survey #1001260768248 (US - 4 min • +2,400 Pts)",
-      "createdAt": "2026-10-29T00:45:10.000Z"
+      "description": "CPX Research Survey #1001260768248 (US - 4 min • +1,200 Pts)",
+      "createdAt": "2026-10-28T19:45:10.000Z"
     },
     {
       "id": "le_cpx_1001260763118",
-      "userId": "usr_b63068b5-5d12-4d98-a228-8c883a5cc6da",
-      "amountCents": 28,
-      "points": 2800,
-      "grossCents": 56,
-      "adminProfitCents": 28,
+      "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
+      "amountCents": 14,
+      "points": 1400,
+      "grossCents": 28,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260763118",
       "cpxOfferId": "161559493",
-      "description": "CPX Research Survey #1001260763118 (US - 5 min • +2,800 Pts)",
-      "createdAt": "2026-10-29T00:40:12.000Z"
+      "description": "CPX Research Survey #1001260763118 (US - 5 min • +1,400 Pts)",
+      "createdAt": "2026-10-28T19:40:12.000Z"
     },
     {
       "id": "le_cpx_1001260756503",
-      "userId": "usr_8a334fd4-69d2-4e7b-811a-c70d90ee3ed0",
-      "amountCents": 20,
-      "points": 2000,
-      "grossCents": 40,
-      "adminProfitCents": 20,
+      "userId": "usr_008e69e1-c67b-4ece-9368-deb068a1938d",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260756503",
       "cpxOfferId": "161558838",
-      "description": "CPX Research Survey #1001260756503 (US - 7 min • +2,000 Pts)",
-      "createdAt": "2026-10-29T00:33:57.000Z"
+      "description": "CPX Research Survey #1001260756503 (US - 7 min • +1,000 Pts)",
+      "createdAt": "2026-10-28T19:33:57.000Z"
     },
     {
       "id": "le_cpx_1001260750122",
-      "userId": "usr_8a334fd4-69d2-4e7b-811a-c70d90ee3ed0",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_008e69e1-c67b-4ece-9368-deb068a1938d",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260750122",
       "cpxOfferId": "161558013",
-      "description": "CPX Research Survey #1001260750122 (US - 6 min • +2,900 Pts)",
-      "createdAt": "2026-10-29T00:25:19.000Z"
+      "description": "CPX Research Survey #1001260750122 (US - 6 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T19:25:19.000Z"
     },
     {
       "id": "le_cpx_1001260741843",
-      "userId": "usr_8a334fd4-69d2-4e7b-811a-c70d90ee3ed0",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_008e69e1-c67b-4ece-9368-deb068a1938d",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260741843",
       "cpxOfferId": "161557232",
-      "description": "CPX Research Survey #1001260741843 (US - 9 min • +3,300 Pts)",
-      "createdAt": "2026-10-29T00:18:06.000Z"
+      "description": "CPX Research Survey #1001260741843 (US - 9 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T19:18:06.000Z"
     },
     {
       "id": "le_cpx_1001260733046",
-      "userId": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
-      "amountCents": 24,
-      "points": 2400,
-      "grossCents": 48,
-      "adminProfitCents": 24,
+      "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260733046",
       "cpxOfferId": "161555717",
-      "description": "CPX Research Survey #1001260733046 (US - 5 min • +2,400 Pts)",
-      "createdAt": "2026-10-29T00:04:42.000Z"
+      "description": "CPX Research Survey #1001260733046 (US - 5 min • +1,200 Pts)",
+      "createdAt": "2026-10-28T19:04:42.000Z"
     },
     {
       "id": "le_cpx_1001260727934",
-      "userId": "usr_33e2075f-3c80-4b3a-bee1-c13b8740c551",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260727934",
       "cpxOfferId": "161555255",
-      "description": "CPX Research Survey #1001260727934 (US - 7 min • +1,600 Pts)",
-      "createdAt": "2026-10-29T00:00:45.000Z"
+      "description": "CPX Research Survey #1001260727934 (US - 7 min • +800 Pts)",
+      "createdAt": "2026-10-28T19:00:45.000Z"
     },
     {
       "id": "le_cpx_1001260726256",
-      "userId": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260726256",
       "cpxOfferId": "161555033",
-      "description": "CPX Research Survey #1001260726256 (US - 7 min • +1,600 Pts)",
-      "createdAt": "2026-10-28T23:58:43.000Z"
+      "description": "CPX Research Survey #1001260726256 (US - 7 min • +800 Pts)",
+      "createdAt": "2026-10-28T18:58:43.000Z"
     },
     {
       "id": "le_cpx_1001260719757",
-      "userId": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
-      "amountCents": 20,
-      "points": 2000,
-      "grossCents": 40,
-      "adminProfitCents": 20,
+      "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260719757",
       "cpxOfferId": "161554086",
-      "description": "CPX Research Survey #1001260719757 (US - 5 min • +2,000 Pts)",
-      "createdAt": "2026-10-28T23:50:23.000Z"
+      "description": "CPX Research Survey #1001260719757 (US - 5 min • +1,000 Pts)",
+      "createdAt": "2026-10-28T18:50:23.000Z"
     },
     {
       "id": "le_cpx_1001260718038",
-      "userId": "usr_33e2075f-3c80-4b3a-bee1-c13b8740c551",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260718038",
       "cpxOfferId": "161553977",
-      "description": "CPX Research Survey #1001260718038 (US - 6 min • +2,900 Pts)",
-      "createdAt": "2026-10-28T23:49:25.000Z"
+      "description": "CPX Research Survey #1001260718038 (US - 6 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T18:49:25.000Z"
     },
     {
       "id": "le_cpx_1001260712360",
-      "userId": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260712360",
       "cpxOfferId": "161553473",
-      "description": "CPX Research Survey #1001260712360 (US - 7 min • +2,900 Pts)",
-      "createdAt": "2026-10-28T23:44:21.000Z"
+      "description": "CPX Research Survey #1001260712360 (US - 7 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T18:44:21.000Z"
     },
     {
       "id": "le_cpx_1001260710297",
-      "userId": "usr_33e2075f-3c80-4b3a-bee1-c13b8740c551",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260710297",
       "cpxOfferId": "161553284",
-      "description": "CPX Research Survey #1001260710297 (US - 8 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T23:42:44.000Z"
+      "description": "CPX Research Survey #1001260710297 (US - 8 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T18:42:44.000Z"
     },
     {
       "id": "le_cpx_1001260705976",
-      "userId": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
-      "amountCents": 31,
-      "points": 3100,
-      "grossCents": 62,
-      "adminProfitCents": 31,
+      "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
+      "amountCents": 16,
+      "points": 1550,
+      "grossCents": 31,
+      "adminProfitCents": 15,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260705976",
       "cpxOfferId": "161552589",
-      "description": "CPX Research Survey #1001260705976 (US - 6 min • +3,100 Pts)",
-      "createdAt": "2026-10-28T23:36:06.000Z"
+      "description": "CPX Research Survey #1001260705976 (US - 6 min • +1,550 Pts)",
+      "createdAt": "2026-10-28T18:36:06.000Z"
     },
     {
       "id": "le_cpx_1001260703250",
-      "userId": "usr_33e2075f-3c80-4b3a-bee1-c13b8740c551",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260703250",
       "cpxOfferId": "161552374",
-      "description": "CPX Research Survey #1001260703250 (US - 7 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T23:34:01.000Z"
+      "description": "CPX Research Survey #1001260703250 (US - 7 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T18:34:01.000Z"
     },
     {
       "id": "le_cpx_1001260700201",
-      "userId": "usr_b65197d8-62f2-4935-918b-ceccb7c02bdb",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260700201",
       "cpxOfferId": "161551838",
-      "description": "CPX Research Survey #1001260700201 (US - 6 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T23:29:15.000Z"
+      "description": "CPX Research Survey #1001260700201 (US - 6 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T18:29:15.000Z"
     },
     {
       "id": "le_cpx_1001260676095",
-      "userId": "usr_b197e50d-b8e7-4991-b742-120bccde7605",
-      "amountCents": 20,
-      "points": 2000,
-      "grossCents": 40,
-      "adminProfitCents": 20,
+      "userId": "usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260676095",
       "cpxOfferId": "161549098",
-      "description": "CPX Research Survey #1001260676095 (US - 10 min • +2,000 Pts)",
-      "createdAt": "2026-10-28T23:08:01.000Z"
+      "description": "CPX Research Survey #1001260676095 (US - 10 min • +1,000 Pts)",
+      "createdAt": "2026-10-28T18:08:01.000Z"
     },
     {
       "id": "le_cpx_1001260668899",
-      "userId": "usr_a79d47d2-f661-4082-8f61-e03234a0974b",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_50a2316b-8f7a-4004-83bc-6448c3ea14bf",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260668899",
       "cpxOfferId": "161548500",
-      "description": "CPX Research Survey #1001260668899 (US - 13 min • +1,600 Pts)",
-      "createdAt": "2026-10-28T23:03:14.000Z"
+      "description": "CPX Research Survey #1001260668899 (US - 13 min • +800 Pts)",
+      "createdAt": "2026-10-28T18:03:14.000Z"
     },
     {
       "id": "le_cpx_1001260666912",
-      "userId": "usr_b197e50d-b8e7-4991-b742-120bccde7605",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260666912",
       "cpxOfferId": "161547525",
-      "description": "CPX Research Survey #1001260666912 (US - 7 min • +1,600 Pts)",
-      "createdAt": "2026-10-28T22:55:32.000Z"
+      "description": "CPX Research Survey #1001260666912 (US - 7 min • +800 Pts)",
+      "createdAt": "2026-10-28T17:55:32.000Z"
     },
     {
       "id": "le_cpx_1001260660784",
-      "userId": "usr_b197e50d-b8e7-4991-b742-120bccde7605",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260660784",
       "cpxOfferId": "161546233",
-      "description": "CPX Research Survey #1001260660784 (US - 4 min • +2,900 Pts)",
-      "createdAt": "2026-10-28T22:46:27.000Z"
+      "description": "CPX Research Survey #1001260660784 (US - 4 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T17:46:27.000Z"
     },
     {
       "id": "le_cpx_1001260652246",
-      "userId": "usr_25ad4876-ddb4-40da-a6b0-19ff5f15a7e5",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260652246",
       "cpxOfferId": "161545692",
-      "description": "CPX Research Survey #1001260652246 (US - 8 min • +1,600 Pts)",
-      "createdAt": "2026-10-28T22:42:21.000Z"
+      "description": "CPX Research Survey #1001260652246 (US - 8 min • +800 Pts)",
+      "createdAt": "2026-10-28T17:42:21.000Z"
     },
     {
       "id": "le_cpx_1001260653323",
-      "userId": "usr_b197e50d-b8e7-4991-b742-120bccde7605",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260653323",
       "cpxOfferId": "161545495",
-      "description": "CPX Research Survey #1001260653323 (US - 6 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T22:41:01.000Z"
+      "description": "CPX Research Survey #1001260653323 (US - 6 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T17:41:01.000Z"
     },
     {
       "id": "le_cpx_1001260643691",
-      "userId": "usr_25ad4876-ddb4-40da-a6b0-19ff5f15a7e5",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260643691",
       "cpxOfferId": "161544547",
-      "description": "CPX Research Survey #1001260643691 (US - 8 min • +1,600 Pts)",
-      "createdAt": "2026-10-28T22:33:49.000Z"
+      "description": "CPX Research Survey #1001260643691 (US - 8 min • +800 Pts)",
+      "createdAt": "2026-10-28T17:33:49.000Z"
     },
     {
       "id": "le_cpx_1001260625492",
-      "userId": "usr_a79d47d2-f661-4082-8f61-e03234a0974b",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_50a2316b-8f7a-4004-83bc-6448c3ea14bf",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260625492",
       "cpxOfferId": "161544073",
-      "description": "CPX Research Survey #1001260625492 (US - 21 min • +2,900 Pts)",
-      "createdAt": "2026-10-28T22:30:31.000Z"
+      "description": "CPX Research Survey #1001260625492 (US - 21 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T17:30:31.000Z"
     },
     {
       "id": "le_cpx_1001260631034",
-      "userId": "usr_25ad4876-ddb4-40da-a6b0-19ff5f15a7e5",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260631034",
       "cpxOfferId": "161543297",
-      "description": "CPX Research Survey #1001260631034 (US - 10 min • +2,900 Pts)",
-      "createdAt": "2026-10-28T22:24:45.000Z"
+      "description": "CPX Research Survey #1001260631034 (US - 10 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T17:24:45.000Z"
     },
     {
       "id": "le_cpx_1001260630461",
-      "userId": "usr_5b118faf-e7df-4639-a7b3-b017dc19c77f",
-      "amountCents": 20,
-      "points": 2000,
-      "grossCents": 40,
-      "adminProfitCents": 20,
+      "userId": "usr_087d29cb-db65-4b67-8d99-598af6e41930",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260630461",
       "cpxOfferId": "161543068",
-      "description": "CPX Research Survey #1001260630461 (US - 9 min • +2,000 Pts)",
-      "createdAt": "2026-10-28T22:23:00.000Z"
+      "description": "CPX Research Survey #1001260630461 (US - 9 min • +1,000 Pts)",
+      "createdAt": "2026-10-28T17:23:00.000Z"
     },
     {
       "id": "le_cpx_1001260624802",
-      "userId": "usr_5b118faf-e7df-4639-a7b3-b017dc19c77f",
-      "amountCents": 29,
-      "points": 2900,
-      "grossCents": 58,
-      "adminProfitCents": 29,
+      "userId": "usr_087d29cb-db65-4b67-8d99-598af6e41930",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260624802",
       "cpxOfferId": "161541750",
-      "description": "CPX Research Survey #1001260624802 (US - 4 min • +2,900 Pts)",
-      "createdAt": "2026-10-28T22:12:12.000Z"
+      "description": "CPX Research Survey #1001260624802 (US - 4 min • +1,450 Pts)",
+      "createdAt": "2026-10-28T17:12:12.000Z"
     },
     {
       "id": "le_cpx_1001260617291",
-      "userId": "usr_25ad4876-ddb4-40da-a6b0-19ff5f15a7e5",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260617291",
       "cpxOfferId": "161541687",
-      "description": "CPX Research Survey #1001260617291 (US - 11 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T22:11:37.000Z"
+      "description": "CPX Research Survey #1001260617291 (US - 11 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T17:11:37.000Z"
     },
     {
       "id": "le_cpx_1001260618232",
-      "userId": "usr_5b118faf-e7df-4639-a7b3-b017dc19c77f",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_087d29cb-db65-4b67-8d99-598af6e41930",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260618232",
       "cpxOfferId": "161541159",
-      "description": "CPX Research Survey #1001260618232 (US - 5 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T22:06:57.000Z"
+      "description": "CPX Research Survey #1001260618232 (US - 5 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T17:06:57.000Z"
     },
     {
       "id": "le_cpx_1001260607555",
-      "userId": "usr_5b118faf-e7df-4639-a7b3-b017dc19c77f",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_087d29cb-db65-4b67-8d99-598af6e41930",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260607555",
       "cpxOfferId": "161540287",
-      "description": "CPX Research Survey #1001260607555 (US - 8 min • +1,600 Pts)",
-      "createdAt": "2026-10-28T21:59:09.000Z"
+      "description": "CPX Research Survey #1001260607555 (US - 8 min • +800 Pts)",
+      "createdAt": "2026-10-28T16:59:09.000Z"
     },
     {
       "id": "le_cpx_1001260587540",
-      "userId": "usr_a79d47d2-f661-4082-8f61-e03234a0974b",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_50a2316b-8f7a-4004-83bc-6448c3ea14bf",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260587540",
       "cpxOfferId": "161538713",
-      "description": "CPX Research Survey #1001260587540 (US - 16 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T21:47:22.000Z"
+      "description": "CPX Research Survey #1001260587540 (US - 16 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T16:47:22.000Z"
     },
     {
       "id": "le_cpx_1001260586849",
-      "userId": "usr_38545e60-8e41-466c-98a1-7efccac056eb",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_70409603-a7a5-44de-9d96-9183e0823295",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260586849",
       "cpxOfferId": "161537817",
-      "description": "CPX Research Survey #1001260586849 (US - 10 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T21:40:43.000Z"
+      "description": "CPX Research Survey #1001260586849 (US - 10 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T16:40:43.000Z"
     },
     {
       "id": "le_cpx_1001260533643",
-      "userId": "usr_1853941c-d146-473a-a931-ff5e72938aaa",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
+      "userId": "usr_7b5750fe-7809-4344-9fd1-29bc9f495ee5",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260533643",
       "cpxOfferId": "161532168",
-      "description": "CPX Research Survey #1001260533643 (US - 19 min • +3,300 Pts)",
-      "createdAt": "2026-10-28T20:58:47.000Z"
+      "description": "CPX Research Survey #1001260533643 (US - 19 min • +1,650 Pts)",
+      "createdAt": "2026-10-28T15:58:47.000Z"
     },
     {
       "id": "le_cpx_1001260106043",
-      "userId": "usr_b3929210-6eb3-46e9-a840-8ee0e9b39cfa",
-      "amountCents": 24,
-      "points": 2400,
-      "grossCents": 48,
-      "adminProfitCents": 24,
+      "userId": "usr_58a4452c-947b-4096-a95b-32ae6f2ec39e",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260106043",
       "cpxOfferId": "161478713",
-      "description": "CPX Research Survey #1001260106043 (US - 11 min • +2,400 Pts)",
-      "createdAt": "2026-10-28T15:27:08.000Z"
+      "description": "CPX Research Survey #1001260106043 (US - 11 min • +1,200 Pts)",
+      "createdAt": "2026-10-28T10:27:08.000Z"
     },
     {
       "id": "le_cpx_1001260071077",
-      "userId": "usr_b3929210-6eb3-46e9-a840-8ee0e9b39cfa",
-      "amountCents": 65,
-      "points": 6500,
-      "grossCents": 130,
-      "adminProfitCents": 65,
+      "userId": "usr_58a4452c-947b-4096-a95b-32ae6f2ec39e",
+      "amountCents": 33,
+      "points": 3250,
+      "grossCents": 65,
+      "adminProfitCents": 32,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001260071077",
       "cpxOfferId": "161475132",
-      "description": "CPX Research Survey #1001260071077 (US - 14 min • +6,500 Pts)",
-      "createdAt": "2026-10-28T15:05:50.000Z"
+      "description": "CPX Research Survey #1001260071077 (US - 14 min • +3,250 Pts)",
+      "createdAt": "2026-10-28T10:05:50.000Z"
     },
     {
       "id": "le_cpx_1001259997950",
-      "userId": "usr_b495bea7-0e71-49fc-95a0-193c9d8c7891",
-      "amountCents": 25,
-      "points": 2500,
-      "grossCents": 50,
-      "adminProfitCents": 25,
+      "userId": "usr_427b760c-880a-47c4-93b6-6ea322e9dafd",
+      "amountCents": 13,
+      "points": 1250,
+      "grossCents": 25,
+      "adminProfitCents": 12,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001259997950",
       "cpxOfferId": "161466418",
-      "description": "CPX Research Survey #1001259997950 (US - 10 min • +2,500 Pts)",
-      "createdAt": "2026-10-28T14:07:01.000Z"
+      "description": "CPX Research Survey #1001259997950 (US - 10 min • +1,250 Pts)",
+      "createdAt": "2026-10-28T09:07:01.000Z"
     },
     {
       "id": "le_cpx_1001259959694",
-      "userId": "usr_b495bea7-0e71-49fc-95a0-193c9d8c7891",
-      "amountCents": 16,
-      "points": 1600,
-      "grossCents": 32,
-      "adminProfitCents": 16,
+      "userId": "usr_427b760c-880a-47c4-93b6-6ea322e9dafd",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
       "appliedSharePercent": 50,
       "entryType": "credit",
       "status": "confirmed",
       "providerTxId": "1001259959694",
       "cpxOfferId": "161462529",
-      "description": "CPX Research Survey #1001259959694 (US - 9 min • +1,600 Pts)",
-      "createdAt": "2026-10-28T13:37:05.000Z"
+      "description": "CPX Research Survey #1001259959694 (US - 9 min • +800 Pts)",
+      "createdAt": "2026-10-28T08:37:05.000Z"
     },
     {
       "id": "le_cpx_1001261807995",
-      "userId": "usr_e0ab715c-fd70-408e-8dee-1e20db57f7ca",
+      "userId": "usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -2017,7 +2017,7 @@
       "providerTxId": "1001261807995",
       "cpxOfferId": "161688390",
       "description": "CPX Research Survey #1001261807995 (US - 8 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T18:28:58.000Z"
+      "createdAt": "2026-10-29T13:28:58.000Z"
     },
     {
       "id": "le_cpx_1001262145364",
@@ -2031,8 +2031,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262145364 (US - 8 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T22:54:23+00:00",
-      "processedAt": "2026-10-29T22:54:23+00:00"
+      "createdAt": "2026-10-29T17:54:23.000Z",
+      "processedAt": "2026-10-29T22:54:23+00:00",
+      "cpxOfferId": "161733736"
     },
     {
       "id": "le_cpx_1001262158282",
@@ -2046,8 +2047,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262158282 (US - 10 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T23:08:21+00:00",
-      "processedAt": "2026-10-29T23:08:21+00:00"
+      "createdAt": "2026-10-29T18:08:21.000Z",
+      "processedAt": "2026-10-29T23:08:21+00:00",
+      "cpxOfferId": "161735526"
     },
     {
       "id": "le_cpx_1001261973059",
@@ -2061,8 +2063,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261973059 (US - 4 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T20:24:22+00:00",
-      "processedAt": "2026-10-29T20:24:22+00:00"
+      "createdAt": "2026-10-29T15:24:22.000Z",
+      "processedAt": "2026-10-29T20:24:22+00:00",
+      "cpxOfferId": "161710223"
     },
     {
       "id": "le_cpx_1001261872902",
@@ -2076,8 +2079,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261872902 (US - 11 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T19:18:06+00:00",
-      "processedAt": "2026-10-29T19:18:06+00:00"
+      "createdAt": "2026-10-29T14:18:06.000Z",
+      "processedAt": "2026-10-29T19:18:06+00:00",
+      "cpxOfferId": "161697564"
     },
     {
       "id": "le_cpx_1001262005231",
@@ -2091,8 +2095,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262005231 (US - 8 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T20:53:08+00:00",
-      "processedAt": "2026-10-29T20:53:08+00:00"
+      "createdAt": "2026-10-29T15:53:08.000Z",
+      "processedAt": "2026-10-29T20:53:08+00:00",
+      "cpxOfferId": "161715033"
     },
     {
       "id": "le_cpx_1001261922039",
@@ -2106,8 +2111,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261922039 (US - 9 min • +4,050 Pts)",
-      "createdAt": "2026-10-29T19:50:46+00:00",
-      "processedAt": "2026-10-29T19:50:46+00:00"
+      "createdAt": "2026-10-29T14:50:46.000Z",
+      "processedAt": "2026-10-29T19:50:46+00:00",
+      "cpxOfferId": "161703820"
     },
     {
       "id": "le_cpx_1001261984925",
@@ -2121,8 +2127,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261984925 (US - 9 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T15:38:11+00:00",
-      "processedAt": "2026-10-29T15:38:11+00:00"
+      "createdAt": "2026-10-29T15:38:11.000Z",
+      "processedAt": "2026-10-29T15:38:11+00:00",
+      "cpxOfferId": "161712633"
     },
     {
       "id": "le_cpx_1001262046264",
@@ -2136,8 +2143,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262046264 (US - 9 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T21:26:07+00:00",
-      "processedAt": "2026-10-29T21:26:07+00:00"
+      "createdAt": "2026-10-29T16:26:07.000Z",
+      "processedAt": "2026-10-29T21:26:07+00:00",
+      "cpxOfferId": "161720491"
     },
     {
       "id": "le_cpx_1001262162859",
@@ -2151,8 +2159,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262162859 (US - 7 min • +1,350 Pts)",
-      "createdAt": "2026-10-29T23:09:28+00:00",
-      "processedAt": "2026-10-29T23:09:28+00:00"
+      "createdAt": "2026-10-29T18:09:28.000Z",
+      "processedAt": "2026-10-29T23:09:28+00:00",
+      "cpxOfferId": "161735661"
     },
     {
       "id": "le_cpx_1001261998623",
@@ -2166,8 +2175,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261998623 (US - 5 min • +950 Pts)",
-      "createdAt": "2026-10-29T20:45:12+00:00",
-      "processedAt": "2026-10-29T20:45:12+00:00"
+      "createdAt": "2026-10-29T15:45:12.000Z",
+      "processedAt": "2026-10-29T20:45:12+00:00",
+      "cpxOfferId": "161713782"
     },
     {
       "id": "le_cpx_1001261971201",
@@ -2181,8 +2191,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261971201 (US - 7 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T20:25:50+00:00",
-      "processedAt": "2026-10-29T20:25:50+00:00"
+      "createdAt": "2026-10-29T15:25:50.000Z",
+      "processedAt": "2026-10-29T20:25:50+00:00",
+      "cpxOfferId": "161710470"
     },
     {
       "id": "le_cpx_1001261970329",
@@ -2196,8 +2207,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261970329 (US - 8 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T20:26:37+00:00",
-      "processedAt": "2026-10-29T20:26:37+00:00"
+      "createdAt": "2026-10-29T15:26:37.000Z",
+      "processedAt": "2026-10-29T20:26:37+00:00",
+      "cpxOfferId": "161710582"
     },
     {
       "id": "le_cpx_1001262083606",
@@ -2211,8 +2223,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262083606 (US - 8 min • +2,650 Pts)",
-      "createdAt": "2026-10-29T21:58:43+00:00",
-      "processedAt": "2026-10-29T21:58:43+00:00"
+      "createdAt": "2026-10-29T16:58:43.000Z",
+      "processedAt": "2026-10-29T21:58:43+00:00",
+      "cpxOfferId": "161725675"
     },
     {
       "id": "le_cpx_1001262317514",
@@ -2226,8 +2239,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262317514 (US - 6 min • +800 Pts)",
-      "createdAt": "2026-10-30T02:10:55+00:00",
-      "processedAt": "2026-10-30T02:10:55+00:00"
+      "createdAt": "2026-10-29T21:10:55.000Z",
+      "processedAt": "2026-10-30T02:10:55+00:00",
+      "cpxOfferId": "161754826"
     },
     {
       "id": "le_cpx_1001262115053",
@@ -2241,8 +2255,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262115053 (US - 6 min • +950 Pts)",
-      "createdAt": "2026-10-29T22:25:00+00:00",
-      "processedAt": "2026-10-29T22:25:00+00:00"
+      "createdAt": "2026-10-29T17:25:00.000Z",
+      "processedAt": "2026-10-29T22:25:00+00:00",
+      "cpxOfferId": "161729525"
     },
     {
       "id": "le_cpx_1001262310666",
@@ -2256,8 +2271,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262310666 (US - 9 min • +1,200 Pts)",
-      "createdAt": "2026-10-30T02:04:12+00:00",
-      "processedAt": "2026-10-30T02:04:12+00:00"
+      "createdAt": "2026-10-29T21:04:12.000Z",
+      "processedAt": "2026-10-30T02:04:12+00:00",
+      "cpxOfferId": "161754298"
     },
     {
       "id": "le_cpx_1001262309887",
@@ -2271,8 +2287,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262309887 (US - 8 min • +1,350 Pts)",
-      "createdAt": "2026-10-30T02:02:16+00:00",
-      "processedAt": "2026-10-30T02:02:16+00:00"
+      "createdAt": "2026-10-29T21:02:16.000Z",
+      "processedAt": "2026-10-30T02:02:16+00:00",
+      "cpxOfferId": "161754131"
     },
     {
       "id": "le_cpx_1001262305345",
@@ -2286,8 +2303,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262305345 (US - 7 min • +1,300 Pts)",
-      "createdAt": "2026-10-30T01:54:38+00:00",
-      "processedAt": "2026-10-30T01:54:38+00:00"
+      "createdAt": "2026-10-29T20:54:38.000Z",
+      "processedAt": "2026-10-30T01:54:38+00:00",
+      "cpxOfferId": "161753487"
     },
     {
       "id": "le_cpx_1001261889320",
@@ -2301,8 +2319,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261889320 (US - 10 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T19:28:47+00:00",
-      "processedAt": "2026-10-29T19:28:47+00:00"
+      "createdAt": "2026-10-29T14:28:47.000Z",
+      "processedAt": "2026-10-29T19:28:47+00:00",
+      "cpxOfferId": "161699494"
     },
     {
       "id": "le_cpx_1001262304538",
@@ -2316,8 +2335,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262304538 (US - 7 min • +1,000 Pts)",
-      "createdAt": "2026-10-30T01:53:36+00:00",
-      "processedAt": "2026-10-30T01:53:36+00:00"
+      "createdAt": "2026-10-29T20:53:36.000Z",
+      "processedAt": "2026-10-30T01:53:36+00:00",
+      "cpxOfferId": "161753397"
     },
     {
       "id": "le_cpx_1001261960873",
@@ -2331,8 +2351,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261960873 (US - 6 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T20:16:54+00:00",
-      "processedAt": "2026-10-29T20:16:54+00:00"
+      "createdAt": "2026-10-29T15:16:54.000Z",
+      "processedAt": "2026-10-29T20:16:54+00:00",
+      "cpxOfferId": "161708786"
     },
     {
       "id": "le_cpx_1001262298358",
@@ -2346,8 +2367,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262298358 (US - 8 min • +2,000 Pts)",
-      "createdAt": "2026-10-30T01:46:37+00:00",
-      "processedAt": "2026-10-30T01:46:37+00:00"
+      "createdAt": "2026-10-29T20:46:37.000Z",
+      "processedAt": "2026-10-30T01:46:37+00:00",
+      "cpxOfferId": "161752755"
     },
     {
       "id": "le_cpx_1001262298000",
@@ -2361,8 +2383,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262298000 (US - 6 min • +1,400 Pts)",
-      "createdAt": "2026-10-30T01:43:58+00:00",
-      "processedAt": "2026-10-30T01:43:58+00:00"
+      "createdAt": "2026-10-29T20:43:58.000Z",
+      "processedAt": "2026-10-30T01:43:58+00:00",
+      "cpxOfferId": "161752543"
     },
     {
       "id": "le_cpx_1001262294305",
@@ -2376,8 +2399,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262294305 (US - 4 min • +1,000 Pts)",
-      "createdAt": "2026-10-30T01:36:47+00:00",
-      "processedAt": "2026-10-30T01:36:47+00:00"
+      "createdAt": "2026-10-29T20:36:47.000Z",
+      "processedAt": "2026-10-30T01:36:47+00:00",
+      "cpxOfferId": "161751903"
     },
     {
       "id": "le_cpx_1001262291560",
@@ -2391,8 +2415,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262291560 (US - 8 min • +1,000 Pts)",
-      "createdAt": "2026-10-30T01:36:38+00:00",
-      "processedAt": "2026-10-30T01:36:38+00:00"
+      "createdAt": "2026-10-29T20:36:38.000Z",
+      "processedAt": "2026-10-30T01:36:38+00:00",
+      "cpxOfferId": "161751895"
     },
     {
       "id": "le_cpx_1001262288225",
@@ -2406,8 +2431,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262288225 (US - 7 min • +1,300 Pts)",
-      "createdAt": "2026-10-30T01:31:51+00:00",
-      "processedAt": "2026-10-30T01:31:51+00:00"
+      "createdAt": "2026-10-29T20:31:51.000Z",
+      "processedAt": "2026-10-30T01:31:51+00:00",
+      "cpxOfferId": "161751450"
     },
     {
       "id": "le_cpx_1001262136935",
@@ -2421,8 +2447,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262136935 (US - 7 min • +2,000 Pts)",
-      "createdAt": "2026-10-29T22:45:11+00:00",
-      "processedAt": "2026-10-29T22:45:11+00:00"
+      "createdAt": "2026-10-29T17:45:11.000Z",
+      "processedAt": "2026-10-29T22:45:11+00:00",
+      "cpxOfferId": "161732498"
     },
     {
       "id": "le_cpx_1001262282361",
@@ -2436,8 +2463,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262282361 (US - 4 min • +1,650 Pts)",
-      "createdAt": "2026-10-30T01:21:25+00:00",
-      "processedAt": "2026-10-30T01:21:25+00:00"
+      "createdAt": "2026-10-29T20:21:25.000Z",
+      "processedAt": "2026-10-30T01:21:25+00:00",
+      "cpxOfferId": "161750354"
     },
     {
       "id": "le_cpx_1001262029834",
@@ -2451,8 +2479,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262029834 (US - 10 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T16:13:39+00:00",
-      "processedAt": "2026-10-29T16:13:39+00:00"
+      "createdAt": "2026-10-29T16:13:39.000Z",
+      "processedAt": "2026-10-29T16:13:39+00:00",
+      "cpxOfferId": "161718458"
     },
     {
       "id": "le_cpx_1001262279882",
@@ -2466,8 +2495,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262279882 (US - 7 min • +1,200 Pts)",
-      "createdAt": "2026-10-30T01:20:52+00:00",
-      "processedAt": "2026-10-30T01:20:52+00:00"
+      "createdAt": "2026-10-29T20:20:52.000Z",
+      "processedAt": "2026-10-30T01:20:52+00:00",
+      "cpxOfferId": "161750295"
     },
     {
       "id": "le_cpx_1001262126653",
@@ -2481,8 +2511,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262126653 (US - 7 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T22:36:40+00:00",
-      "processedAt": "2026-10-29T22:36:40+00:00"
+      "createdAt": "2026-10-29T17:36:40.000Z",
+      "processedAt": "2026-10-29T22:36:40+00:00",
+      "cpxOfferId": "161731286"
     },
     {
       "id": "le_cpx_1001262272098",
@@ -2496,8 +2527,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262272098 (US - 9 min • +2,000 Pts)",
-      "createdAt": "2026-10-30T01:12:47+00:00",
-      "processedAt": "2026-10-30T01:12:47+00:00"
+      "createdAt": "2026-10-29T20:12:47.000Z",
+      "processedAt": "2026-10-30T01:12:47+00:00",
+      "cpxOfferId": "161749481"
     },
     {
       "id": "le_cpx_1001262268796",
@@ -2511,8 +2543,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262268796 (US - 7 min • +1,250 Pts)",
-      "createdAt": "2026-10-30T01:05:58+00:00",
-      "processedAt": "2026-10-30T01:05:58+00:00"
+      "createdAt": "2026-10-29T20:05:58.000Z",
+      "processedAt": "2026-10-30T01:05:58+00:00",
+      "cpxOfferId": "161748846"
     },
     {
       "id": "le_cpx_1001262267061",
@@ -2526,8 +2559,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262267061 (US - 5 min • +1,650 Pts)",
-      "createdAt": "2026-10-30T01:01:36+00:00",
-      "processedAt": "2026-10-30T01:01:36+00:00"
+      "createdAt": "2026-10-29T20:01:36.000Z",
+      "processedAt": "2026-10-30T01:01:36+00:00",
+      "cpxOfferId": "161748455"
     },
     {
       "id": "le_cpx_1001262260523",
@@ -2541,8 +2575,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262260523 (US - 8 min • +1,650 Pts)",
-      "createdAt": "2026-10-30T00:55:58+00:00",
-      "processedAt": "2026-10-30T00:55:58+00:00"
+      "createdAt": "2026-10-29T19:55:58.000Z",
+      "processedAt": "2026-10-30T00:55:58+00:00",
+      "cpxOfferId": "161747872"
     },
     {
       "id": "le_cpx_1001262259503",
@@ -2556,8 +2591,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262259503 (US - 9 min • +3,250 Pts)",
-      "createdAt": "2026-10-30T00:55:17+00:00",
-      "processedAt": "2026-10-30T00:55:17+00:00"
+      "createdAt": "2026-10-29T19:55:17.000Z",
+      "processedAt": "2026-10-30T00:55:17+00:00",
+      "cpxOfferId": "161747806"
     },
     {
       "id": "le_cpx_1001262250546",
@@ -2571,8 +2607,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262250546 (US - 9 min • +1,000 Pts)",
-      "createdAt": "2026-10-30T00:44:05+00:00",
-      "processedAt": "2026-10-30T00:44:05+00:00"
+      "createdAt": "2026-10-29T19:44:05.000Z",
+      "processedAt": "2026-10-30T00:44:05+00:00",
+      "cpxOfferId": "161746671"
     },
     {
       "id": "le_cpx_1001262247440",
@@ -2586,8 +2623,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262247440 (US - 6 min • +1,350 Pts)",
-      "createdAt": "2026-10-30T00:37:46+00:00",
-      "processedAt": "2026-10-30T00:37:46+00:00"
+      "createdAt": "2026-10-29T19:37:46.000Z",
+      "processedAt": "2026-10-30T00:37:46+00:00",
+      "cpxOfferId": "161746069"
     },
     {
       "id": "le_cpx_1001262241174",
@@ -2601,8 +2639,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262241174 (US - 13 min • +1,000 Pts)",
-      "createdAt": "2026-10-30T00:37:02+00:00",
-      "processedAt": "2026-10-30T00:37:02+00:00"
+      "createdAt": "2026-10-29T19:37:02.000Z",
+      "processedAt": "2026-10-30T00:37:02+00:00",
+      "cpxOfferId": "161745998"
     },
     {
       "id": "le_cpx_1001262236044",
@@ -2616,8 +2655,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262236044 (US - 10 min • +1,000 Pts)",
-      "createdAt": "2026-10-30T00:28:36+00:00",
-      "processedAt": "2026-10-30T00:28:36+00:00"
+      "createdAt": "2026-10-29T19:28:36.000Z",
+      "processedAt": "2026-10-30T00:28:36+00:00",
+      "cpxOfferId": "161745188"
     },
     {
       "id": "le_cpx_1001261964181",
@@ -2631,8 +2671,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261964181 (US - 4 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T20:17:48+00:00",
-      "processedAt": "2026-10-29T20:17:48+00:00"
+      "createdAt": "2026-10-29T15:17:48.000Z",
+      "processedAt": "2026-10-29T20:17:48+00:00",
+      "cpxOfferId": "161708963"
     },
     {
       "id": "le_cpx_1001262231131",
@@ -2646,8 +2687,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262231131 (US - 6 min • +2,000 Pts)",
-      "createdAt": "2026-10-30T00:18:40+00:00",
-      "processedAt": "2026-10-30T00:18:40+00:00"
+      "createdAt": "2026-10-29T19:18:40.000Z",
+      "processedAt": "2026-10-30T00:18:40+00:00",
+      "cpxOfferId": "161744098"
     },
     {
       "id": "le_cpx_1001262231737",
@@ -2661,8 +2703,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262231737 (US - 4 min • +1,350 Pts)",
-      "createdAt": "2026-10-30T00:17:54+00:00",
-      "processedAt": "2026-10-30T00:17:54+00:00"
+      "createdAt": "2026-10-29T19:17:54.000Z",
+      "processedAt": "2026-10-30T00:17:54+00:00",
+      "cpxOfferId": "161744015"
     },
     {
       "id": "le_cpx_1001262129584",
@@ -2676,8 +2719,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262129584 (US - 5 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T22:37:12+00:00",
-      "processedAt": "2026-10-29T22:37:12+00:00"
+      "createdAt": "2026-10-29T17:37:12.000Z",
+      "processedAt": "2026-10-29T22:37:12+00:00",
+      "cpxOfferId": "161731371"
     },
     {
       "id": "le_cpx_1001262225398",
@@ -2691,8 +2735,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262225398 (US - 5 min • +1,000 Pts)",
-      "createdAt": "2026-10-30T00:11:32+00:00",
-      "processedAt": "2026-10-30T00:11:32+00:00"
+      "createdAt": "2026-10-29T19:11:32.000Z",
+      "processedAt": "2026-10-30T00:11:32+00:00",
+      "cpxOfferId": "161743273"
     },
     {
       "id": "le_cpx_1001262219675",
@@ -2706,8 +2751,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262219675 (US - 11 min • +1,200 Pts)",
-      "createdAt": "2026-10-30T00:10:52+00:00",
-      "processedAt": "2026-10-30T00:10:52+00:00"
+      "createdAt": "2026-10-29T19:10:52.000Z",
+      "processedAt": "2026-10-30T00:10:52+00:00",
+      "cpxOfferId": "161743202"
     },
     {
       "id": "le_cpx_1001262214342",
@@ -2721,8 +2767,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262214342 (US - 4 min • +1,350 Pts)",
-      "createdAt": "2026-10-29T23:58:01+00:00",
-      "processedAt": "2026-10-29T23:58:01+00:00"
+      "createdAt": "2026-10-29T18:58:01.000Z",
+      "processedAt": "2026-10-29T23:58:01+00:00",
+      "cpxOfferId": "161741689"
     },
     {
       "id": "le_cpx_1001262196488",
@@ -2736,8 +2783,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262196488 (US - 6 min • +1,150 Pts)",
-      "createdAt": "2026-10-29T23:41:48+00:00",
-      "processedAt": "2026-10-29T23:41:48+00:00"
+      "createdAt": "2026-10-29T18:41:48.000Z",
+      "processedAt": "2026-10-29T23:41:48+00:00",
+      "cpxOfferId": "161739749"
     },
     {
       "id": "le_cpx_1001261983182",
@@ -2751,8 +2799,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261983182 (US - 8 min • +1,550 Pts)",
-      "createdAt": "2026-10-29T15:36:19+00:00",
-      "processedAt": "2026-10-29T15:36:19+00:00"
+      "createdAt": "2026-10-29T15:36:19.000Z",
+      "processedAt": "2026-10-29T15:36:19+00:00",
+      "cpxOfferId": "161712332"
     },
     {
       "id": "le_cpx_1001262184110",
@@ -2766,8 +2815,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262184110 (US - 10 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T23:33:38+00:00",
-      "processedAt": "2026-10-29T23:33:38+00:00"
+      "createdAt": "2026-10-29T18:33:38.000Z",
+      "processedAt": "2026-10-29T23:33:38+00:00",
+      "cpxOfferId": "161738740"
     },
     {
       "id": "le_cpx_1001262184857",
@@ -2781,8 +2831,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262184857 (US - 9 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T23:32:51+00:00",
-      "processedAt": "2026-10-29T23:32:51+00:00"
+      "createdAt": "2026-10-29T18:32:51.000Z",
+      "processedAt": "2026-10-29T23:32:51+00:00",
+      "cpxOfferId": "161738632"
     },
     {
       "id": "le_cpx_1001261983714",
@@ -2796,8 +2847,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261983714 (US - 5 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T20:33:31+00:00",
-      "processedAt": "2026-10-29T20:33:31+00:00"
+      "createdAt": "2026-10-29T15:33:31.000Z",
+      "processedAt": "2026-10-29T20:33:31+00:00",
+      "cpxOfferId": "161711811"
     },
     {
       "id": "le_cpx_1001262117499",
@@ -2811,8 +2863,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262117499 (US - 6 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T22:27:35+00:00",
-      "processedAt": "2026-10-29T22:27:35+00:00"
+      "createdAt": "2026-10-29T17:27:35.000Z",
+      "processedAt": "2026-10-29T22:27:35+00:00",
+      "cpxOfferId": "161729903"
     },
     {
       "id": "le_cpx_1001262186161",
@@ -2826,8 +2879,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262186161 (US - 6 min • +1,150 Pts)",
-      "createdAt": "2026-10-29T23:31:20+00:00",
-      "processedAt": "2026-10-29T23:31:20+00:00"
+      "createdAt": "2026-10-29T18:31:20.000Z",
+      "processedAt": "2026-10-29T23:31:20+00:00",
+      "cpxOfferId": "161738463"
     },
     {
       "id": "le_cpx_1001262179614",
@@ -2841,8 +2895,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262179614 (US - 4 min • +1,350 Pts)",
-      "createdAt": "2026-10-29T23:22:52+00:00",
-      "processedAt": "2026-10-29T23:22:52+00:00"
+      "createdAt": "2026-10-29T18:22:52.000Z",
+      "processedAt": "2026-10-29T23:22:52+00:00",
+      "cpxOfferId": "161737375"
     },
     {
       "id": "le_cpx_1001262171978",
@@ -2856,8 +2911,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262171978 (US - 6 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T23:17:47+00:00",
-      "processedAt": "2026-10-29T23:17:47+00:00"
+      "createdAt": "2026-10-29T18:17:47.000Z",
+      "processedAt": "2026-10-29T23:17:47+00:00",
+      "cpxOfferId": "161736713"
     },
     {
       "id": "le_cpx_1001261952290",
@@ -2871,8 +2927,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261952290 (US - 6 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T20:10:28+00:00",
-      "processedAt": "2026-10-29T20:10:28+00:00"
+      "createdAt": "2026-10-29T15:10:28.000Z",
+      "processedAt": "2026-10-29T20:10:28+00:00",
+      "cpxOfferId": "161707583"
     },
     {
       "id": "le_cpx_1001262108990",
@@ -2886,8 +2943,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262108990 (US - 15 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T22:28:04+00:00",
-      "processedAt": "2026-10-29T22:28:04+00:00"
+      "createdAt": "2026-10-29T17:28:04.000Z",
+      "processedAt": "2026-10-29T22:28:04+00:00",
+      "cpxOfferId": "161729983"
     },
     {
       "id": "le_cpx_1001261890464",
@@ -2901,8 +2959,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261890464 (US - 7 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T19:27:09+00:00",
-      "processedAt": "2026-10-29T19:27:09+00:00"
+      "createdAt": "2026-10-29T14:27:09.000Z",
+      "processedAt": "2026-10-29T19:27:09+00:00",
+      "cpxOfferId": "161699223"
     },
     {
       "id": "le_cpx_1001262016679",
@@ -2916,8 +2975,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262016679 (US - 10 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T21:03:08+00:00",
-      "processedAt": "2026-10-29T21:03:08+00:00"
+      "createdAt": "2026-10-29T16:03:08.000Z",
+      "processedAt": "2026-10-29T21:03:08+00:00",
+      "cpxOfferId": "161716689"
     },
     {
       "id": "le_cpx_1001261859528",
@@ -2931,8 +2991,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261859528 (US - 7 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T19:04:56+00:00",
-      "processedAt": "2026-10-29T19:04:56+00:00"
+      "createdAt": "2026-10-29T14:04:56.000Z",
+      "processedAt": "2026-10-29T19:04:56+00:00",
+      "cpxOfferId": "161695193"
     },
     {
       "id": "le_cpx_1001261936275",
@@ -2946,8 +3007,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001261936275 (US - 11 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T15:03:37+00:00",
-      "processedAt": "2026-10-29T15:03:37+00:00"
+      "createdAt": "2026-10-29T15:03:37.000Z",
+      "processedAt": "2026-10-29T15:03:37+00:00",
+      "cpxOfferId": "161706265"
     },
     {
       "id": "le_cpx_1001262087924",
@@ -2961,8 +3023,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262087924 (US - 6 min • +1,050 Pts)",
-      "createdAt": "2026-10-29T22:00:20+00:00",
-      "processedAt": "2026-10-29T22:00:20+00:00"
+      "createdAt": "2026-10-29T17:00:20.000Z",
+      "processedAt": "2026-10-29T22:00:20+00:00",
+      "cpxOfferId": "161725895"
     },
     {
       "id": "le_cpx_1001262068297",
@@ -2976,8 +3039,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262068297 (US - 5 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T16:41:44+00:00",
-      "processedAt": "2026-10-29T16:41:44+00:00"
+      "createdAt": "2026-10-29T16:41:44.000Z",
+      "processedAt": "2026-10-29T16:41:44+00:00",
+      "cpxOfferId": "161722961"
     },
     {
       "id": "le_cpx_1001262082747",
@@ -2991,8 +3055,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262082747 (US - 7 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T21:56:10+00:00",
-      "processedAt": "2026-10-29T21:56:10+00:00"
+      "createdAt": "2026-10-29T16:56:10.000Z",
+      "processedAt": "2026-10-29T21:56:10+00:00",
+      "cpxOfferId": "161725284"
     },
     {
       "id": "le_cpx_1001262080101",
@@ -3006,8 +3071,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262080101 (US - 5 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T16:52:18+00:00",
-      "processedAt": "2026-10-29T16:52:18+00:00"
+      "createdAt": "2026-10-29T16:52:18.000Z",
+      "processedAt": "2026-10-29T16:52:18+00:00",
+      "cpxOfferId": "161724704"
     },
     {
       "id": "le_cpx_1001262095007",
@@ -3021,8 +3087,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262095007 (US - 4 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T22:05:01+00:00",
-      "processedAt": "2026-10-29T22:05:01+00:00"
+      "createdAt": "2026-10-29T17:05:01.000Z",
+      "processedAt": "2026-10-29T22:05:01+00:00",
+      "cpxOfferId": "161726588"
     },
     {
       "id": "le_cpx_1001262100712",
@@ -3036,8 +3103,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262100712 (US - 6 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T17:11:44+00:00",
-      "processedAt": "2026-10-29T17:11:44+00:00"
+      "createdAt": "2026-10-29T17:11:44.000Z",
+      "processedAt": "2026-10-29T17:11:44+00:00",
+      "cpxOfferId": "161727590"
     },
     {
       "id": "le_cpx_1001262098309",
@@ -3051,8 +3119,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262098309 (US - 6 min • +2,000 Pts)",
-      "createdAt": "2026-10-29T17:09:22+00:00",
-      "processedAt": "2026-10-29T17:09:22+00:00"
+      "createdAt": "2026-10-29T17:09:22.000Z",
+      "processedAt": "2026-10-29T17:09:22+00:00",
+      "cpxOfferId": "161727258"
     },
     {
       "id": "le_cpx_1001262068990",
@@ -3066,8 +3135,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262068990 (US - 6 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T21:43:12+00:00",
-      "processedAt": "2026-10-29T21:43:12+00:00"
+      "createdAt": "2026-10-29T16:43:12.000Z",
+      "processedAt": "2026-10-29T21:43:12+00:00",
+      "cpxOfferId": "161723164"
     },
     {
       "id": "le_cpx_1001262074340",
@@ -3081,8 +3151,9 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262074340 (US - 7 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T21:49:06+00:00",
-      "processedAt": "2026-10-29T21:49:06+00:00"
+      "createdAt": "2026-10-29T16:49:06.000Z",
+      "processedAt": "2026-10-29T21:49:06+00:00",
+      "cpxOfferId": "161724139"
     },
     {
       "id": "le_cpx_1001262066135",
@@ -3096,12 +3167,13 @@
       "entryType": "credit",
       "status": "confirmed",
       "description": "CPX Research Survey #1001262066135 (US - 11 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T16:46:01+00:00",
-      "processedAt": "2026-10-29T16:46:01+00:00"
+      "createdAt": "2026-10-29T16:46:01.000Z",
+      "processedAt": "2026-10-29T16:46:01+00:00",
+      "cpxOfferId": "161723600"
     },
     {
       "id": "le_cpx_1001261860684",
-      "userId": "usr_07aa0db2-9cf4-485f-9762-a125406ab8f8",
+      "userId": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -3112,11 +3184,11 @@
       "providerTxId": "1001261860684",
       "cpxOfferId": "161695802",
       "description": "CPX Research Survey #1001261860684 (US - 9 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T19:08:09.000Z"
+      "createdAt": "2026-10-29T14:08:09.000Z"
     },
     {
       "id": "le_cpx_1001261838042",
-      "userId": "usr_07aa0db2-9cf4-485f-9762-a125406ab8f8",
+      "userId": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
       "amountCents": 10,
       "points": 1000,
       "grossCents": 20,
@@ -3127,11 +3199,11 @@
       "providerTxId": "1001261838042",
       "cpxOfferId": "161693619",
       "description": "CPX Research Survey #1001261838042 (US - 14 min • +1,000 Pts)",
-      "createdAt": "2026-10-29T18:56:14.000Z"
+      "createdAt": "2026-10-29T13:56:14.000Z"
     },
     {
       "id": "le_cpx_1001261816443",
-      "userId": "usr_be9fe85b-98a7-4fd8-af57-edfe0fdd454b",
+      "userId": "usr_164024a3-9b3b-485d-bebc-7c803832cdcd",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -3142,11 +3214,11 @@
       "providerTxId": "1001261816443",
       "cpxOfferId": "161693265",
       "description": "CPX Research Survey #1001261816443 (US - 28 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T18:54:24.000Z"
+      "createdAt": "2026-10-29T13:54:24.000Z"
     },
     {
       "id": "le_cpx_1001261831087",
-      "userId": "usr_e0ab715c-fd70-408e-8dee-1e20db57f7ca",
+      "userId": "usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
       "amountCents": 15,
       "points": 1450,
       "grossCents": 29,
@@ -3157,11 +3229,11 @@
       "providerTxId": "1001261831087",
       "cpxOfferId": "161691257",
       "description": "CPX Research Survey #1001261831087 (US - 6 min • +1,450 Pts)",
-      "createdAt": "2026-10-29T18:43:29.000Z"
+      "createdAt": "2026-10-29T13:43:29.000Z"
     },
     {
       "id": "le_cpx_1001261821335",
-      "userId": "usr_e0ab715c-fd70-408e-8dee-1e20db57f7ca",
+      "userId": "usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
       "amountCents": 17,
       "points": 1650,
       "grossCents": 33,
@@ -3172,11 +3244,11 @@
       "providerTxId": "1001261821335",
       "cpxOfferId": "161689940",
       "description": "CPX Research Survey #1001261821335 (US - 6 min • +1,650 Pts)",
-      "createdAt": "2026-10-29T18:36:29.000Z"
+      "createdAt": "2026-10-29T13:36:29.000Z"
     },
     {
       "id": "le_cpx_1001261814804",
-      "userId": "usr_07aa0db2-9cf4-485f-9762-a125406ab8f8",
+      "userId": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
       "amountCents": 12,
       "points": 1200,
       "grossCents": 24,
@@ -3187,382 +3259,7 @@
       "providerTxId": "1001261814804",
       "cpxOfferId": "161689522",
       "description": "CPX Research Survey #1001261814804 (US - 9 min • +1,200 Pts)",
-      "createdAt": "2026-10-29T18:34:27.000Z"
-    },
-    {
-      "id": "le_sync_usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
-      "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
-      "providerTxId": "sync_bal_usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
-      "amountCents": 153,
-      "points": 15300,
-      "grossCents": 306,
-      "adminProfitCents": 153,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+15,300 Pts)",
-      "createdAt": "2026-10-29T14:17:56.585+00:00",
-      "processedAt": "2026-10-29T14:17:56.585+00:00"
-    },
-    {
-      "id": "le_sync_usr_70409603-a7a5-44de-9d96-9183e0823295",
-      "userId": "usr_70409603-a7a5-44de-9d96-9183e0823295",
-      "providerTxId": "sync_bal_usr_70409603-a7a5-44de-9d96-9183e0823295",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+3,300 Pts)",
-      "createdAt": "2026-10-29T14:18:02.941+00:00",
-      "processedAt": "2026-10-29T14:18:02.941+00:00"
-    },
-    {
-      "id": "le_sync_usr_a097a348-f66b-4c25-975d-41d5df65c145",
-      "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
-      "providerTxId": "sync_bal_usr_a097a348-f66b-4c25-975d-41d5df65c145",
-      "amountCents": 120,
-      "points": 12000,
-      "grossCents": 240,
-      "adminProfitCents": 120,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+12,000 Pts)",
-      "createdAt": "2026-10-29T14:17:51.465+00:00",
-      "processedAt": "2026-10-29T14:17:51.465+00:00"
-    },
-    {
-      "id": "le_sync_usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
-      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
-      "providerTxId": "sync_bal_usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
-      "amountCents": 48,
-      "points": 4800,
-      "grossCents": 96,
-      "adminProfitCents": 48,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+4,800 Pts)",
-      "createdAt": "2026-10-29T14:17:43.225+00:00",
-      "processedAt": "2026-10-29T14:17:43.225+00:00"
-    },
-    {
-      "id": "le_sync_usr_008e69e1-c67b-4ece-9368-deb068a1938d",
-      "userId": "usr_008e69e1-c67b-4ece-9368-deb068a1938d",
-      "providerTxId": "sync_bal_usr_008e69e1-c67b-4ece-9368-deb068a1938d",
-      "amountCents": 98,
-      "points": 9800,
-      "grossCents": 196,
-      "adminProfitCents": 98,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+9,800 Pts)",
-      "createdAt": "2026-10-29T14:17:52.635+00:00",
-      "processedAt": "2026-10-29T14:17:52.635+00:00"
-    },
-    {
-      "id": "le_sync_usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
-      "userId": "usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
-      "providerTxId": "sync_bal_usr_9c28294b-7e5a-4fc4-a8c1-27cfe415c2d9",
-      "amountCents": 94,
-      "points": 9400,
-      "grossCents": 188,
-      "adminProfitCents": 94,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+9,400 Pts)",
-      "createdAt": "2026-10-29T14:18:01.325+00:00",
-      "processedAt": "2026-10-29T14:18:01.325+00:00"
-    },
-    {
-      "id": "le_sync_usr_087d29cb-db65-4b67-8d99-598af6e41930",
-      "userId": "usr_087d29cb-db65-4b67-8d99-598af6e41930",
-      "providerTxId": "sync_bal_usr_087d29cb-db65-4b67-8d99-598af6e41930",
-      "amountCents": 98,
-      "points": 9800,
-      "grossCents": 196,
-      "adminProfitCents": 98,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+9,800 Pts)",
-      "createdAt": "2026-10-29T14:18:02.103+00:00",
-      "processedAt": "2026-10-29T14:18:02.103+00:00"
-    },
-    {
-      "id": "le_sync_usr_3db9f9c5-8a73-419f-88ab-e98373b51090",
-      "userId": "usr_3db9f9c5-8a73-419f-88ab-e98373b51090",
-      "providerTxId": "sync_bal_usr_3db9f9c5-8a73-419f-88ab-e98373b51090",
-      "amountCents": 13,
-      "points": 1250,
-      "grossCents": 25,
-      "adminProfitCents": 12,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+1,250 Pts)",
-      "createdAt": "2026-10-29T20:52:20.106+00:00",
-      "processedAt": "2026-10-29T20:52:20.106+00:00"
-    },
-    {
-      "id": "le_sync_usr_c15d5963-c63b-4a21-bf7f-83e371f8a753",
-      "userId": "usr_c15d5963-c63b-4a21-bf7f-83e371f8a753",
-      "providerTxId": "sync_bal_usr_c15d5963-c63b-4a21-bf7f-83e371f8a753",
-      "amountCents": 22,
-      "points": 2200,
-      "grossCents": 44,
-      "adminProfitCents": 22,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+2,200 Pts)",
-      "createdAt": "2026-10-29T17:22:26.139+00:00",
-      "processedAt": "2026-10-29T17:22:26.139+00:00"
-    },
-    {
-      "id": "le_sync_usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
-      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
-      "providerTxId": "sync_bal_usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
-      "amountCents": 89,
-      "points": 8900,
-      "grossCents": 178,
-      "adminProfitCents": 89,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+8,900 Pts)",
-      "createdAt": "2026-10-29T17:22:26.53+00:00",
-      "processedAt": "2026-10-29T17:22:26.53+00:00"
-    },
-    {
-      "id": "le_sync_usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
-      "userId": "usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
-      "providerTxId": "sync_bal_usr_8d8cd8dc-e4c3-4f10-b4af-3cda6e0e49d4",
-      "amountCents": 15,
-      "points": 1450,
-      "grossCents": 29,
-      "adminProfitCents": 14,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+1,450 Pts)",
-      "createdAt": "2026-10-29T17:22:22.823+00:00",
-      "processedAt": "2026-10-29T17:22:22.823+00:00"
-    },
-    {
-      "id": "le_sync_usr_427b760c-880a-47c4-93b6-6ea322e9dafd",
-      "userId": "usr_427b760c-880a-47c4-93b6-6ea322e9dafd",
-      "providerTxId": "sync_bal_usr_427b760c-880a-47c4-93b6-6ea322e9dafd",
-      "amountCents": 41,
-      "points": 4100,
-      "grossCents": 82,
-      "adminProfitCents": 41,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+4,100 Pts)",
-      "createdAt": "2026-10-29T14:18:05.316+00:00",
-      "processedAt": "2026-10-29T14:18:05.316+00:00"
-    },
-    {
-      "id": "le_sync_usr_4d1d4804-48ec-421b-884f-6981e78059d8",
-      "userId": "usr_4d1d4804-48ec-421b-884f-6981e78059d8",
-      "providerTxId": "sync_bal_usr_4d1d4804-48ec-421b-884f-6981e78059d8",
-      "amountCents": 93,
-      "points": 9300,
-      "grossCents": 186,
-      "adminProfitCents": 93,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+9,300 Pts)",
-      "createdAt": "2026-10-29T14:17:44.418+00:00",
-      "processedAt": "2026-10-29T14:17:44.418+00:00"
-    },
-    {
-      "id": "le_sync_usr_1f141360-ca2f-4406-8d25-c53251b25004",
-      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
-      "providerTxId": "sync_bal_usr_1f141360-ca2f-4406-8d25-c53251b25004",
-      "amountCents": 94,
-      "points": 9400,
-      "grossCents": 188,
-      "adminProfitCents": 94,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+9,400 Pts)",
-      "createdAt": "2026-10-29T14:17:47.156+00:00",
-      "processedAt": "2026-10-29T14:17:47.156+00:00"
-    },
-    {
-      "id": "le_sync_usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
-      "userId": "usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
-      "providerTxId": "sync_bal_usr_f35f31e3-4266-4cbe-8a0c-0621c89ad661",
-      "amountCents": 111,
-      "points": 11100,
-      "grossCents": 222,
-      "adminProfitCents": 111,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+11,100 Pts)",
-      "createdAt": "2026-10-29T14:17:53.197+00:00",
-      "processedAt": "2026-10-29T14:17:53.197+00:00"
-    },
-    {
-      "id": "le_sync_usr_50a2316b-8f7a-4004-83bc-6448c3ea14bf",
-      "userId": "usr_50a2316b-8f7a-4004-83bc-6448c3ea14bf",
-      "providerTxId": "sync_bal_usr_50a2316b-8f7a-4004-83bc-6448c3ea14bf",
-      "amountCents": 78,
-      "points": 7800,
-      "grossCents": 156,
-      "adminProfitCents": 78,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+7,800 Pts)",
-      "createdAt": "2026-10-29T14:18:02.55+00:00",
-      "processedAt": "2026-10-29T14:18:02.55+00:00"
-    },
-    {
-      "id": "le_sync_usr_7b5750fe-7809-4344-9fd1-29bc9f495ee5",
-      "userId": "usr_7b5750fe-7809-4344-9fd1-29bc9f495ee5",
-      "providerTxId": "sync_bal_usr_7b5750fe-7809-4344-9fd1-29bc9f495ee5",
-      "amountCents": 33,
-      "points": 3300,
-      "grossCents": 66,
-      "adminProfitCents": 33,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+3,300 Pts)",
-      "createdAt": "2026-10-29T14:18:03.341+00:00",
-      "processedAt": "2026-10-29T14:18:03.341+00:00"
-    },
-    {
-      "id": "le_sync_usr_24499975-58fe-425e-b00b-245791cfc926",
-      "userId": "usr_24499975-58fe-425e-b00b-245791cfc926",
-      "providerTxId": "sync_bal_usr_24499975-58fe-425e-b00b-245791cfc926",
-      "amountCents": 45,
-      "points": 4450,
-      "grossCents": 89,
-      "adminProfitCents": 44,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+4,450 Pts)",
-      "createdAt": "2026-10-29T14:17:42.857+00:00",
-      "processedAt": "2026-10-29T14:17:42.857+00:00"
-    },
-    {
-      "id": "le_sync_usr_58a4452c-947b-4096-a95b-32ae6f2ec39e",
-      "userId": "usr_58a4452c-947b-4096-a95b-32ae6f2ec39e",
-      "providerTxId": "sync_bal_usr_58a4452c-947b-4096-a95b-32ae6f2ec39e",
-      "amountCents": 89,
-      "points": 8900,
-      "grossCents": 178,
-      "adminProfitCents": 89,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+8,900 Pts)",
-      "createdAt": "2026-10-29T14:18:04.333+00:00",
-      "processedAt": "2026-10-29T14:18:04.333+00:00"
-    },
-    {
-      "id": "le_sync_usr_8559f325-b56a-410a-bb8a-5f637f485e70",
-      "userId": "usr_8559f325-b56a-410a-bb8a-5f637f485e70",
-      "providerTxId": "sync_bal_usr_8559f325-b56a-410a-bb8a-5f637f485e70",
-      "amountCents": 56,
-      "points": 5600,
-      "grossCents": 112,
-      "adminProfitCents": 56,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+5,600 Pts)",
-      "createdAt": "2026-10-29T14:17:46.791+00:00",
-      "processedAt": "2026-10-29T14:17:46.791+00:00"
-    },
-    {
-      "id": "le_sync_usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
-      "userId": "usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
-      "providerTxId": "sync_bal_usr_08609e16-7ae5-46f6-91d6-82845c5eae6e",
-      "amountCents": 98,
-      "points": 9800,
-      "grossCents": 196,
-      "adminProfitCents": 98,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+9,800 Pts)",
-      "createdAt": "2026-10-29T14:17:59.013+00:00",
-      "processedAt": "2026-10-29T14:17:59.013+00:00"
-    },
-    {
-      "id": "le_sync_50ef23d0-7b16-45b7-b866-ceede570e7e7",
-      "userId": "50ef23d0-7b16-45b7-b866-ceede570e7e7",
-      "providerTxId": "sync_bal_50ef23d0-7b16-45b7-b866-ceede570e7e7",
-      "amountCents": 130,
-      "points": 13000,
-      "grossCents": 260,
-      "adminProfitCents": 130,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+13,000 Pts)",
-      "createdAt": "2026-10-29T14:23:07.41944+00:00",
-      "processedAt": "2026-10-29T14:23:07.41944+00:00"
-    },
-    {
-      "id": "le_sync_usr_164024a3-9b3b-485d-bebc-7c803832cdcd",
-      "userId": "usr_164024a3-9b3b-485d-bebc-7c803832cdcd",
-      "providerTxId": "sync_bal_usr_164024a3-9b3b-485d-bebc-7c803832cdcd",
-      "amountCents": 17,
-      "points": 1650,
-      "grossCents": 33,
-      "adminProfitCents": 16,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+1,650 Pts)",
-      "createdAt": "2026-10-29T17:22:23.209+00:00",
-      "processedAt": "2026-10-29T17:22:23.209+00:00"
-    },
-    {
-      "id": "le_sync_usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
-      "userId": "usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
-      "providerTxId": "sync_bal_usr_2f75c53f-e1eb-487e-972b-d30a4d713b6f",
-      "amountCents": 46,
-      "points": 4550,
-      "grossCents": 91,
-      "adminProfitCents": 45,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+4,550 Pts)",
-      "createdAt": "2026-10-29T17:23:18.581+00:00",
-      "processedAt": "2026-10-29T17:23:18.581+00:00"
-    },
-    {
-      "id": "le_sync_usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
-      "userId": "usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
-      "providerTxId": "sync_bal_usr_1b40dd26-f4c1-4422-93f9-5018b91cafab",
-      "amountCents": 163,
-      "points": 16300,
-      "grossCents": 326,
-      "adminProfitCents": 163,
-      "appliedSharePercent": 50,
-      "entryType": "credit",
-      "status": "confirmed",
-      "description": "Verified Survey Rewards Balance (+16,300 Pts)",
-      "createdAt": "2026-10-29T20:51:52.305+00:00",
-      "processedAt": "2026-10-29T20:51:52.305+00:00"
+      "createdAt": "2026-10-29T13:34:27.000Z"
     }
   ],
   "withdrawalRequests": [],

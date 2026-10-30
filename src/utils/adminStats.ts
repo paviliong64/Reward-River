@@ -513,17 +513,28 @@ export function computeAdminDashboardStats(params: {
         !ledger.some(l => l.providerTxId === tc.providerTxId || l.reversalRef === tc.providerTxId)
     ).length;
 
-  // 4. All-time and Filtered Points Totals
+  // 4. All-time and Filtered Points & Revenue Totals
   let allTimePointsAwarded = 0;
   let allTimePointsReversed = 0;
   let allTimePointsDebited = 0;
+  let allTimeGrossCentsAccum = 0;
+
+  const entryToGross = (l: LedgerEntry) => {
+    const pts = entryToPts(l);
+    return typeof l.grossCents === 'number' && l.grossCents > 0
+      ? l.grossCents
+      : Math.max(1, Math.round((pts / pointsPerUsdt) * 100));
+  };
 
   for (const l of ledger) {
     const pts = entryToPts(l);
+    const gross = entryToGross(l);
     if (l.status === 'confirmed' && l.entryType === 'credit') {
       allTimePointsAwarded += pts;
+      allTimeGrossCentsAccum += gross;
     } else if ((l.status === 'confirmed' || l.status === 'reversed') && l.entryType === 'reversal') {
       allTimePointsReversed += pts;
+      allTimeGrossCentsAccum = Math.max(0, allTimeGrossCentsAccum - gross);
     } else if (l.status === 'confirmed' && l.entryType === 'debit') {
       allTimePointsDebited += pts;
     }
@@ -542,16 +553,25 @@ export function computeAdminDashboardStats(params: {
   const netAllTimeAwardedPoints = Math.max(0, allTimePointsAwarded - allTimePointsReversed);
   const outstandingPointsBalance = Math.max(0, netAllTimeAwardedPoints - allTimeWithdrawnPoints);
 
-  // Filtered window points
+  const shareRatio = (userSharePercent || 50) / 100;
+  const allTimeGrossRevenueCents = allTimeGrossCentsAccum;
+  const allTimeUserRewardCents = Math.round((netAllTimeAwardedPoints / pointsPerUsdt) * shareRatio * 100);
+  const allTimeAdminProfitCents = Math.max(0, allTimeGrossRevenueCents - allTimeUserRewardCents);
+
+  // Filtered window points & revenue
   let filteredPointsAwarded = 0;
   let filteredPointsReversed = 0;
   let filteredPointsDebited = 0;
+  let filteredGrossCentsAccum = 0;
   for (const l of filteredLedger) {
     const pts = entryToPts(l);
+    const gross = entryToGross(l);
     if (l.status === 'confirmed' && l.entryType === 'credit') {
       filteredPointsAwarded += pts;
+      filteredGrossCentsAccum += gross;
     } else if ((l.status === 'confirmed' || l.status === 'reversed') && l.entryType === 'reversal') {
       filteredPointsReversed += pts;
+      filteredGrossCentsAccum = Math.max(0, filteredGrossCentsAccum - gross);
     } else if (l.status === 'confirmed' && l.entryType === 'debit') {
       filteredPointsDebited += pts;
     }
@@ -561,6 +581,9 @@ export function computeAdminDashboardStats(params: {
     .reduce((sum, w) => sum + w.amountCents, 0);
   const filteredPointsRedeemed = Math.round(filteredWithdrawnCents * 100) + filteredPointsDebited;
   const netFilteredPointsAwarded = Math.max(0, filteredPointsAwarded - filteredPointsReversed);
+  const grossRevenueCents = filteredGrossCentsAccum;
+  const userRewardCents = Math.round((netFilteredPointsAwarded / pointsPerUsdt) * shareRatio * 100);
+  const adminProfitCents = Math.max(0, grossRevenueCents - userRewardCents);
 
   // 5. Active Users & Top 10 Users by Points
   const userSummaries = users.map(u => {
@@ -693,22 +716,26 @@ export function computeAdminDashboardStats(params: {
   for (const l of filteredLedger) {
     const b = ensureBucket(periodKeyFor(l.createdAt));
     const pts = entryToPts(l);
-    const gross = l.grossCents && l.grossCents >= l.amountCents ? l.grossCents : Math.round((pts / pointsPerUsdt) * 100);
-    const profit = Math.max(0, gross - l.amountCents);
+    const gross = entryToGross(l);
 
     if (l.status === 'confirmed' && l.entryType === 'credit') {
       b.tasksCompleted += 1;
       b.pointsAwarded += pts;
       b.grossRevenueCents += gross;
-      b.adminProfitCents += profit;
     } else if (l.status === 'pending') {
       b.tasksPending += 1;
     } else if (l.status === 'reversed' || l.status === 'rejected' || l.entryType === 'reversal') {
       b.tasksRejected += 1;
       b.pointsAwarded = Math.max(0, b.pointsAwarded - pts);
+      b.grossRevenueCents = Math.max(0, b.grossRevenueCents - gross);
     } else if (l.status === 'confirmed' && l.entryType === 'debit') {
       b.pointsRedeemed += pts;
     }
+  }
+
+  for (const b of buckets.values()) {
+    const bucketUserCents = Math.round((b.pointsAwarded / pointsPerUsdt) * shareRatio * 100);
+    b.adminProfitCents = Math.max(0, b.grossRevenueCents - bucketUserCents);
   }
 
   for (const w of filteredWithdrawals) {
@@ -760,10 +787,16 @@ export function computeAdminDashboardStats(params: {
       totalPointsAwarded: netFilteredPointsAwarded,
       totalPointsRedeemed: filteredPointsRedeemed,
       outstandingPointsBalance,
+      grossRevenueCents,
+      userRewardCents,
+      adminProfitCents,
       allTimePointsAwarded: netAllTimeAwardedPoints,
       totalPointsAwardedAllTime: netAllTimeAwardedPoints,
       allTimePointsRedeemed: allTimeWithdrawnPoints,
-      allTimePaidWithdrawnPoints
+      allTimePaidWithdrawnPoints,
+      allTimeGrossRevenueCents,
+      allTimeUserRewardCents,
+      allTimeAdminProfitCents
     },
     topUsersByPoints,
     timeSeries

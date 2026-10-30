@@ -557,19 +557,19 @@ export class CpxResearchService {
       const pointsPerUsdt = settings?.pointsPerUsdt || 5000; // 5,000 Points = 1.00 USD
       const existingLedger = dbStore.getAllLedgerEntries();
       
-      // Build instant lookup set for existing transactions (both in memory and Supabase)
-      const existingTxIds = new Set<string>();
+      // Build instant lookup map for existing transactions (both in memory and Supabase)
+      const existingEntryMap = new Map<string, LedgerEntry>();
       for (const l of existingLedger) {
         if (l.providerTxId) {
           const clean = String(l.providerTxId).trim().toLowerCase();
-          existingTxIds.add(clean);
-          existingTxIds.add(clean.replace(/^cpx_/, ''));
-          existingTxIds.add(`cpx_${clean}`);
+          existingEntryMap.set(clean, l);
+          existingEntryMap.set(clean.replace(/^cpx_/, ''), l);
+          existingEntryMap.set(`cpx_${clean}`, l);
         }
         if (l.id) {
           const cleanId = String(l.id).trim().toLowerCase();
-          existingTxIds.add(cleanId);
-          existingTxIds.add(cleanId.replace(/^le_cpx_/, ''));
+          existingEntryMap.set(cleanId, l);
+          existingEntryMap.set(cleanId.replace(/^le_cpx_/, ''), l);
         }
       }
 
@@ -586,17 +586,29 @@ export class CpxResearchService {
         if (!txId) continue;
 
         const txLower = txId.toLowerCase();
-        // 1. FAST CHECK FIRST: If transaction is already processed, skip immediately! Zero DB roundtrips!
-        if (
-          existingTxIds.has(txLower) ||
-          existingTxIds.has(`cpx_${txLower}`) ||
-          existingTxIds.has(`le_cpx_${txLower}`)
-        ) {
-          alreadyProcessedCount++;
-          continue;
-        }
+        const existingEntry =
+          existingEntryMap.get(txLower) ||
+          existingEntryMap.get(`cpx_${txLower}`) ||
+          existingEntryMap.get(`le_cpx_${txLower}`);
 
-        // 2. Identify target user
+        // Apply 50% Margin Plan strictly from Official CPX Publisher USD (verdienst_publisher):
+        // 5,000 Points = $1.00 Gross USD (10,000 Points = $1.00 User Payout at 50% Share)
+        const publisherUsd = Number(item.verdienst_publisher) || 0;
+        const grossCents = Math.max(1, Math.round(publisherUsd * 100));
+        const points = Math.max(50, Math.round(publisherUsd * pointsPerUsdt));
+        const userAmountCents = Math.max(1, Math.round(points / 100));
+        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+
+        const rawDt = String(item.datetime || '').trim();
+        const isoInput = /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?$/.test(rawDt)
+          ? `${rawDt.replace(/\s+/, 'T')}+05:00`
+          : rawDt;
+        const createdAtDate =
+          isoInput && !isNaN(new Date(isoInput).getTime())
+            ? new Date(isoInput).toISOString()
+            : new Date().toISOString();
+
+        // 1. Identify target user
         const extUserId = String(item.external_user_id || '').trim();
         const stripped = extUserId.replace(/^rr_(cpx_)?/i, '');
 
@@ -619,6 +631,20 @@ export class CpxResearchService {
               (cleanExt.length >= 8 && (cleanId.includes(cleanExt) || cleanOpaque.includes(cleanExt)))
             );
           });
+        }
+
+        // Fast-path check: if entry already exists with exact matching points, grossCents, userId, and timestamp, skip!
+        if (
+          existingEntry &&
+          user &&
+          existingEntry.points === points &&
+          existingEntry.grossCents === grossCents &&
+          existingEntry.amountCents === userAmountCents &&
+          existingEntry.userId === user.id &&
+          existingEntry.createdAt === createdAtDate
+        ) {
+          alreadyProcessedCount++;
+          continue;
         }
 
         // If still not found, check Supabase users table directly
@@ -669,26 +695,13 @@ export class CpxResearchService {
             role: 'user',
             externalOpaqueId: extUserId,
             countryCode: item.country_code || 'US',
-            createdAt: item.datetime ? new Date(item.datetime).toISOString() : new Date().toISOString(),
+            createdAt: createdAtDate,
             updatedAt: new Date().toISOString(),
             provider: 'password'
           });
         }
 
-        // Apply 50% Margin Plan:
-        const publisherUsd = Number(item.verdienst_publisher) || 0;
-        const grossCents = Math.max(1, Math.round(publisherUsd * 100));
-        const rawUserLocal = Number(item.verdienst_user_local_money);
-        const expectedPointsAtFactor = Math.max(50, Math.round(publisherUsd * pointsPerUsdt));
-        const points =
-          !isNaN(rawUserLocal) && rawUserLocal > 0 && rawUserLocal <= grossCents * 55
-            ? Math.round(rawUserLocal)
-            : expectedPointsAtFactor;
-        const userAmountCents = Math.max(1, Math.round(points / 100));
-        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-
-        const entryId = `le_cpx_${txId}`;
-        const createdAtDate = item.datetime ? new Date(item.datetime).toISOString() : new Date().toISOString();
+        const entryId = existingEntry?.id || `le_cpx_${txId}`;
 
         const newEntry: LedgerEntry = {
           id: entryId,
@@ -708,9 +721,9 @@ export class CpxResearchService {
 
         const upsertRes = await dbStore.upsertLedgerEntry(newEntry);
         if (upsertRes.entry) {
-          existingTxIds.add(txLower);
-          existingTxIds.add(`cpx_${txLower}`);
-          existingTxIds.add(`le_cpx_${txLower}`);
+          existingEntryMap.set(txLower, upsertRes.entry);
+          existingEntryMap.set(`cpx_${txLower}`, upsertRes.entry);
+          existingEntryMap.set(`le_cpx_${txLower}`, upsertRes.entry);
           syncedCount++;
           totalPointsCredited += points;
           totalUsdEarned += publisherUsd;

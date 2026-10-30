@@ -74,6 +74,8 @@ export function calculateUserBalances(
   const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 50)));
   const shareRatio = safeShare / 100;
   const centsToPts = (c: number) => Math.round((Math.max(0, c) / safeShare) * safePointsRate);
+  const ptsToCents = (pts: number) =>
+    Math.round((Math.max(0, pts) / safePointsRate) * shareRatio * 100);
 
   for (const entry of entries) {
     if (entry.userId !== userId) continue;
@@ -84,33 +86,37 @@ export function calculateUserBalances(
         : centsToPts(Math.abs(entry.amountCents));
 
     if (entry.status === 'confirmed' && entry.entryType === 'credit') {
-      totalConfirmedCredits += entry.amountCents;
-      totalEarnedCents += entry.amountCents;
       totalConfirmedPoints += entryPts;
       completedSurveysCount += 1;
-      const gross = entry.grossCents ?? Math.round(entry.amountCents / shareRatio);
-      const profit = entry.adminProfitCents ?? Math.max(0, gross - entry.amountCents);
+      const gross =
+        typeof entry.grossCents === 'number' && entry.grossCents > 0
+          ? entry.grossCents
+          : Math.round((entryPts / safePointsRate) * 100);
       totalGrossRevenueCents += gross;
-      totalAdminProfitCents += profit;
     } else if (
       (entry.status === 'confirmed' || entry.status === 'reversed') &&
       (entry.entryType === 'reversal' || entry.entryType === 'debit')
     ) {
-      const absAmount = Math.abs(entry.amountCents);
-      totalDebitsAndReversals += absAmount;
       totalDebitReversalPoints += entryPts;
       if (entry.entryType === 'reversal') {
         completedSurveysCount = Math.max(0, completedSurveysCount - 1);
       }
-      const grossRev = entry.grossCents ?? Math.round(absAmount / shareRatio);
-      const profitRev = entry.adminProfitCents ?? Math.max(0, grossRev - absAmount);
+      const grossRev =
+        typeof entry.grossCents === 'number' && entry.grossCents > 0
+          ? entry.grossCents
+          : Math.round((entryPts / safePointsRate) * 100);
       totalGrossRevenueCents = Math.max(0, totalGrossRevenueCents - grossRev);
-      totalAdminProfitCents = Math.max(0, totalAdminProfitCents - profitRev);
     } else if (entry.status === 'pending' && entry.entryType === 'credit') {
-      pendingCents += entry.amountCents;
       pendingPointsAccum += entryPts;
     }
   }
+
+  totalConfirmedCredits = ptsToCents(totalConfirmedPoints);
+  totalDebitsAndReversals = ptsToCents(totalDebitReversalPoints);
+  pendingCents = ptsToCents(pendingPointsAccum);
+  totalEarnedCents = totalConfirmedCredits;
+  const netConfirmedEarnings = Math.max(0, totalConfirmedCredits - totalDebitsAndReversals);
+  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - netConfirmedEarnings);
 
   // Active reserved withdrawals (requested, under_review, approved, processing)
   let reservedWithdrawalCents = 0;
@@ -128,7 +134,6 @@ export function calculateUserBalances(
     // 'rejected', 'failed', 'cancelled' release the reservation
   }
 
-  const netConfirmedEarnings = totalConfirmedCredits - totalDebitsAndReversals;
   const availableCents = Math.max(0, netConfirmedEarnings - reservedWithdrawalCents);
   const reservedWithdrawalPoints = centsToPts(reservedWithdrawalCents);
   const netConfirmedPoints = Math.max(0, totalConfirmedPoints - totalDebitReversalPoints);
