@@ -246,8 +246,6 @@ export interface SystemSettings {
   timewallNegativeBalanceMode?: 'allow' | 'flag_account';
   timewallMaxSingleRevenueUsd?: string;
   trustedProxies?: string;
-  earnMaintenanceMode?: 'auto' | 'live' | 'maintenance';
-  taskMaintenanceMode?: 'auto' | 'live' | 'maintenance';
   updatedAt: string;
 }
 

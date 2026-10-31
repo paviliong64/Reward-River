@@ -1155,20 +1155,10 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
 
     const cpxSecureHash = generateCpxSecureHash(opaqueId, cpxResearchService.hashKey);
 
-    const earnMaintenanceMode = settings.earnMaintenanceMode || 'auto';
-    const isEarnLive =
-      earnMaintenanceMode === 'live'
-        ? true
-        : earnMaintenanceMode === 'maintenance'
-        ? false
-        : surveysWithHybridShare.length > 0;
-
     res.json({
       success: true,
       surveys: surveysWithHybridShare,
       totalAvailable: surveysWithHybridShare.length,
-      earnMaintenanceMode,
-      isEarnLive,
       pointsPerUsdt,
       surveyDisplayMode: settings.surveyDisplayMode || 'hybrid',
       usdtQuote,
@@ -3596,86 +3586,33 @@ app.get('/api/earn/timewall', requireAuth, async (req: AuthenticatedRequest, res
   const screenHeight = Number(req.query.screenHeight) || 844;
   const limit = Number(req.query.limit) || 10;
 
-  const [surveyApi, offerwallProbe] = await Promise.all([
-    timewallService.fetchSurveysForUser({
-      userId: freshUser.id,
-      userIp: endUserIp,
-      userAgent,
-      screenWidth,
-      screenHeight,
-      limit,
-      provider: 'all'
-    }),
-    timewallService.probeOfferwallLive(freshUser.id, req.query.force === '1')
-  ]);
-
-  const settings = dbStore.getSettings();
-  const taskMaintenanceMode = settings.taskMaintenanceMode || 'auto';
-  const surveyApiLive = Boolean(
-    surveyApi.success && (surveyApi.surveys.length > 0 || surveyApi.prescreenerRequired)
-  );
-  const offerwallLive =
-    taskMaintenanceMode === 'live'
-      ? true
-      : taskMaintenanceMode === 'maintenance'
-      ? false
-      : Boolean(offerwallProbe.isLive && cfg.oid);
+  const surveyApi = await timewallService.fetchSurveysForUser({
+    userId: freshUser.id,
+    userIp: endUserIp,
+    userAgent,
+    screenWidth,
+    screenHeight,
+    limit,
+    provider: 'all'
+  });
 
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.json({
     blocked: false,
-    provider: 'reward_river_tasks',
-    displayName: 'Reward River Task & Offer Center',
+    provider: 'timewall',
+    displayName: 'TimeWall.io',
     isConfigured: timewallService.isConfigured(),
     oidConfigured: Boolean(cfg.oid),
     apiKeyConfigured: Boolean(cfg.apiKey),
-    offerwallLive,
-    offerwallReason: offerwallProbe.reason,
-    surveyApiLive,
-    taskMaintenanceMode,
     iframeUrl,
     coinsPerUsd: cfg.coinsPerUsd,
     allowDecimals: cfg.allowDecimals,
-    note: 'Rewards are credited automatically to your Reward River balance after the advertiser confirms completion (usually within minutes).',
+    note: 'Rewards are credited after the advertiser confirms, which can take minutes to days.',
     balances,
     history,
     surveyApi
   });
 });
-
-/**
- * POST /api/admin/service-visibility
- * Allows Admin to set Earn or Task section visibility mode: 'auto' (live health check), 'live', or 'maintenance'.
- */
-app.post(
-  '/api/admin/service-visibility',
-  requireAuth,
-  requireAdmin,
-  blockWhenImpersonating,
-  async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { earnMaintenanceMode, taskMaintenanceMode } = req.body || {};
-      const validModes = ['auto', 'live', 'maintenance'];
-      const updates: Partial<Record<'earnMaintenanceMode' | 'taskMaintenanceMode', 'auto' | 'live' | 'maintenance'>> = {};
-      if (earnMaintenanceMode && validModes.includes(earnMaintenanceMode)) {
-        updates.earnMaintenanceMode = earnMaintenanceMode;
-      }
-      if (taskMaintenanceMode && validModes.includes(taskMaintenanceMode)) {
-        updates.taskMaintenanceMode = taskMaintenanceMode;
-      }
-      const updated = await dbStore.updateSettings(updates);
-      res.json({
-        success: true,
-        earnMaintenanceMode: updated.earnMaintenanceMode || 'auto',
-        taskMaintenanceMode: updated.taskMaintenanceMode || 'auto'
-      });
-    } catch (err) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'Failed to update service visibility mode.'
-      });
-    }
-  }
-);
 
 /**
  * POST /api/earn/timewall/surveys

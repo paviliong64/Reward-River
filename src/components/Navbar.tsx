@@ -320,7 +320,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => (user ? handleNavClick('surveys') : scrollToSection('ways-to-earn'))}
                 className="w-full text-left px-3 py-2 text-sm font-bold text-[#192F40] dark:text-slate-200 hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg"
               >
-                Earn
+                Earn Points (Surveys)
               </button>
               {user && (
                 <button
@@ -329,7 +329,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="w-full text-left px-3 py-2 text-sm font-bold text-[#192F40] dark:text-slate-200 hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg flex items-center gap-2"
                 >
                   <Layers className="w-4 h-4 text-[#079B55]" />
-                  <span>Task</span>
+                  <span>Earn: TimeWall Offerwall</span>
                 </button>
               )}
               {user && (
