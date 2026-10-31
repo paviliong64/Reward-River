@@ -138,7 +138,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         : 'text-[#192F40] dark:text-slate-200 hover:text-[#079B55] dark:hover:text-[#4CC65A]'
                     }`}
                   >
-                    Earn Surveys
+                    Earn
                   </button>
                   <button
                     type="button"
@@ -150,7 +150,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5 shrink-0 text-[#079B55]" />
-                    <span>TimeWall</span>
+                    <span>Task</span>
                   </button>
                 </>
               ) : (
@@ -320,7 +320,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => (user ? handleNavClick('surveys') : scrollToSection('ways-to-earn'))}
                 className="w-full text-left px-3 py-2 text-sm font-bold text-[#192F40] dark:text-slate-200 hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg"
               >
-                Earn Points (Surveys)
+                Earn
               </button>
               {user && (
                 <button
@@ -329,7 +329,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="w-full text-left px-3 py-2 text-sm font-bold text-[#192F40] dark:text-slate-200 hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg flex items-center gap-2"
                 >
                   <Layers className="w-4 h-4 text-[#079B55]" />
-                  <span>Earn: TimeWall Offerwall</span>
+                  <span>Task</span>
                 </button>
               )}
               {user && (

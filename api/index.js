@@ -823,7 +823,7 @@ function verifyAndComputeTimewallCoins(params) {
       mismatchReason: "Revenue must be non-zero"
     };
   }
-  const rateInt = BigInt(Math.max(1, Math.round(params.coinsPerUsd || 5e3)));
+  const rateInt = BigInt(Math.max(1, Math.round(params.coinsPerUsd || 1e4)));
   const expectedCoinsMicros = absRevenueMicros * rateInt;
   const hasCurrencyParam = params.currencyRaw !== void 0 && String(params.currencyRaw).trim() !== "";
   let receivedCoinsMicros = expectedCoinsMicros;
@@ -1168,11 +1168,12 @@ var DatabaseStore = class {
         sitemapEnabled: true,
         turnstileSiteKey: process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "0x4AAAAAAFsriP1bMbtMNkub",
         turnstileSecretKey: process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || "0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw",
-        timewallOid: process.env.TIMEWALL_OID || "",
+        timewallOid: process.env.TIMEWALL_OID || "bbaca457a255e3e2",
         timewallPlacementUrl: process.env.TIMEWALL_PLACEMENT_URL || "https://timewall.io/users/login?oid={oid}&uid={userid}",
+        timewallApiKey: process.env.TIMEWALL_API_KEY || "tw_0fb821a06355392350c944a0e69ef60f40f0565fff6ffe62ce57629c76e8f04c",
         timewallSecret: process.env.TIMEWALL_SECRET || "3e8f2c753e704d59013d34c6474363c3",
         timewallAllowedIps: process.env.TIMEWALL_ALLOWED_IPS || DEFAULT_TIMEWALL_ALLOWED_IPS.join(","),
-        timewallCoinsPerUsd: Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : 5e3,
+        timewallCoinsPerUsd: Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : 1e4,
         timewallAllowDecimals: String(process.env.TIMEWALL_ALLOW_DECIMALS || "false").toLowerCase() === "true",
         timewallCreditTypes: process.env.TIMEWALL_CREDIT_TYPES ?? "",
         timewallReversalTypes: process.env.TIMEWALL_REVERSAL_TYPES ?? "chargeback,reversal,cancel,deduct,2",
@@ -1294,8 +1295,11 @@ var DatabaseStore = class {
             teamBonusPercent: Math.max(0, Number(parsed.systemSettings?.teamBonusPercent) || 0),
             aoyApiKey: parsed.systemSettings?.aoyApiKey || process.env.AOY_API_KEY || "223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa",
             aoySecretKey: parsed.systemSettings?.aoySecretKey || process.env.AOY_SECRET_KEY || "8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92",
+            timewallOid: parsed.systemSettings?.timewallOid || process.env.TIMEWALL_OID || "bbaca457a255e3e2",
+            timewallApiKey: parsed.systemSettings?.timewallApiKey || process.env.TIMEWALL_API_KEY || "tw_0fb821a06355392350c944a0e69ef60f40f0565fff6ffe62ce57629c76e8f04c",
             timewallSecret: parsed.systemSettings?.timewallSecret || process.env.TIMEWALL_SECRET || "3e8f2c753e704d59013d34c6474363c3",
             timewallAllowedIps: parsed.systemSettings?.timewallAllowedIps || process.env.TIMEWALL_ALLOWED_IPS || DEFAULT_TIMEWALL_ALLOWED_IPS.join(","),
+            timewallCoinsPerUsd: Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : 1e4,
             minWithdrawalCents: 2500
           },
           adminAuditLogs: parsed.adminAuditLogs || [],
@@ -6272,12 +6276,18 @@ var TimewallService = class {
     this.displayName = "TimeWall.io";
     // Per-IP rate limit state on the postback route (TimeWall whitelisted IPs are exempt)
     this.ipBuckets = /* @__PURE__ */ new Map();
+    this.offerwallHealthCache = null;
   }
   getConfig() {
     const settings = dbStore.getSettings();
-    const oid = String(process.env.TIMEWALL_OID || settings.timewallOid || "").trim();
+    const oid = String(
+      process.env.TIMEWALL_OID || settings.timewallOid || "bbaca457a255e3e2"
+    ).trim();
     const placementUrlTemplate = String(
       process.env.TIMEWALL_PLACEMENT_URL || settings.timewallPlacementUrl || "https://timewall.io/users/login?oid={oid}&uid={userid}"
+    ).trim();
+    const apiKey = String(
+      process.env.TIMEWALL_API_KEY || settings.timewallApiKey || "tw_0fb821a06355392350c944a0e69ef60f40f0565fff6ffe62ce57629c76e8f04c"
     ).trim();
     const secret = String(
       process.env.TIMEWALL_SECRET || settings.timewallSecret || "3e8f2c753e704d59013d34c6474363c3"
@@ -6286,7 +6296,7 @@ var TimewallService = class {
       process.env.TIMEWALL_ALLOWED_IPS || settings.timewallAllowedIps || DEFAULT_TIMEWALL_ALLOWED_IPS.join(",")
     );
     const allowedIps = rawAllowedIps.split(",").map((s) => s.trim()).filter(Boolean);
-    const coinsPerUsd = Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : Number(settings.timewallCoinsPerUsd) > 0 ? Number(settings.timewallCoinsPerUsd) : Number(settings.pointsPerUsdt) > 0 ? Number(settings.pointsPerUsdt) : 5e3;
+    const coinsPerUsd = Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : Number(settings.timewallCoinsPerUsd) > 0 ? Number(settings.timewallCoinsPerUsd) : 1e4;
     const allowDecimals = process.env.TIMEWALL_ALLOW_DECIMALS !== void 0 ? String(process.env.TIMEWALL_ALLOW_DECIMALS).toLowerCase() === "true" : Boolean(settings.timewallAllowDecimals ?? false);
     const rawCreditTypes = String(
       process.env.TIMEWALL_CREDIT_TYPES ?? settings.timewallCreditTypes ?? ""
@@ -6307,6 +6317,7 @@ var TimewallService = class {
     return {
       oid,
       placementUrlTemplate,
+      apiKey,
       secret,
       allowedIps: allowedIps.length > 0 ? allowedIps : [...DEFAULT_TIMEWALL_ALLOWED_IPS],
       coinsPerUsd,
@@ -6323,13 +6334,87 @@ var TimewallService = class {
     return Boolean(cfg.oid || !cfg.placementUrlTemplate.includes("{oid}"));
   }
   /**
+   * Probes whether the Offerwall placement is live and ready for users.
+   * Caches result for 45s so user page loads stay fast while auto-activating as soon as live.
+   */
+  async probeOfferwallLive(userId, forceRefresh = false) {
+    const cfg = this.getConfig();
+    if (!cfg.oid) {
+      return { isLive: false, statusCode: 400, reason: "Placement not configured" };
+    }
+    if (!forceRefresh && this.offerwallHealthCache && this.offerwallHealthCache.oid === cfg.oid && this.offerwallHealthCache.expiresAt > Date.now()) {
+      return {
+        isLive: this.offerwallHealthCache.isLive,
+        statusCode: this.offerwallHealthCache.statusCode,
+        reason: this.offerwallHealthCache.reason
+      };
+    }
+    const probeUrl = this.buildOfferwallUrl(userId || "rr_health_probe");
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4500);
+      const res = await fetch(probeUrl, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml"
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      const statusCode = res.status;
+      if (!res.ok) {
+        const result2 = {
+          isLive: false,
+          statusCode,
+          reason: `Partner wall returned HTTP ${statusCode}`
+        };
+        this.offerwallHealthCache = { oid: cfg.oid, expiresAt: Date.now() + 3e4, ...result2 };
+        return result2;
+      }
+      const htmlSnippet = (await res.text().catch(() => "")).slice(0, 8e3).toLowerCase();
+      const unapprovedOrErrorMarkers = [
+        "placement not found",
+        "invalid placement",
+        "not approved",
+        "pending approval",
+        "placement is inactive",
+        "placement disabled",
+        "site not approved",
+        "account suspended",
+        "invalid oid"
+      ];
+      const matchedMarker = unapprovedOrErrorMarkers.find((m) => htmlSnippet.includes(m));
+      if (matchedMarker) {
+        const result2 = {
+          isLive: false,
+          statusCode: 503,
+          reason: `Placement under review (${matchedMarker})`
+        };
+        this.offerwallHealthCache = { oid: cfg.oid, expiresAt: Date.now() + 3e4, ...result2 };
+        return result2;
+      }
+      const result = { isLive: true, statusCode: 200 };
+      this.offerwallHealthCache = { oid: cfg.oid, expiresAt: Date.now() + 45e3, ...result };
+      return result;
+    } catch (err) {
+      const result = {
+        isLive: false,
+        statusCode: 503,
+        reason: err instanceof Error ? err.message : "Partner wall unreachable"
+      };
+      this.offerwallHealthCache = { oid: cfg.oid, expiresAt: Date.now() + 2e4, ...result };
+      return result;
+    }
+  }
+  /**
    * Builds the TimeWall offerwall URL SERVER-SIDE exclusively from the authenticated user's ID.
    * Never accepts a user ID from the client query/body.
    */
   buildOfferwallUrl(userId) {
     const cfg = this.getConfig();
     const safeUid = encodeURIComponent(String(userId || "").trim());
-    const safeOid = encodeURIComponent(cfg.oid || "YOUR_TIMEWALL_OID");
+    const safeOid = encodeURIComponent(cfg.oid || "bbaca457a255e3e2");
     let url = cfg.placementUrlTemplate || "https://timewall.io/users/login?oid={oid}&uid={userid}";
     url = url.replace(/\{userid\}/gi, safeUid).replace(/\{user_id\}/gi, safeUid).replace(/\{uid\}/gi, safeUid).replace(/\{oid\}/gi, safeOid);
     if (!url.includes(safeUid)) {
@@ -6337,6 +6422,107 @@ var TimewallService = class {
       url = `${url}${sep}uid=${safeUid}`;
     }
     return url;
+  }
+  /**
+   * Builds the exact S2S request payload for TimeWall's `POST https://api.timewall.io/get-surveys`.
+   * Required fields per TimeWall Survey API Reference: `uid`, `ip`, `user_agent` (must belong to the end user).
+   */
+  buildSurveyApiPayload(params) {
+    const rawIp = String(params.userIp || "").trim();
+    const isPrivateOrLoopback = !rawIp || rawIp === "127.0.0.1" || rawIp === "::1" || rawIp === "unknown" || rawIp.startsWith("::ffff:127.") || rawIp.startsWith("10.") || rawIp.startsWith("172.") || rawIp.startsWith("192.168.");
+    return {
+      uid: String(params.userId || "").trim(),
+      ip: isPrivateOrLoopback ? "203.0.113.7" : rawIp,
+      user_agent: String(params.userAgent || "").trim() || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      screen_width: Math.max(240, Math.min(7680, Math.round(Number(params.screenWidth) || 390))),
+      screen_height: Math.max(320, Math.min(4320, Math.round(Number(params.screenHeight) || 844))),
+      limit: Math.max(1, Math.min(50, Math.round(Number(params.limit) || 10))),
+      provider: String(params.provider || "all").trim() || "all"
+    };
+  }
+  /**
+   * Server-to-Server call to TimeWall Survey API (`POST https://api.timewall.io/get-surveys`).
+   * Keeps `TIMEWALL_API_KEY` strictly on the backend (`Authorization: Bearer YOUR_API_KEY`).
+   * Status codes: 200 = Success | 401 = Invalid API key | 400 = Invalid request | 422 = Validation error | 500 = Server error
+   * When `prescreener_required: true`, all survey links point to a prescreener ("complete your profile" prompt).
+   */
+  async fetchSurveysForUser(params) {
+    const cfg = this.getConfig();
+    if (!cfg.apiKey) {
+      return {
+        configured: false,
+        success: false,
+        prescreenerRequired: false,
+        currency: "Points",
+        surveys: [],
+        statusCode: 401,
+        message: "TIMEWALL_API_KEY is not configured on the server."
+      };
+    }
+    const requestBody = this.buildSurveyApiPayload(params);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8e3);
+      const response = await fetch("https://api.timewall.io/get-surveys", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${cfg.apiKey}`
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      const statusCode = response.status;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const statusExplanation = statusCode === 401 ? "Invalid TimeWall API key (401)" : statusCode === 400 ? "Invalid survey request (400)" : statusCode === 422 ? "Validation error from TimeWall Survey API (422)" : `TimeWall Survey API error (${statusCode})`;
+        return {
+          configured: true,
+          success: false,
+          prescreenerRequired: false,
+          currency: String(data?.currency || "Points"),
+          surveys: [],
+          statusCode,
+          message: String(data?.message || data?.error || statusExplanation)
+        };
+      }
+      const rawSurveys = Array.isArray(data?.surveys) ? data.surveys : [];
+      const surveys = rawSurveys.filter((s) => s && s.id && s.link).map((s) => ({
+        id: String(s.id),
+        loi: Math.max(1, Math.round(Number(s.loi) || 10)),
+        usd_rate: Number(s.usd_rate) || 0,
+        currency_amount: Math.max(
+          1,
+          Math.round(
+            Number(s.currency_amount) || Math.round((Number(s.usd_rate) || 0) * cfg.coinsPerUsd)
+          )
+        ),
+        link: String(s.link)
+      }));
+      const prescreenerRequired = Boolean(data?.prescreener_required);
+      return {
+        configured: true,
+        success: Boolean(data?.success ?? true),
+        prescreenerRequired,
+        currency: String(data?.currency || "Points"),
+        surveys,
+        statusCode: 200,
+        message: prescreenerRequired ? "Complete your TimeWall profile prescreener to unlock higher-paying targeted surveys." : surveys.length === 0 ? "No matching surveys available right now for your profile/location." : void 0
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        configured: true,
+        success: false,
+        prescreenerRequired: false,
+        currency: "Points",
+        surveys: [],
+        statusCode: 500,
+        message: `Could not reach TimeWall Survey API: ${msg}`
+      };
+    }
   }
   /**
    * Per-IP rate limiter for `/postback/timewall`.
@@ -7625,10 +7811,14 @@ app.get("/api/surveys", requireAuth, async (req, res) => {
       };
     });
     const cpxSecureHash = generateCpxSecureHash(opaqueId, cpxResearchService.hashKey);
+    const earnMaintenanceMode = settings.earnMaintenanceMode || "auto";
+    const isEarnLive = earnMaintenanceMode === "live" ? true : earnMaintenanceMode === "maintenance" ? false : surveysWithHybridShare.length > 0;
     res.json({
       success: true,
       surveys: surveysWithHybridShare,
       totalAvailable: surveysWithHybridShare.length,
+      earnMaintenanceMode,
+      isEarnLive,
       pointsPerUsdt,
       surveyDisplayMode: settings.surveyDisplayMode || "hybrid",
       usdtQuote,
@@ -8520,11 +8710,12 @@ app.post("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
         ogImageUrl: typeof ogImageUrl === "string" && ogImageUrl.trim() ? ogImageUrl.trim() : current.ogImageUrl,
         googleSearchConsoleKey: typeof googleSearchConsoleKey === "string" ? googleSearchConsoleKey.trim() : current.googleSearchConsoleKey,
         sitemapEnabled: sitemapEnabled !== void 0 ? Boolean(sitemapEnabled) : current.sitemapEnabled,
-        timewallOid: typeof req.body.timewallOid === "string" ? req.body.timewallOid.trim() : current.timewallOid,
+        timewallOid: typeof req.body.timewallOid === "string" && req.body.timewallOid.trim() ? req.body.timewallOid.trim() : current.timewallOid,
         timewallPlacementUrl: typeof req.body.timewallPlacementUrl === "string" && req.body.timewallPlacementUrl.trim() ? req.body.timewallPlacementUrl.trim() : current.timewallPlacementUrl,
+        timewallApiKey: typeof req.body.timewallApiKey === "string" && req.body.timewallApiKey.trim() ? req.body.timewallApiKey.trim() : current.timewallApiKey,
         timewallSecret: typeof req.body.timewallSecret === "string" && req.body.timewallSecret.trim() ? req.body.timewallSecret.trim() : current.timewallSecret,
         timewallAllowedIps: typeof req.body.timewallAllowedIps === "string" && req.body.timewallAllowedIps.trim() ? req.body.timewallAllowedIps.trim() : current.timewallAllowedIps,
-        timewallCoinsPerUsd: Number(req.body.timewallCoinsPerUsd) > 0 ? Math.round(Number(req.body.timewallCoinsPerUsd)) : current.timewallCoinsPerUsd || 5e3,
+        timewallCoinsPerUsd: Number(req.body.timewallCoinsPerUsd) > 0 ? Math.round(Number(req.body.timewallCoinsPerUsd)) : current.timewallCoinsPerUsd || 1e4,
         timewallAllowDecimals: req.body.timewallAllowDecimals !== void 0 ? Boolean(req.body.timewallAllowDecimals) : Boolean(current.timewallAllowDecimals),
         timewallCreditTypes: typeof req.body.timewallCreditTypes === "string" ? req.body.timewallCreditTypes.trim() : current.timewallCreditTypes,
         timewallReversalTypes: typeof req.body.timewallReversalTypes === "string" ? req.body.timewallReversalTypes.trim() : current.timewallReversalTypes,
@@ -9565,20 +9756,105 @@ app.get("/api/earn/timewall", requireAuth, async (req, res) => {
   const pageSize = Math.min(50, Math.max(5, Number(req.query.pageSize) || 15));
   const history = dbStore.getOfferwallTransactionsForUser(freshUser.id, page, pageSize);
   const balances = dbStore.getUserBalances(freshUser.id);
+  const endUserIp = (req.headers["cf-connecting-ip"] || req.headers["x-real-ip"] || req.headers["x-client-ip"] || req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || req.socket?.remoteAddress || "").trim();
+  const userAgent = req.headers["user-agent"] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+  const screenWidth = Number(req.query.screenWidth) || 390;
+  const screenHeight = Number(req.query.screenHeight) || 844;
+  const limit = Number(req.query.limit) || 10;
+  const [surveyApi, offerwallProbe] = await Promise.all([
+    timewallService.fetchSurveysForUser({
+      userId: freshUser.id,
+      userIp: endUserIp,
+      userAgent,
+      screenWidth,
+      screenHeight,
+      limit,
+      provider: "all"
+    }),
+    timewallService.probeOfferwallLive(freshUser.id, req.query.force === "1")
+  ]);
+  const settings = dbStore.getSettings();
+  const taskMaintenanceMode = settings.taskMaintenanceMode || "auto";
+  const surveyApiLive = Boolean(
+    surveyApi.success && (surveyApi.surveys.length > 0 || surveyApi.prescreenerRequired)
+  );
+  const offerwallLive = taskMaintenanceMode === "live" ? true : taskMaintenanceMode === "maintenance" ? false : Boolean(offerwallProbe.isLive && cfg.oid);
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.json({
     blocked: false,
-    provider: "timewall",
-    displayName: "TimeWall.io",
+    provider: "reward_river_tasks",
+    displayName: "Reward River Task & Offer Center",
     isConfigured: timewallService.isConfigured(),
     oidConfigured: Boolean(cfg.oid),
+    apiKeyConfigured: Boolean(cfg.apiKey),
+    offerwallLive,
+    offerwallReason: offerwallProbe.reason,
+    surveyApiLive,
+    taskMaintenanceMode,
     iframeUrl,
     coinsPerUsd: cfg.coinsPerUsd,
     allowDecimals: cfg.allowDecimals,
-    note: "Rewards are credited after the advertiser confirms, which can take minutes to days.",
+    note: "Rewards are credited automatically to your Reward River balance after the advertiser confirms completion (usually within minutes).",
     balances,
-    history
+    history,
+    surveyApi
   });
+});
+app.post(
+  "/api/admin/service-visibility",
+  requireAuth,
+  requireAdmin,
+  blockWhenImpersonating,
+  async (req, res) => {
+    try {
+      const { earnMaintenanceMode, taskMaintenanceMode } = req.body || {};
+      const validModes = ["auto", "live", "maintenance"];
+      const updates = {};
+      if (earnMaintenanceMode && validModes.includes(earnMaintenanceMode)) {
+        updates.earnMaintenanceMode = earnMaintenanceMode;
+      }
+      if (taskMaintenanceMode && validModes.includes(taskMaintenanceMode)) {
+        updates.taskMaintenanceMode = taskMaintenanceMode;
+      }
+      const updated = await dbStore.updateSettings(updates);
+      res.json({
+        success: true,
+        earnMaintenanceMode: updated.earnMaintenanceMode || "auto",
+        taskMaintenanceMode: updated.taskMaintenanceMode || "auto"
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to update service visibility mode."
+      });
+    }
+  }
+);
+app.post("/api/earn/timewall/surveys", requireAuth, async (req, res) => {
+  const sessionUser = req.user;
+  const freshUser = dbStore.getUserById(sessionUser.id) || sessionUser;
+  if (freshUser.offerwallBlocked) {
+    res.status(403).json({
+      blocked: true,
+      error: "Your offerwall access has been restricted by an administrator."
+    });
+    return;
+  }
+  const endUserIp = (req.headers["cf-connecting-ip"] || req.headers["x-real-ip"] || req.headers["x-client-ip"] || req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || req.socket?.remoteAddress || "").trim();
+  const userAgent = req.headers["user-agent"] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+  const screenWidth = Number(req.body?.screen_width ?? req.body?.screenWidth) || 390;
+  const screenHeight = Number(req.body?.screen_height ?? req.body?.screenHeight) || 844;
+  const limit = Number(req.body?.limit) || 10;
+  const provider = typeof req.body?.provider === "string" ? req.body.provider : "all";
+  const surveyApi = await timewallService.fetchSurveysForUser({
+    userId: freshUser.id,
+    userIp: endUserIp,
+    userAgent,
+    screenWidth,
+    screenHeight,
+    limit,
+    provider
+  });
+  res.json(surveyApi);
 });
 app.get("/api/user/offerwall-history", requireAuth, async (req, res) => {
   await dbStore.syncFromSupabase();
@@ -9611,7 +9887,10 @@ app.get("/api/admin/timewall/transactions", requireAuth, requireAdmin, async (re
     ...data,
     configStatus: {
       oidConfigured: Boolean(cfg.oid),
+      apiKeyConfigured: Boolean(cfg.apiKey),
+      apiKeyMasked: maskSecretOrHash(cfg.apiKey),
       secretConfigured: Boolean(cfg.secret),
+      secretMasked: maskSecretOrHash(cfg.secret),
       oid: cfg.oid,
       placementUrlTemplate: cfg.placementUrlTemplate,
       allowedIps: cfg.allowedIps,
