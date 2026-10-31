@@ -209,6 +209,8 @@ USDT_ERC20_FEE_USD=2.50
 | :--- | :--- | :--- |
 | `/api/cpx/postback` | `GET` | CPX Research S2S webhook listener (`status`, `trans_id`, `user_id`, `amount_usd`, `secure_hash`). |
 | `/wh/aoytasks` | `GET` / `POST` | AoyTasks S2S webhook listener (`subId`, `transId`, `reward`, `secret_key`, returns `ok`). |
+| `/postback/timewall` | `GET` | TimeWall.io S2S postback listener (IP whitelist, raw `revenue` SHA-256 signature, idempotent credit/reversal, returns `OK`). |
+| `/api/earn/timewall` | `GET` | Auth-required server-built TimeWall iFrame URL + paginated user offerwall history. |
 | `/api/surveys` | `GET` | Fetches live surveys from CPX Research API. |
 | `/api/tasks` | `GET` | Fetches live white-labeled PTC ads and shortlinks from AoyTasks API. |
 | `/api/usdt/price` | `GET` | Live Tether USD market peg quote. |
@@ -217,7 +219,72 @@ USDT_ERC20_FEE_USD=2.50
 
 ---
 
+## 🧩 TimeWall.io Offerwall Integration Guide
+
+### 1. Environment Variables (`.env` & `.env.example`)
+Never commit `TIMEWALL_SECRET` to git or expose it to the client. Configure these variables in `.env` (or in **Admin Console → TimeWall Offerwall → Configuration**):
+
+```env
+TIMEWALL_OID="your_timewall_placement_oid"
+TIMEWALL_PLACEMENT_URL="https://timewall.io/users/login?oid={oid}&uid={userid}"
+TIMEWALL_SECRET="your_timewall_postback_secret"
+TIMEWALL_ALLOWED_IPS="18.156.132.55,51.81.120.73,142.111.248.18"
+TIMEWALL_COINS_PER_USD=5000
+TIMEWALL_ALLOW_DECIMALS=false
+TIMEWALL_CREDIT_TYPES=""
+TIMEWALL_REVERSAL_TYPES="chargeback,reversal,cancel,deduct,2"
+TIMEWALL_NEGATIVE_BALANCE_MODE="allow"
+TIMEWALL_MAX_SINGLE_REVENUE_USD="50.00"
+TRUSTED_PROXIES="cloudflare,vercel,127.0.0.1,::1"
+```
+
+### 2. Database Migration
+Run Section 11 of `supabase-migration-upgrade.sql` in the Supabase SQL Editor to provision:
+- `public.offerwall_transactions` with `UNIQUE (provider, provider_txid)`
+- `users.offerwall_blocked` boolean flag
+- Auditable ledger entries in `public.reward_ledger` with `reason = 'offerwall_timewall'`
+
+### 3. Exact Postback URL to Paste in TimeWall Dashboard
+In your TimeWall placement settings, set the **Postback URL** (`GET`) to:
+
+```text
+https://rewardriver.online/postback/timewall?userid={userID}&txid={transactionID}&revenue={revenue}&currency={currencyAmount}&hash={hash}&ip={ip}&type={type}&withdrawid={withdrawid}&reason={reason}&offername={offername}&offerdetail={offerdetail}
+```
+
+### 4. How to Test Locally & in Production
+- **Automated Unit & Integration Tests** (11 scenarios including `"0.002"` and `"0.50"` raw string hashing, duplicate `txid`, bad hash, non-whitelisted IP, unknown user, currency mismatch, reversal, concurrent race conditions, and blocked user):
+  ```bash
+  npx tsx --test server/timewall.test.ts
+  ```
+- **Curl Simulation Script**:
+  ```bash
+  BASE_URL="http://localhost:3000" TIMEWALL_SECRET="your_secret" USER_ID="usr_admin_rewardriver" bash scripts/simulate-timewall.sh
+  ```
+- **Admin UI Simulator**:
+  Log in as Admin → **TimeWall Offerwall** → **Configuration & QA Simulator** → **Fire Simulated Postback**.
+
+### 5. Troubleshooting Guide
+- **Postback Not Received**:
+  1. Verify `vercel.json` has `{ "source": "/postback/(.*)", "destination": "/api?__pathname=/postback/$1" }`.
+  2. Check Cloudflare WAF / Bot Fight Mode to ensure `GET /postback/timewall` is not challenged by a JS/Turnstile interstitial for TimeWall server IPs (`18.156.132.55`, `51.81.120.73`, `142.111.248.18`).
+- **Hash Mismatch (`403 INVALID_HASH`)**:
+  1. **Revenue Formatting**: TimeWall hashes `sha256(userid + revenue + SECRET_KEY)` using the exact raw `revenue` string (`"0.002"`, `"0.50"`). Never reformat, cast to float, or round `revenue` before hashing. Our parser (`extractRawQueryParams`) reads directly from the raw URL query string.
+  2. **Secret Mismatch**: Ensure `TIMEWALL_SECRET` matches the exact Placement Secret in TimeWall without leading/trailing whitespace.
+- **Forbidden IP (`403 FORBIDDEN_IP`)**:
+  1. **Proxy IP Detection**: Behind Cloudflare or Vercel, ensure `TRUSTED_PROXIES` includes `cloudflare,vercel` so `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For` is trusted.
+  2. Check server logs (`[TimeWall Postback]`) to see the resolved `sourceIp` and confirm it is listed in `TIMEWALL_ALLOWED_IPS`.
+- **User Not Credited (HTTP 200 OK returned, balance unchanged)**:
+  1. Check **Admin Console → TimeWall Offerwall → Needs Review Queue**:
+     - If `currency` differed from `revenue_usd * TIMEWALL_COINS_PER_USD` beyond rounding tolerance, the transaction is placed in `needs_review`.
+     - If `TIMEWALL_CREDIT_TYPES` is set and `type` was not in the list, the transaction is held in `needs_review`.
+     - If single-transaction revenue exceeded `TIMEWALL_MAX_SINGLE_REVENUE_USD`, it is held in `needs_review`.
+  2. Check if the user has `offerwall_blocked = true` (logged as status `blocked`).
+  3. Check if `txid` was already processed previously (`outcome: duplicate`).
+
+---
+
 <div align="center">
   <p>© 2026 <b>Reward River</b>. All rights reserved.</p>
   <p>Engineered with ❤️ by <b>Rayan Mirza</b>, <b>Tahir Sanaullah</b>, and <a href="https://www.injazify.com"><b>www.injazify.com</b></a>.</p>
 </div>
+

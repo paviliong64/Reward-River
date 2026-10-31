@@ -680,4 +680,59 @@ BEGIN
 END;
 $$;
 
+-- ============================================================================
+-- 11. TIMEWALL / OFFERWALL TRANSACTIONS & ANTI-FRAUD SCHEMA
+-- ============================================================================
+ALTER TABLE IF EXISTS public.users
+  ADD COLUMN IF NOT EXISTS offerwall_blocked BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE IF EXISTS public.profiles
+  ADD COLUMN IF NOT EXISTS offerwall_blocked BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS public.offerwall_transactions (
+  id TEXT PRIMARY KEY DEFAULT ('ow_' || gen_random_uuid()::text),
+  provider TEXT NOT NULL DEFAULT 'timewall',
+  provider_txid TEXT NOT NULL,
+  user_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
+  offer_name TEXT,
+  offer_detail TEXT,
+  revenue_raw TEXT NOT NULL,
+  revenue_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
+  coins NUMERIC(18, 4) NOT NULL DEFAULT 0,
+  type TEXT,
+  withdrawid TEXT,
+  reason TEXT,
+  user_ip TEXT,
+  source_ip TEXT,
+  status TEXT NOT NULL CHECK (status IN ('credited', 'reversed', 'needs_review', 'rejected', 'blocked')),
+  fraud_flags JSONB DEFAULT '[]'::jsonb,
+  raw_query JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reversed_at TIMESTAMPTZ,
+  CONSTRAINT offerwall_transactions_provider_txid_unique UNIQUE (provider, provider_txid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_offerwall_transactions_user_created
+  ON public.offerwall_transactions(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_offerwall_transactions_status_created
+  ON public.offerwall_transactions(status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_offerwall_transactions_user_ip
+  ON public.offerwall_transactions(user_ip);
+
+ALTER TABLE public.offerwall_transactions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS offerwall_transactions_select_policy ON public.offerwall_transactions;
+CREATE POLICY offerwall_transactions_select_policy ON public.offerwall_transactions
+  FOR SELECT USING (
+    auth.uid()::text = user_id
+    OR public.is_admin_user(auth.uid()::text)
+  );
+
+DROP POLICY IF EXISTS offerwall_transactions_service_all ON public.offerwall_transactions;
+CREATE POLICY offerwall_transactions_service_all ON public.offerwall_transactions
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 COMMIT;
+

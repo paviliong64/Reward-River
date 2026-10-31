@@ -2,15 +2,15 @@
 import express from "express";
 import dotenv2 from "dotenv";
 import path2 from "path";
-import crypto5 from "node:crypto";
+import crypto6 from "node:crypto";
 
 // server/db.ts
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
+import crypto2 from "node:crypto";
 
 // src/utils/ledger.ts
-function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3, userSharePercent = 50) {
+function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3, userSharePercent = 50, allowNegativeBalance = false) {
   let totalConfirmedCredits = 0;
   let totalDebitsAndReversals = 0;
   let pendingCents = 0;
@@ -25,7 +25,7 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
   const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 50)));
   const shareRatio = safeShare / 100;
   const centsToPts = (c) => Math.round(Math.max(0, c) / safeShare * safePointsRate);
-  const ptsToCents = (pts) => Math.round(Math.max(0, pts) / safePointsRate * shareRatio * 100);
+  const ptsToCents = (pts) => Math.round(pts / safePointsRate * shareRatio * 100);
   for (const entry of entries) {
     if (entry.userId !== userId) continue;
     const entryPts = typeof entry.points === "number" && !isNaN(entry.points) && entry.points !== 0 ? Math.abs(Math.round(entry.points)) : centsToPts(Math.abs(entry.amountCents));
@@ -49,8 +49,9 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
   totalDebitsAndReversals = ptsToCents(totalDebitReversalPoints);
   pendingCents = ptsToCents(pendingPointsAccum);
   totalEarnedCents = totalConfirmedCredits;
-  const netConfirmedEarnings = Math.max(0, totalConfirmedCredits - totalDebitsAndReversals);
-  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - netConfirmedEarnings);
+  const rawNetEarnings = totalConfirmedCredits - totalDebitsAndReversals;
+  const netConfirmedEarnings = allowNegativeBalance ? rawNetEarnings : Math.max(0, rawNetEarnings);
+  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - Math.max(0, netConfirmedEarnings));
   let reservedWithdrawalCents = 0;
   let totalWithdrawnCents = 0;
   for (const w of withdrawals) {
@@ -62,10 +63,13 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
       reservedWithdrawalCents += w.amountCents;
     }
   }
-  const availableCents = Math.max(0, netConfirmedEarnings - reservedWithdrawalCents);
+  const rawAvailableCents = netConfirmedEarnings - reservedWithdrawalCents;
+  const availableCents = allowNegativeBalance ? rawAvailableCents : Math.max(0, rawAvailableCents);
   const reservedWithdrawalPoints = centsToPts(reservedWithdrawalCents);
-  const netConfirmedPoints = Math.max(0, totalConfirmedPoints - totalDebitReversalPoints);
-  const availablePoints = Math.max(0, netConfirmedPoints - reservedWithdrawalPoints);
+  const rawNetPoints = totalConfirmedPoints - totalDebitReversalPoints;
+  const netConfirmedPoints = allowNegativeBalance ? rawNetPoints : Math.max(0, rawNetPoints);
+  const rawAvailablePoints = netConfirmedPoints - reservedWithdrawalPoints;
+  const availablePoints = allowNegativeBalance ? rawAvailablePoints : Math.max(0, rawAvailablePoints);
   return {
     availableCents,
     pendingCents,
@@ -689,6 +693,261 @@ function computeAdminDashboardStats(params) {
   };
 }
 
+// src/utils/timewall.ts
+import crypto from "node:crypto";
+var DEFAULT_TIMEWALL_ALLOWED_IPS = [
+  "18.156.132.55",
+  "51.81.120.73",
+  "142.111.248.18"
+];
+var MICRO_SCALE = 1000000n;
+function extractRawQueryParams(rawUrl) {
+  const result = {};
+  if (!rawUrl) return result;
+  const qIndex = rawUrl.indexOf("?");
+  if (qIndex === -1) return result;
+  const rawQuery = rawUrl.slice(qIndex + 1);
+  const pairs = rawQuery.split("&");
+  for (const pair of pairs) {
+    if (!pair) continue;
+    const eqIdx = pair.indexOf("=");
+    if (eqIdx === -1) {
+      const k = safeDecodeURIComponent(pair);
+      if (k && !(k in result)) result[k] = "";
+    } else {
+      const k = safeDecodeURIComponent(pair.slice(0, eqIdx));
+      const v = safeDecodeURIComponent(pair.slice(eqIdx + 1));
+      if (k && !(k in result)) {
+        result[k] = v;
+      }
+    }
+  }
+  return result;
+}
+function safeDecodeURIComponent(val) {
+  try {
+    return decodeURIComponent(val.replace(/\+/g, " "));
+  } catch {
+    return val;
+  }
+}
+function maskSecretOrHash(value) {
+  const clean = String(value || "").trim();
+  if (!clean) return "<empty>";
+  if (clean.length <= 8) return "****";
+  return `${clean.slice(0, 4)}...${clean.slice(-4)}`;
+}
+function computeTimewallHash(userId, revenueRaw, secretKey) {
+  const payload = `${userId}${revenueRaw}${secretKey}`;
+  return crypto.createHash("sha256").update(payload, "utf8").digest("hex").toLowerCase();
+}
+function verifyTimewallHash(params) {
+  const { userId, revenueRaw, secretKey, receivedHash } = params;
+  if (!userId || !revenueRaw || !secretKey || !receivedHash) {
+    return false;
+  }
+  const expectedHex = computeTimewallHash(userId, revenueRaw, secretKey);
+  const actualHex = String(receivedHash).trim().toLowerCase();
+  if (actualHex.length !== expectedHex.length) {
+    return false;
+  }
+  const expectedBuf = Buffer.from(expectedHex, "utf8");
+  const actualBuf = Buffer.from(actualHex, "utf8");
+  if (expectedBuf.length !== actualBuf.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
+}
+function parseDecimalToMicros(raw) {
+  const clean = String(raw ?? "").trim();
+  if (!/^-?\d+(\.\d+)?$/.test(clean)) {
+    return { valid: false, micros: 0n, isNegative: false, formatted6: "0.000000" };
+  }
+  const isNegative = clean.startsWith("-");
+  const unsigned = isNegative ? clean.slice(1) : clean;
+  const [intPartRaw, fracPartRaw = ""] = unsigned.split(".");
+  const paddedFrac = (fracPartRaw + "0000000").slice(0, 7);
+  const sixDigits = paddedFrac.slice(0, 6);
+  const seventhDigit = Number(paddedFrac[6] || "0");
+  let absMicros = BigInt(intPartRaw || "0") * MICRO_SCALE + BigInt(sixDigits || "0");
+  if (seventhDigit >= 5) {
+    absMicros += 1n;
+  }
+  const micros = isNegative ? -absMicros : absMicros;
+  const formatted6 = formatMicrosToDecimal(micros, 6);
+  return {
+    valid: true,
+    micros,
+    isNegative,
+    formatted6
+  };
+}
+function formatMicrosToDecimal(micros, decimals = 6) {
+  const isNeg = micros < 0n;
+  const abs = isNeg ? -micros : micros;
+  const intPart = abs / MICRO_SCALE;
+  const fracPart = abs % MICRO_SCALE;
+  const fracStr = fracPart.toString().padStart(6, "0");
+  if (decimals <= 0) {
+    return `${isNeg ? "-" : ""}${intPart.toString()}`;
+  }
+  const clipped = fracStr.slice(0, Math.min(6, decimals)).padEnd(decimals, "0");
+  return `${isNeg ? "-" : ""}${intPart.toString()}.${clipped}`;
+}
+function verifyAndComputeTimewallCoins(params) {
+  const revParsed = parseDecimalToMicros(params.revenueRaw);
+  if (!revParsed.valid) {
+    return {
+      validNumbers: false,
+      withinTolerance: false,
+      expectedCoinsMicros: 0n,
+      receivedCoinsMicros: 0n,
+      finalCoinsFormatted: "0",
+      finalCoinsInt: 0,
+      revenueFormatted6: "0.000000",
+      revenueIsNegative: false,
+      mismatchReason: `Invalid revenue format: "${params.revenueRaw}"`
+    };
+  }
+  const absRevenueMicros = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
+  if (absRevenueMicros === 0n) {
+    return {
+      validNumbers: false,
+      withinTolerance: false,
+      expectedCoinsMicros: 0n,
+      receivedCoinsMicros: 0n,
+      finalCoinsFormatted: "0",
+      finalCoinsInt: 0,
+      revenueFormatted6: revParsed.formatted6,
+      revenueIsNegative: revParsed.isNegative,
+      mismatchReason: "Revenue must be non-zero"
+    };
+  }
+  const rateInt = BigInt(Math.max(1, Math.round(params.coinsPerUsd || 5e3)));
+  const expectedCoinsMicros = absRevenueMicros * rateInt;
+  const hasCurrencyParam = params.currencyRaw !== void 0 && String(params.currencyRaw).trim() !== "";
+  let receivedCoinsMicros = expectedCoinsMicros;
+  if (hasCurrencyParam) {
+    const curParsed = parseDecimalToMicros(String(params.currencyRaw));
+    if (!curParsed.valid) {
+      return {
+        validNumbers: false,
+        withinTolerance: false,
+        expectedCoinsMicros,
+        receivedCoinsMicros: 0n,
+        finalCoinsFormatted: "0",
+        finalCoinsInt: 0,
+        revenueFormatted6: revParsed.formatted6,
+        revenueIsNegative: revParsed.isNegative,
+        mismatchReason: `Invalid currency format: "${params.currencyRaw}"`
+      };
+    }
+    receivedCoinsMicros = curParsed.micros < 0n ? -curParsed.micros : curParsed.micros;
+  }
+  const diffMicros = receivedCoinsMicros >= expectedCoinsMicros ? receivedCoinsMicros - expectedCoinsMicros : expectedCoinsMicros - receivedCoinsMicros;
+  const twoCoinsMicros = 2n * MICRO_SCALE;
+  const twoPercentMicros = expectedCoinsMicros * 2n / 100n;
+  const maxAllowedDiffMicros = twoCoinsMicros > twoPercentMicros ? twoCoinsMicros : twoPercentMicros;
+  const withinTolerance = diffMicros <= maxAllowedDiffMicros;
+  const halfUnit = MICRO_SCALE / 2n;
+  const roundedCoinsBig = (receivedCoinsMicros + halfUnit) / MICRO_SCALE;
+  const finalCoinsInt = Number(roundedCoinsBig);
+  const finalCoinsFormatted = params.allowDecimals ? formatMicrosToDecimal(receivedCoinsMicros, 4) : roundedCoinsBig.toString();
+  return {
+    validNumbers: true,
+    withinTolerance,
+    expectedCoinsMicros,
+    receivedCoinsMicros,
+    finalCoinsFormatted,
+    finalCoinsInt,
+    revenueFormatted6: revParsed.formatted6,
+    revenueIsNegative: revParsed.isNegative,
+    mismatchReason: withinTolerance ? void 0 : `Currency mismatch: received ${formatMicrosToDecimal(receivedCoinsMicros, 2)} coins, expected ${formatMicrosToDecimal(expectedCoinsMicros, 2)} coins (revenue=${params.revenueRaw}, rate=${rateInt.toString()})`
+  };
+}
+function normalizeIpAddress(rawIp) {
+  const clean = String(rawIp || "").trim();
+  if (!clean) return "";
+  if (clean.startsWith("::ffff:")) {
+    return clean.slice(7);
+  }
+  return clean;
+}
+function resolveRealSourceIp(params) {
+  const socketIp = normalizeIpAddress(params.socketIp);
+  const trustedList = params.trustedProxies.map((p) => p.trim().toLowerCase()).filter(Boolean);
+  const isLocalLoopback = socketIp === "127.0.0.1" || socketIp === "::1" || socketIp.startsWith("10.") || socketIp.startsWith("172.") || socketIp.startsWith("192.168.");
+  const socketIsTrusted = trustedList.includes("*") || trustedList.includes(socketIp.toLowerCase()) || isLocalLoopback && (trustedList.includes("127.0.0.1") || trustedList.includes("::1") || trustedList.includes("cloudflare") || trustedList.includes("vercel"));
+  if (!socketIsTrusted) {
+    return socketIp || "unknown";
+  }
+  const getHeader = (name) => {
+    const val = params.headers[name.toLowerCase()];
+    if (Array.isArray(val)) return val[0] || "";
+    return typeof val === "string" ? val : "";
+  };
+  if (trustedList.includes("cloudflare") || trustedList.includes("*")) {
+    const cfIp = normalizeIpAddress(getHeader("cf-connecting-ip"));
+    if (cfIp) return cfIp;
+  }
+  const xRealIp = normalizeIpAddress(getHeader("x-real-ip"));
+  if (xRealIp) return xRealIp;
+  const xff = getHeader("x-forwarded-for");
+  if (xff) {
+    const firstHop = normalizeIpAddress(xff.split(",")[0]);
+    if (firstHop) return firstHop;
+  }
+  return socketIp || "unknown";
+}
+function isAllowedTimewallIp(sourceIp, allowedIps) {
+  const cleanSource = normalizeIpAddress(sourceIp);
+  if (!cleanSource) return false;
+  for (const rawAllowed of allowedIps) {
+    const allowed = normalizeIpAddress(rawAllowed);
+    if (!allowed) continue;
+    if (allowed === "*" || allowed === cleanSource) {
+      return true;
+    }
+  }
+  return false;
+}
+function evaluateTimewallFraudFlags(params) {
+  const flags = [];
+  const now = params.nowMs ?? Date.now();
+  const revParsed = parseDecimalToMicros(params.revenueRaw);
+  const maxParsed = parseDecimalToMicros(params.maxSingleRevenueUsd || "50.00");
+  const absRev = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
+  if (maxParsed.valid && maxParsed.micros > 0n && absRev > maxParsed.micros) {
+    flags.push(
+      `high_single_revenue:${revParsed.formatted6}_exceeds_${maxParsed.formatted6}`
+    );
+  }
+  const fiveMinAgo = now - 5 * 60 * 1e3;
+  const userRecentCount = params.recentTransactions.filter((tx) => {
+    if (tx.userId !== params.userId) return false;
+    const tMs = new Date(tx.createdAt).getTime();
+    return !isNaN(tMs) && tMs >= fiveMinAgo;
+  }).length;
+  if (userRecentCount >= 10) {
+    flags.push(`user_credit_burst:${userRecentCount + 1}_tx_in_5m`);
+  }
+  const cleanUserIp = normalizeIpAddress(params.userIp);
+  if (cleanUserIp && cleanUserIp !== "unknown") {
+    const distinctUsersOnIp = /* @__PURE__ */ new Set();
+    for (const tx of params.recentTransactions) {
+      if (tx.userId && normalizeIpAddress(tx.userIp) === cleanUserIp) {
+        distinctUsersOnIp.add(tx.userId);
+      }
+    }
+    distinctUsersOnIp.add(params.userId);
+    if (distinctUsersOnIp.size >= 3) {
+      flags.push(`multi_account_shared_user_ip:${distinctUsersOnIp.size}_users_on_${cleanUserIp}`);
+    }
+  }
+  const holdForReview = flags.some((f) => f.startsWith("high_single_revenue:"));
+  return { flags, holdForReview };
+}
+
 // server/supabase.ts
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
@@ -780,6 +1039,7 @@ var DatabaseStore = class {
     this.initialized = false;
     this.lastSupabaseSyncMs = 0;
     this.writeQueue = Promise.resolve();
+    this.txMutex = Promise.resolve();
     this.data = this.getDefaultData();
   }
   getDefaultData() {
@@ -908,13 +1168,25 @@ var DatabaseStore = class {
         sitemapEnabled: true,
         turnstileSiteKey: process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "0x4AAAAAAFsriP1bMbtMNkub",
         turnstileSecretKey: process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || "0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw",
+        timewallOid: process.env.TIMEWALL_OID || "",
+        timewallPlacementUrl: process.env.TIMEWALL_PLACEMENT_URL || "https://timewall.io/users/login?oid={oid}&uid={userid}",
+        timewallSecret: process.env.TIMEWALL_SECRET || "3e8f2c753e704d59013d34c6474363c3",
+        timewallAllowedIps: process.env.TIMEWALL_ALLOWED_IPS || DEFAULT_TIMEWALL_ALLOWED_IPS.join(","),
+        timewallCoinsPerUsd: Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : 5e3,
+        timewallAllowDecimals: String(process.env.TIMEWALL_ALLOW_DECIMALS || "false").toLowerCase() === "true",
+        timewallCreditTypes: process.env.TIMEWALL_CREDIT_TYPES ?? "",
+        timewallReversalTypes: process.env.TIMEWALL_REVERSAL_TYPES ?? "chargeback,reversal,cancel,deduct,2",
+        timewallNegativeBalanceMode: process.env.TIMEWALL_NEGATIVE_BALANCE_MODE === "flag_account" ? "flag_account" : "allow",
+        timewallMaxSingleRevenueUsd: process.env.TIMEWALL_MAX_SINGLE_REVENUE_USD || "50.00",
+        trustedProxies: process.env.TRUSTED_PROXIES || "cloudflare,vercel,127.0.0.1,::1",
         updatedAt: "2026-10-20T00:00:00.000Z"
       },
       adminAuditLogs: [],
       teams: [],
       teamMembers: [],
       callbackLogs: [],
-      impersonationSessions: []
+      impersonationSessions: [],
+      offerwallTransactions: []
     };
   }
   async init() {
@@ -958,7 +1230,7 @@ var DatabaseStore = class {
           const rawExt = String(u.externalOpaqueId || "");
           const isEmailText = rawExt.includes("@") || rawExt.includes("gmail.com") || rawExt.length < 6;
           const cleanUuid = String(u.id || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
-          const cleanExtId = !isEmailText && (rawExt.startsWith("rr_cpx_") || rawExt.length >= 10) ? rawExt : `rr_cpx_${cleanUuid || crypto.randomBytes(12).toString("hex")}`;
+          const cleanExtId = !isEmailText && (rawExt.startsWith("rr_cpx_") || rawExt.length >= 10) ? rawExt : `rr_cpx_${cleanUuid || crypto2.randomBytes(12).toString("hex")}`;
           return {
             ...u,
             email,
@@ -1022,13 +1294,16 @@ var DatabaseStore = class {
             teamBonusPercent: Math.max(0, Number(parsed.systemSettings?.teamBonusPercent) || 0),
             aoyApiKey: parsed.systemSettings?.aoyApiKey || process.env.AOY_API_KEY || "223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa",
             aoySecretKey: parsed.systemSettings?.aoySecretKey || process.env.AOY_SECRET_KEY || "8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92",
+            timewallSecret: parsed.systemSettings?.timewallSecret || process.env.TIMEWALL_SECRET || "3e8f2c753e704d59013d34c6474363c3",
+            timewallAllowedIps: parsed.systemSettings?.timewallAllowedIps || process.env.TIMEWALL_ALLOWED_IPS || DEFAULT_TIMEWALL_ALLOWED_IPS.join(","),
             minWithdrawalCents: 2500
           },
           adminAuditLogs: parsed.adminAuditLogs || [],
           teams: Array.isArray(parsed.teams) ? parsed.teams : [],
           teamMembers: Array.isArray(parsed.teamMembers) ? parsed.teamMembers : [],
           callbackLogs: Array.isArray(parsed.callbackLogs) ? parsed.callbackLogs : [],
-          impersonationSessions: Array.isArray(parsed.impersonationSessions) ? parsed.impersonationSessions : []
+          impersonationSessions: Array.isArray(parsed.impersonationSessions) ? parsed.impersonationSessions : [],
+          offerwallTransactions: Array.isArray(parsed.offerwallTransactions) ? parsed.offerwallTransactions : []
         };
         await this.persist();
       } else {
@@ -1150,7 +1425,7 @@ var DatabaseStore = class {
           const cleanUuid = String(row.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
           const rawExt = String(row.external_opaque_id || "");
           const isEmailText = rawExt.includes("@") || rawExt.includes("gmail.com") || rawExt.length < 6;
-          const cleanExtId = !isEmailText && (rawExt.startsWith("rr_cpx_") || rawExt.length >= 10) ? rawExt : `rr_cpx_${cleanUuid || crypto.randomBytes(12).toString("hex")}`;
+          const cleanExtId = !isEmailText && (rawExt.startsWith("rr_cpx_") || rawExt.length >= 10) ? rawExt : `rr_cpx_${cleanUuid || crypto2.randomBytes(12).toString("hex")}`;
           const { email: emailLower, display } = normalizeIdentity(
             cleanExtId,
             rawEmailLower,
@@ -1539,6 +1814,50 @@ var DatabaseStore = class {
           }
         }
       }
+      const { data: sbOfferwall, error: sbOfferwallErr } = await sb.from("offerwall_transactions").select("*").order("created_at", { ascending: false }).limit(500);
+      if (!sbOfferwallErr && Array.isArray(sbOfferwall)) {
+        if (!Array.isArray(this.data.offerwallTransactions)) {
+          this.data.offerwallTransactions = [];
+        }
+        for (const row of sbOfferwall) {
+          if (!row || !row.id || !row.provider_txid) continue;
+          const existingIdx = this.data.offerwallTransactions.findIndex(
+            (tx) => tx.id === row.id || tx.provider === (row.provider || "timewall") && tx.providerTxid === String(row.provider_txid)
+          );
+          const mapped = {
+            id: String(row.id),
+            provider: String(row.provider || "timewall"),
+            providerTxid: String(row.provider_txid),
+            userId: row.user_id ? String(row.user_id) : null,
+            offerName: String(row.offer_name || ""),
+            offerDetail: String(row.offer_detail || ""),
+            revenueRaw: String(row.revenue_raw || "0"),
+            revenueUsd: String(row.revenue_usd || "0.000000"),
+            coins: String(row.coins || "0"),
+            coinsInt: Math.round(Number(row.coins) || 0),
+            type: String(row.type || ""),
+            withdrawid: String(row.withdrawid || ""),
+            reason: String(row.reason || ""),
+            userIp: String(row.user_ip || ""),
+            sourceIp: String(row.source_ip || ""),
+            status: row.status || "credited",
+            fraudFlags: Array.isArray(row.fraud_flags) ? row.fraud_flags : [],
+            rawQuery: typeof row.raw_query === "object" && row.raw_query !== null ? row.raw_query : {},
+            createdAt: row.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+            reversedAt: row.reversed_at || null
+          };
+          if (existingIdx === -1) {
+            this.data.offerwallTransactions.push(mapped);
+            changed = true;
+          } else {
+            const cur = this.data.offerwallTransactions[existingIdx];
+            if (cur.status !== mapped.status || cur.reversedAt !== mapped.reversedAt) {
+              this.data.offerwallTransactions[existingIdx] = { ...cur, ...mapped };
+              changed = true;
+            }
+          }
+        }
+      }
       if (changed) {
         await this.persist();
       }
@@ -1797,7 +2116,7 @@ var DatabaseStore = class {
   }
   async upsertTask(input, adminUserId, adminEmail) {
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const id = String(input.id || `task_${crypto.randomUUID().slice(0, 8)}`).trim();
+    const id = String(input.id || `task_${crypto2.randomUUID().slice(0, 8)}`).trim();
     const rewardPoints = Math.max(1, Math.round(Number(input.rewardPoints) || 100));
     const existingIdx = this.data.tasks.findIndex((t) => t.id === id);
     const record = {
@@ -1897,11 +2216,11 @@ var DatabaseStore = class {
     const grossCents = Math.max(amountCents, Math.round(absPoints / 5e3 * 100));
     const adminProfitCents = Math.max(0, grossCents - amountCents);
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const txId = `adm_adj_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+    const txId = `adm_adj_${Date.now()}_${crypto2.randomBytes(3).toString("hex")}`;
     const entryType = delta > 0 ? "credit" : "debit";
     const signStr = delta > 0 ? `+${absPoints.toLocaleString("en-US")}` : `-${absPoints.toLocaleString("en-US")}`;
     const entry = {
-      id: `le_${crypto.randomUUID()}`,
+      id: `le_${crypto2.randomUUID()}`,
       userId: user.id,
       providerTxId: txId,
       taskId: params.taskId || "admin_manual_adjustment",
@@ -1987,12 +2306,12 @@ var DatabaseStore = class {
       for (const u of this.data.users) {
         let modified = false;
         if (!u.id || u.id.trim().length < 4) {
-          u.id = `usr_${crypto.randomUUID()}`;
+          u.id = `usr_${crypto2.randomUUID()}`;
           modified = true;
         }
         if (!u.externalOpaqueId || u.externalOpaqueId.trim().length < 6 || u.externalOpaqueId.includes("@")) {
           const cleanUuid = u.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
-          u.externalOpaqueId = `rr_cpx_${cleanUuid || crypto.randomBytes(8).toString("hex")}`;
+          u.externalOpaqueId = `rr_cpx_${cleanUuid || crypto2.randomBytes(8).toString("hex")}`;
           modified = true;
         }
         const balances = this.getUserBalances(u.id);
@@ -2088,7 +2407,8 @@ var DatabaseStore = class {
     const withdrawals = this.data.withdrawalRequests.filter((w) => w.userId === rawCleanId || w.userId === cleanNoUsr || w.userId === cleanWithUsr).map((w) => w.userId === rawCleanId ? w : { ...w, userId: rawCleanId });
     const pointsPerUsdt = this.data.systemSettings?.pointsPerUsdt || 5e3;
     const userSharePercent = this.data.systemSettings?.userSharePercent || 50;
-    const balances = calculateUserBalances(rawCleanId, entries, withdrawals, pointsPerUsdt, userSharePercent);
+    const allowNeg = (this.data.systemSettings?.timewallNegativeBalanceMode || "allow") === "allow";
+    const balances = calculateUserBalances(rawCleanId, entries, withdrawals, pointsPerUsdt, userSharePercent, allowNeg);
     return balances;
   }
   async addLedgerEntry(entry) {
@@ -2195,7 +2515,7 @@ var DatabaseStore = class {
   async createWithdrawalRequest(req) {
     this.data.withdrawalRequests.push(req);
     this.data.withdrawalEvents.push({
-      id: `we_${crypto.randomUUID()}`,
+      id: `we_${crypto2.randomUUID()}`,
       withdrawalId: req.id,
       previousStatus: "none",
       newStatus: req.status,
@@ -2253,7 +2573,7 @@ var DatabaseStore = class {
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     this.data.withdrawalEvents.push({
-      id: `we_${crypto.randomUUID()}`,
+      id: `we_${crypto2.randomUUID()}`,
       withdrawalId: id,
       previousStatus,
       newStatus,
@@ -2344,7 +2664,7 @@ var DatabaseStore = class {
   async addAuditLog(log) {
     const newLog = {
       ...log,
-      id: `log_${crypto.randomUUID()}`,
+      id: `log_${crypto2.randomUUID()}`,
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     this.data.adminAuditLogs.push(newLog);
@@ -2380,7 +2700,7 @@ var DatabaseStore = class {
       this.data.callbackLogs = [];
     }
     const record = {
-      id: entry.id || `cb_${crypto.randomUUID()}`,
+      id: entry.id || `cb_${crypto2.randomUUID()}`,
       provider: entry.provider || "cpx",
       transId: String(entry.transId || ""),
       extUserId: String(entry.extUserId || ""),
@@ -2525,7 +2845,7 @@ var DatabaseStore = class {
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     const existingCodes = new Set((this.data.teams || []).map((t) => t.teamCode.toUpperCase()));
     for (let attempt = 0; attempt < 25; attempt++) {
-      const bytes = crypto.randomBytes(length);
+      const bytes = crypto2.randomBytes(length);
       let code = "";
       for (let i = 0; i < length; i++) {
         code += alphabet[bytes[i] % alphabet.length];
@@ -2534,7 +2854,7 @@ var DatabaseStore = class {
         return code;
       }
     }
-    return `RR${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    return `RR${crypto2.randomBytes(3).toString("hex").toUpperCase()}`;
   }
   getTeams() {
     if (!Array.isArray(this.data.teams)) this.data.teams = [];
@@ -2616,7 +2936,7 @@ var DatabaseStore = class {
       throw new Error(`Team code "${teamCode}" is already in use.`);
     }
     const newTeam = {
-      id: `team_${crypto.randomUUID()}`,
+      id: `team_${crypto2.randomUUID()}`,
       name: cleanName,
       managerId: managerUser.id,
       teamCode,
@@ -2800,7 +3120,7 @@ var DatabaseStore = class {
     if (!targetTeam) throw new Error(`Target team not found: ${params.targetTeamId}`);
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const record = {
-      id: existingIdx !== -1 ? this.data.teamMembers[existingIdx].id : `tm_${crypto.randomUUID()}`,
+      id: existingIdx !== -1 ? this.data.teamMembers[existingIdx].id : `tm_${crypto2.randomUUID()}`,
       teamId: targetTeam.id,
       userId: user.id,
       joinedAt: existingIdx !== -1 ? this.data.teamMembers[existingIdx].joinedAt : nowIso,
@@ -2858,7 +3178,7 @@ var DatabaseStore = class {
     }
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const membership = {
-      id: `tm_${crypto.randomUUID()}`,
+      id: `tm_${crypto2.randomUUID()}`,
       teamId: team.id,
       userId: user.id,
       joinedAt: nowIso,
@@ -3136,7 +3456,7 @@ var DatabaseStore = class {
     const startedAt = new Date(nowMs).toISOString();
     const expiresAt = new Date(nowMs + 15 * 60 * 1e3).toISOString();
     const session = {
-      id: `imp_${crypto.randomUUID()}`,
+      id: `imp_${crypto2.randomUUID()}`,
       adminId: adminUser.id,
       adminEmail: adminUser.email,
       targetUserId: target.id,
@@ -3216,25 +3536,602 @@ var DatabaseStore = class {
     await this.persist();
     return true;
   }
+  // --- Atomic Mutex Lock for Offerwall Postbacks (prevents race conditions under concurrent requests) ---
+  runInTransactionLock(fn) {
+    const next = this.txMutex.then(fn, fn);
+    this.txMutex = next.then(
+      () => void 0,
+      () => void 0
+    );
+    return next;
+  }
+  async upsertOfferwallTxToSupabase(tx) {
+    const sb = this.getSupabaseClient();
+    if (!sb) return;
+    try {
+      await sb.from("offerwall_transactions").upsert(
+        {
+          id: tx.id,
+          provider: tx.provider,
+          provider_txid: tx.providerTxid,
+          user_id: tx.userId,
+          offer_name: tx.offerName,
+          offer_detail: tx.offerDetail,
+          revenue_raw: tx.revenueRaw,
+          revenue_usd: tx.revenueUsd,
+          coins: tx.coins,
+          type: tx.type,
+          withdrawid: tx.withdrawid,
+          reason: tx.reason,
+          user_ip: tx.userIp,
+          source_ip: tx.sourceIp,
+          status: tx.status,
+          fraud_flags: tx.fraudFlags,
+          raw_query: tx.rawQuery,
+          created_at: tx.createdAt,
+          reversed_at: tx.reversedAt || null
+        },
+        { onConflict: "provider,provider_txid" }
+      );
+    } catch {
+    }
+  }
+  /**
+   * Executes an atomic TimeWall postback transaction inside an exclusive mutex lock:
+   * - Enforces UNIQUE (provider, provider_txid) idempotency for credits
+   * - Handles reversals (deducting original coins once, marking original tx reversed, writing ledger entry with reason='offerwall_timewall')
+   * - Handles blocked users, needs_review, and credited states atomically with reward_ledger
+   */
+  async processTimewallPostbackAtomic(params) {
+    return this.runInTransactionLock(async () => {
+      if (!Array.isArray(this.data.offerwallTransactions)) {
+        this.data.offerwallTransactions = [];
+      }
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const existingIdx = this.data.offerwallTransactions.findIndex(
+        (t) => t.provider === "timewall" && t.providerTxid === params.providerTxid
+      );
+      if (params.isReversal) {
+        if (existingIdx !== -1) {
+          const origTx = this.data.offerwallTransactions[existingIdx];
+          if (origTx.status === "reversed") {
+            return {
+              outcome: "duplicate_reversal",
+              transaction: origTx,
+              pointsDelta: 0,
+              notes: `Duplicate reversal ignored for already-reversed txid=${params.providerTxid}`
+            };
+          }
+          const deductCoins2 = origTx.coinsInt > 0 ? origTx.coinsInt : Math.max(1, params.coinsInt);
+          const currentBalances2 = this.getUserBalances(params.user.id);
+          const wouldGoNegative2 = currentBalances2.availablePoints - deductCoins2 < 0;
+          if (wouldGoNegative2 && params.negativeBalanceMode === "flag_account") {
+            const uIdx4 = this.data.users.findIndex((u) => u.id === params.user.id);
+            if (uIdx4 !== -1) {
+              this.data.users[uIdx4].offerwallBlocked = true;
+              this.data.users[uIdx4].updatedAt = nowIso;
+            }
+          }
+          origTx.status = "reversed";
+          origTx.reversedAt = nowIso;
+          if (params.reason) origTx.reason = params.reason;
+          if (params.withdrawid) origTx.withdrawid = params.withdrawid;
+          const userAmountCents3 = Math.max(1, Math.round(deductCoins2 / 100));
+          const revParsed3 = parseDecimalToMicros(origTx.revenueRaw || params.revenueRaw);
+          const absRevMicros3 = revParsed3.micros < 0n ? -revParsed3.micros : revParsed3.micros;
+          const grossCents3 = Math.max(1, Number((absRevMicros3 + 5000n) / 10000n));
+          const adminProfitCents3 = Math.max(0, grossCents3 - userAmountCents3);
+          const reversalEntry2 = {
+            id: `le_tw_rev_${crypto2.randomUUID()}`,
+            userId: params.user.id,
+            providerTxId: `tw_rev_${params.providerTxid}`,
+            taskId: "offerwall_timewall",
+            cpxOfferId: origTx.offerName || "timewall_offer",
+            amountCents: userAmountCents3,
+            points: deductCoins2,
+            grossCents: grossCents3,
+            adminProfitCents: adminProfitCents3,
+            appliedSharePercent: 50,
+            entryType: "reversal",
+            status: "reversed",
+            reason: "offerwall_timewall",
+            reversalRef: `tw_${params.providerTxid}`,
+            approvedBy: "TimeWall S2S",
+            description: `TimeWall Offer Reversal: ${origTx.offerName || params.offerName || params.providerTxid} (-${deductCoins2.toLocaleString("en-US")} Pts)${params.reason ? ` [${params.reason}]` : ""}`,
+            createdAt: nowIso,
+            processedAt: nowIso
+          };
+          this.data.rewardLedger.push(reversalEntry2);
+          const updatedBalances3 = this.getUserBalances(params.user.id);
+          const uIdx3 = this.data.users.findIndex((u) => u.id === params.user.id);
+          if (uIdx3 !== -1) {
+            this.data.users[uIdx3].storedPoints = updatedBalances3.availablePoints;
+            this.data.users[uIdx3].updatedAt = nowIso;
+          }
+          await this.persist();
+          await this.upsertOfferwallTxToSupabase(origTx);
+          return {
+            outcome: "reversed",
+            transaction: origTx,
+            ledgerEntry: reversalEntry2,
+            pointsDelta: -deductCoins2,
+            notes: `Reversed original TimeWall txid=${params.providerTxid} (-${deductCoins2} coins)`
+          };
+        }
+        const deductCoins = Math.max(1, params.coinsInt);
+        const currentBalances = this.getUserBalances(params.user.id);
+        const wouldGoNegative = currentBalances.availablePoints - deductCoins < 0;
+        if (wouldGoNegative && params.negativeBalanceMode === "flag_account") {
+          const uIdx3 = this.data.users.findIndex((u) => u.id === params.user.id);
+          if (uIdx3 !== -1) {
+            this.data.users[uIdx3].offerwallBlocked = true;
+            this.data.users[uIdx3].updatedAt = nowIso;
+          }
+        }
+        const newRevTx = {
+          id: `ow_tw_${crypto2.randomUUID()}`,
+          provider: "timewall",
+          providerTxid: params.providerTxid,
+          userId: params.user.id,
+          userEmail: params.user.email,
+          userDisplayName: params.user.displayName,
+          offerName: params.offerName || "TimeWall Offer",
+          offerDetail: params.offerDetail || "",
+          revenueRaw: params.revenueRaw,
+          revenueUsd: params.revenueUsd,
+          coins: params.coinsFormatted,
+          coinsInt: deductCoins,
+          type: params.type,
+          withdrawid: params.withdrawid,
+          reason: params.reason,
+          userIp: params.userIp,
+          sourceIp: params.sourceIp,
+          status: "reversed",
+          fraudFlags: params.fraudFlags,
+          rawQuery: params.rawQuery,
+          createdAt: nowIso,
+          reversedAt: nowIso
+        };
+        this.data.offerwallTransactions.unshift(newRevTx);
+        const userAmountCents2 = Math.max(1, Math.round(deductCoins / 100));
+        const revParsed2 = parseDecimalToMicros(params.revenueRaw);
+        const absRevMicros2 = revParsed2.micros < 0n ? -revParsed2.micros : revParsed2.micros;
+        const grossCents2 = Math.max(1, Number((absRevMicros2 + 5000n) / 10000n));
+        const adminProfitCents2 = Math.max(0, grossCents2 - userAmountCents2);
+        const reversalEntry = {
+          id: `le_tw_rev_${crypto2.randomUUID()}`,
+          userId: params.user.id,
+          providerTxId: `tw_rev_${params.providerTxid}`,
+          taskId: "offerwall_timewall",
+          cpxOfferId: params.offerName || "timewall_offer",
+          amountCents: userAmountCents2,
+          points: deductCoins,
+          grossCents: grossCents2,
+          adminProfitCents: adminProfitCents2,
+          appliedSharePercent: 50,
+          entryType: "reversal",
+          status: "reversed",
+          reason: "offerwall_timewall",
+          reversalRef: `tw_${params.providerTxid}`,
+          approvedBy: "TimeWall S2S",
+          description: `TimeWall Offer Reversal: ${params.offerName || params.providerTxid} (-${deductCoins.toLocaleString("en-US")} Pts)`,
+          createdAt: nowIso,
+          processedAt: nowIso
+        };
+        this.data.rewardLedger.push(reversalEntry);
+        const updatedBalances2 = this.getUserBalances(params.user.id);
+        const uIdx2 = this.data.users.findIndex((u) => u.id === params.user.id);
+        if (uIdx2 !== -1) {
+          this.data.users[uIdx2].storedPoints = updatedBalances2.availablePoints;
+          this.data.users[uIdx2].updatedAt = nowIso;
+        }
+        await this.persist();
+        await this.upsertOfferwallTxToSupabase(newRevTx);
+        return {
+          outcome: "reversed",
+          transaction: newRevTx,
+          ledgerEntry: reversalEntry,
+          pointsDelta: -deductCoins,
+          notes: `Recorded standalone reversal for txid=${params.providerTxid} (-${deductCoins} coins)`
+        };
+      }
+      if (existingIdx !== -1) {
+        const existingTx = this.data.offerwallTransactions[existingIdx];
+        return {
+          outcome: "duplicate",
+          transaction: existingTx,
+          pointsDelta: 0,
+          notes: `Idempotent duplicate ignored: txid=${params.providerTxid} already recorded with status=${existingTx.status}`
+        };
+      }
+      if (params.user.offerwallBlocked) {
+        const blockedTx = {
+          id: `ow_tw_${crypto2.randomUUID()}`,
+          provider: "timewall",
+          providerTxid: params.providerTxid,
+          userId: params.user.id,
+          userEmail: params.user.email,
+          userDisplayName: params.user.displayName,
+          offerName: params.offerName || "TimeWall Offer",
+          offerDetail: params.offerDetail || "",
+          revenueRaw: params.revenueRaw,
+          revenueUsd: params.revenueUsd,
+          coins: params.coinsFormatted,
+          coinsInt: params.coinsInt,
+          type: params.type,
+          withdrawid: params.withdrawid,
+          reason: params.reason || "user_offerwall_blocked",
+          userIp: params.userIp,
+          sourceIp: params.sourceIp,
+          status: "blocked",
+          fraudFlags: [...params.fraudFlags, "user_offerwall_blocked"],
+          rawQuery: params.rawQuery,
+          createdAt: nowIso,
+          reversedAt: null
+        };
+        this.data.offerwallTransactions.unshift(blockedTx);
+        await this.persist();
+        await this.upsertOfferwallTxToSupabase(blockedTx);
+        return {
+          outcome: "blocked",
+          transaction: blockedTx,
+          pointsDelta: 0,
+          notes: `User ${params.user.id} has offerwall_blocked=true; logged as blocked without crediting`
+        };
+      }
+      if (params.needsReview) {
+        const reviewTx = {
+          id: `ow_tw_${crypto2.randomUUID()}`,
+          provider: "timewall",
+          providerTxid: params.providerTxid,
+          userId: params.user.id,
+          userEmail: params.user.email,
+          userDisplayName: params.user.displayName,
+          offerName: params.offerName || "TimeWall Offer",
+          offerDetail: params.offerDetail || "",
+          revenueRaw: params.revenueRaw,
+          revenueUsd: params.revenueUsd,
+          coins: params.coinsFormatted,
+          coinsInt: params.coinsInt,
+          type: params.type,
+          withdrawid: params.withdrawid,
+          reason: params.reviewReason || params.reason || "held_for_review",
+          userIp: params.userIp,
+          sourceIp: params.sourceIp,
+          status: "needs_review",
+          fraudFlags: params.fraudFlags,
+          rawQuery: params.rawQuery,
+          createdAt: nowIso,
+          reversedAt: null
+        };
+        this.data.offerwallTransactions.unshift(reviewTx);
+        await this.persist();
+        await this.upsertOfferwallTxToSupabase(reviewTx);
+        return {
+          outcome: "needs_review",
+          transaction: reviewTx,
+          pointsDelta: 0,
+          notes: params.reviewReason || "Transaction placed in needs_review queue without balance change"
+        };
+      }
+      const creditCoins = Math.max(1, params.coinsInt);
+      const creditedTx = {
+        id: `ow_tw_${crypto2.randomUUID()}`,
+        provider: "timewall",
+        providerTxid: params.providerTxid,
+        userId: params.user.id,
+        userEmail: params.user.email,
+        userDisplayName: params.user.displayName,
+        offerName: params.offerName || "TimeWall Offer",
+        offerDetail: params.offerDetail || "",
+        revenueRaw: params.revenueRaw,
+        revenueUsd: params.revenueUsd,
+        coins: params.coinsFormatted,
+        coinsInt: creditCoins,
+        type: params.type,
+        withdrawid: params.withdrawid,
+        reason: params.reason,
+        userIp: params.userIp,
+        sourceIp: params.sourceIp,
+        status: "credited",
+        fraudFlags: params.fraudFlags,
+        rawQuery: params.rawQuery,
+        createdAt: nowIso,
+        reversedAt: null
+      };
+      const userAmountCents = Math.max(1, Math.round(creditCoins / 100));
+      const revParsed = parseDecimalToMicros(params.revenueRaw);
+      const absRevMicros = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
+      const grossCents = Math.max(1, Number((absRevMicros + 5000n) / 10000n));
+      const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+      const creditEntry = {
+        id: `le_tw_${crypto2.randomUUID()}`,
+        userId: params.user.id,
+        providerTxId: `tw_${params.providerTxid}`,
+        taskId: "offerwall_timewall",
+        cpxOfferId: params.offerName || "timewall_offer",
+        amountCents: userAmountCents,
+        points: creditCoins,
+        grossCents,
+        adminProfitCents,
+        appliedSharePercent: 50,
+        entryType: "credit",
+        status: "confirmed",
+        reason: "offerwall_timewall",
+        approvedBy: "TimeWall S2S",
+        description: `TimeWall Offer: ${params.offerName || `#${params.providerTxid}`} (+${creditCoins.toLocaleString("en-US")} Pts)`,
+        createdAt: nowIso,
+        processedAt: nowIso
+      };
+      this.data.offerwallTransactions.unshift(creditedTx);
+      this.data.rewardLedger.push(creditEntry);
+      const updatedBalances = this.getUserBalances(params.user.id);
+      const uIdx = this.data.users.findIndex((u) => u.id === params.user.id);
+      if (uIdx !== -1) {
+        this.data.users[uIdx].storedPoints = updatedBalances.availablePoints;
+        this.data.users[uIdx].updatedAt = nowIso;
+      }
+      await this.persist();
+      await this.upsertOfferwallTxToSupabase(creditedTx);
+      const sb = this.getSupabaseClient();
+      if (sb) {
+        try {
+          await sb.from("reward_ledger").upsert({
+            id: creditEntry.id,
+            user_id: creditEntry.userId,
+            provider_tx_id: creditEntry.providerTxId,
+            amount_cents: creditEntry.amountCents,
+            entry_type: creditEntry.entryType,
+            status: creditEntry.status,
+            description: creditEntry.description,
+            created_at: creditEntry.createdAt
+          });
+          await sb.from("users").update({
+            points: updatedBalances.availablePoints,
+            balance_cents: updatedBalances.availableCents,
+            total_earned_points: updatedBalances.totalEarnedPoints,
+            updated_at: nowIso
+          }).eq("id", params.user.id);
+        } catch {
+        }
+      }
+      return {
+        outcome: "credited",
+        transaction: creditedTx,
+        ledgerEntry: creditEntry,
+        pointsDelta: creditCoins,
+        notes: `Credited +${creditCoins} coins to user ${params.user.id} for TimeWall txid=${params.providerTxid}`
+      };
+    });
+  }
+  /**
+   * Admin action to approve or reject a `needs_review` offerwall transaction.
+   */
+  async reviewOfferwallTransaction(params) {
+    return this.runInTransactionLock(async () => {
+      if (!Array.isArray(this.data.offerwallTransactions)) {
+        this.data.offerwallTransactions = [];
+      }
+      const idx = this.data.offerwallTransactions.findIndex((t) => t.id === params.transactionId);
+      if (idx === -1) {
+        throw new Error(`Offerwall transaction not found: ${params.transactionId}`);
+      }
+      const tx = this.data.offerwallTransactions[idx];
+      if (tx.status !== "needs_review") {
+        throw new Error(`Only transactions with status "needs_review" can be reviewed (current: ${tx.status}).`);
+      }
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      if (params.action === "reject") {
+        tx.status = "rejected";
+        if (params.notes) tx.reason = params.notes;
+        await this.addAuditLog({
+          adminUserId: params.adminUserId,
+          adminEmail: params.adminEmail,
+          action: "REJECT_OFFERWALL_TRANSACTION",
+          targetEntity: "offerwall_transactions",
+          targetId: tx.id,
+          details: JSON.stringify({ providerTxid: tx.providerTxid, notes: params.notes })
+        });
+        await this.persist();
+        await this.upsertOfferwallTxToSupabase(tx);
+        return tx;
+      }
+      if (!tx.userId) {
+        throw new Error("Cannot approve transaction without a valid user_id.");
+      }
+      const user = this.getUserById(tx.userId);
+      if (!user) {
+        throw new Error(`User not found for transaction: ${tx.userId}`);
+      }
+      const creditCoins = Math.max(1, tx.coinsInt);
+      tx.status = "credited";
+      if (params.notes) tx.reason = params.notes;
+      const userAmountCents = Math.max(1, Math.round(creditCoins / 100));
+      const revParsed = parseDecimalToMicros(tx.revenueRaw);
+      const absRevMicros = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
+      const grossCents = Math.max(1, Number((absRevMicros + 5000n) / 10000n));
+      const adminProfitCents = Math.max(0, grossCents - userAmountCents);
+      const creditEntry = {
+        id: `le_tw_${crypto2.randomUUID()}`,
+        userId: user.id,
+        providerTxId: `tw_${tx.providerTxid}`,
+        taskId: "offerwall_timewall",
+        cpxOfferId: tx.offerName || "timewall_offer",
+        amountCents: userAmountCents,
+        points: creditCoins,
+        grossCents,
+        adminProfitCents,
+        appliedSharePercent: 50,
+        entryType: "credit",
+        status: "confirmed",
+        reason: "offerwall_timewall",
+        approvedBy: params.adminEmail,
+        description: `TimeWall Offer (Admin Approved): ${tx.offerName || `#${tx.providerTxid}`} (+${creditCoins.toLocaleString("en-US")} Pts)`,
+        createdAt: nowIso,
+        processedAt: nowIso
+      };
+      const alreadyInLedger = this.data.rewardLedger.some((l) => l.providerTxId === creditEntry.providerTxId);
+      if (!alreadyInLedger) {
+        this.data.rewardLedger.push(creditEntry);
+      }
+      const updatedBalances = this.getUserBalances(user.id);
+      const uIdx = this.data.users.findIndex((u) => u.id === user.id);
+      if (uIdx !== -1) {
+        this.data.users[uIdx].storedPoints = updatedBalances.availablePoints;
+        this.data.users[uIdx].updatedAt = nowIso;
+      }
+      await this.addAuditLog({
+        adminUserId: params.adminUserId,
+        adminEmail: params.adminEmail,
+        action: "APPROVE_OFFERWALL_TRANSACTION",
+        targetEntity: "offerwall_transactions",
+        targetId: tx.id,
+        details: JSON.stringify({
+          providerTxid: tx.providerTxid,
+          userId: user.id,
+          coinsCredited: creditCoins,
+          notes: params.notes
+        })
+      });
+      await this.persist();
+      await this.upsertOfferwallTxToSupabase(tx);
+      return tx;
+    });
+  }
+  async setUserOfferwallBlocked(params) {
+    const idx = this.data.users.findIndex((u) => u.id === params.userId);
+    if (idx === -1) {
+      throw new Error(`User not found: ${params.userId}`);
+    }
+    this.data.users[idx].offerwallBlocked = Boolean(params.blocked);
+    this.data.users[idx].updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    await this.addAuditLog({
+      adminUserId: params.adminUserId,
+      adminEmail: params.adminEmail,
+      action: params.blocked ? "BLOCK_USER_OFFERWALL" : "UNBLOCK_USER_OFFERWALL",
+      targetEntity: "users",
+      targetId: params.userId,
+      details: JSON.stringify({
+        userId: params.userId,
+        email: this.data.users[idx].email,
+        offerwallBlocked: params.blocked
+      })
+    });
+    await this.persist();
+    await this.upsertUserToSupabase(this.data.users[idx]);
+    return this.data.users[idx];
+  }
+  getOfferwallTransactionsForUser(userId, page = 1, pageSize = 15) {
+    const all = (this.data.offerwallTransactions || []).filter((tx) => tx.userId === userId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const safePageSize = Math.min(100, Math.max(1, Math.round(pageSize || 15)));
+    const total = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+    const safePage = Math.min(totalPages, Math.max(1, Math.round(page || 1)));
+    const start = (safePage - 1) * safePageSize;
+    const items = all.slice(start, start + safePageSize).map((tx) => ({
+      ...tx,
+      createdAtKarachi: formatKarachiDateTime(tx.createdAt)
+    }));
+    return { items, total, page: safePage, pageSize: safePageSize, totalPages };
+  }
+  getAdminOfferwallTransactions(filters) {
+    const userById = new Map(this.data.users.map((u) => [u.id, u]));
+    let list = [...this.data.offerwallTransactions || []].map((tx) => {
+      const u = tx.userId ? userById.get(tx.userId) : void 0;
+      return {
+        ...tx,
+        userEmail: tx.userEmail || u?.email || void 0,
+        userDisplayName: tx.userDisplayName || u?.displayName || u?.username || void 0,
+        createdAtKarachi: formatKarachiDateTime(tx.createdAt)
+      };
+    });
+    if (filters?.provider && filters.provider !== "all") {
+      list = list.filter((t) => t.provider === filters.provider);
+    }
+    if (filters?.status && filters.status !== "all") {
+      list = list.filter((t) => t.status === filters.status);
+    }
+    if (filters?.userQuery && filters.userQuery.trim()) {
+      const q = filters.userQuery.trim().toLowerCase();
+      list = list.filter(
+        (t) => t.userId && t.userId.toLowerCase().includes(q) || t.userEmail && t.userEmail.toLowerCase().includes(q) || t.userDisplayName && t.userDisplayName.toLowerCase().includes(q) || t.providerTxid.toLowerCase().includes(q) || t.offerName.toLowerCase().includes(q)
+      );
+    }
+    if (filters?.dateFrom && filters.dateFrom.trim()) {
+      const fromMs = new Date(filters.dateFrom).getTime();
+      if (!isNaN(fromMs)) {
+        list = list.filter((t) => new Date(t.createdAt).getTime() >= fromMs);
+      }
+    }
+    if (filters?.dateTo && filters.dateTo.trim()) {
+      const toMs = (/* @__PURE__ */ new Date(`${filters.dateTo}T23:59:59.999Z`)).getTime();
+      if (!isNaN(toMs)) {
+        list = list.filter((t) => new Date(t.createdAt).getTime() <= toMs);
+      }
+    }
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    let grossRevenueMicros = 0n;
+    let reversedRevenueMicros = 0n;
+    let totalCoinsPaid = 0;
+    let totalCoinsReversed = 0;
+    let needsReviewCount = 0;
+    let blockedCount = 0;
+    for (const tx of list) {
+      const rev = parseDecimalToMicros(tx.revenueRaw);
+      const absRev = rev.micros < 0n ? -rev.micros : rev.micros;
+      if (tx.status === "credited") {
+        grossRevenueMicros += absRev;
+        totalCoinsPaid += tx.coinsInt;
+      } else if (tx.status === "reversed") {
+        reversedRevenueMicros += absRev;
+        totalCoinsReversed += tx.coinsInt;
+      } else if (tx.status === "needs_review") {
+        needsReviewCount += 1;
+      } else if (tx.status === "blocked") {
+        blockedCount += 1;
+      }
+    }
+    const userPayoutMicros = BigInt(Math.max(0, totalCoinsPaid)) * 100n;
+    const platformMarginMicros = grossRevenueMicros > userPayoutMicros ? grossRevenueMicros - userPayoutMicros : 0n;
+    return {
+      transactions: list,
+      totals: {
+        totalCount: list.length,
+        creditedCount: list.filter((t) => t.status === "credited").length,
+        reversedCount: list.filter((t) => t.status === "reversed").length,
+        needsReviewCount,
+        blockedCount,
+        grossRevenueUsd: formatMicrosToDecimal(grossRevenueMicros, 4),
+        reversedRevenueUsd: formatMicrosToDecimal(reversedRevenueMicros, 4),
+        userPayoutUsd: formatMicrosToDecimal(userPayoutMicros, 4),
+        platformMarginUsd: formatMicrosToDecimal(platformMarginMicros, 4),
+        totalCoinsPaid,
+        totalCoinsReversed
+      }
+    };
+  }
+  getAllOfferwallTransactionsRaw() {
+    return [...this.data.offerwallTransactions || []];
+  }
 };
 var dbStore = new DatabaseStore();
 
 // server/auth.ts
-import crypto2 from "node:crypto";
+import crypto3 from "node:crypto";
 var JWT_SECRET = process.env.JWT_SECRET || "reward-river-production-secure-hmac-key-2026";
 function hashPassword(password) {
-  const salt = crypto2.randomBytes(16).toString("hex");
-  const hash = crypto2.pbkdf2Sync(password, salt, 1e4, 64, "sha512").toString("hex");
+  const salt = crypto3.randomBytes(16).toString("hex");
+  const hash = crypto3.pbkdf2Sync(password, salt, 1e4, 64, "sha512").toString("hex");
   return { hash, salt };
 }
 function verifyPassword(password, hash, salt) {
   try {
     if (!hash || !salt) return false;
-    const checkHash = crypto2.pbkdf2Sync(password, salt, 1e4, 64, "sha512").toString("hex");
+    const checkHash = crypto3.pbkdf2Sync(password, salt, 1e4, 64, "sha512").toString("hex");
     const bufA = Buffer.from(checkHash, "hex");
     const bufB = Buffer.from(hash, "hex");
     if (bufA.length !== bufB.length) return checkHash === hash;
-    return crypto2.timingSafeEqual(bufA, bufB);
+    return crypto3.timingSafeEqual(bufA, bufB);
   } catch {
     return false;
   }
@@ -3251,7 +4148,7 @@ function createSessionToken(user) {
     // 7 days
   };
   const payload = Buffer.from(JSON.stringify(session)).toString("base64url");
-  const signature = crypto2.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
+  const signature = crypto3.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
   return `${payload}.${signature}`;
 }
 function createImpersonationToken(targetUser, impersonation) {
@@ -3267,7 +4164,7 @@ function createImpersonationToken(targetUser, impersonation) {
     impersonation
   };
   const payload = Buffer.from(JSON.stringify(session)).toString("base64url");
-  const signature = crypto2.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
+  const signature = crypto3.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
   return `${payload}.${signature}`;
 }
 function verifySessionToken(token) {
@@ -3286,7 +4183,7 @@ function verifySessionToken(token) {
   if (token.split(".").length === 2) {
     const [payload, signature] = token.split(".");
     if (!payload) return null;
-    const expectedSignature = crypto2.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
+    const expectedSignature = crypto3.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
     const isSigMatch = signature === expectedSignature;
     try {
       const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8"));
@@ -4536,7 +5433,7 @@ var CpxResearchService = class {
 var cpxResearchService = new CpxResearchService();
 
 // src/utils/aoytasks.ts
-import crypto3 from "node:crypto";
+import crypto4 from "node:crypto";
 
 // src/utils/usdt.ts
 function calculateUsdtPayout(amountCents, network = "TRC20", feeCents = 100) {
@@ -4616,7 +5513,7 @@ function sanitizeAoySubId(rawId) {
 }
 function generateAoyPostbackSignature(subId, transId, reward, secretKey) {
   const payload = `${subId}${transId}${reward}${secretKey}`;
-  return crypto3.createHash("md5").update(payload).digest("hex");
+  return crypto4.createHash("md5").update(payload).digest("hex");
 }
 function verifyAoyPostbackSignature(subId, transId, reward, secretKey, incomingSignature) {
   if (!secretKey) return true;
@@ -5119,7 +6016,7 @@ function buildPartnerAccountingReport(ledger, userSharePercent = 40, pointsPerUs
 }
 
 // server/migrateBackfillUsers.ts
-import crypto4 from "node:crypto";
+import crypto5 from "node:crypto";
 async function runUserAndLedgerBackfill(options) {
   const dryRun = Boolean(options?.dryRun);
   await dbStore.init();
@@ -5163,7 +6060,7 @@ async function runUserAndLedgerBackfill(options) {
     let userUpdated = false;
     let targetId = String(user.id || "").trim();
     if (!targetId || targetId.length < 4) {
-      targetId = `usr_${crypto4.randomUUID()}`;
+      targetId = `usr_${crypto5.randomUUID()}`;
       permanentIdsAssigned++;
       userUpdated = true;
       details.push(`${dryRun ? "[DRY-RUN] Would assign" : "Assigned"} permanent ID ${targetId} to ${user.email}`);
@@ -5172,7 +6069,7 @@ async function runUserAndLedgerBackfill(options) {
     const isInvalidExt = !extId || extId.length < 6 || extId.includes("@") || extId.includes("gmail.com");
     if (isInvalidExt) {
       const cleanHex = targetId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
-      extId = `rr_cpx_${cleanHex || crypto4.randomBytes(8).toString("hex")}`;
+      extId = `rr_cpx_${cleanHex || crypto5.randomBytes(8).toString("hex")}`;
       opaqueIdsAssigned++;
       userUpdated = true;
       details.push(`${dryRun ? "[DRY-RUN] Would assign" : "Assigned"} permanent externalOpaqueId ${extId} to ${user.email}`);
@@ -5368,6 +6265,465 @@ async function verifyCloudflareTurnstile(token, remoteIp) {
   }
 }
 
+// server/timewallService.ts
+var TimewallService = class {
+  constructor() {
+    this.providerId = "timewall";
+    this.displayName = "TimeWall.io";
+    // Per-IP rate limit state on the postback route (TimeWall whitelisted IPs are exempt)
+    this.ipBuckets = /* @__PURE__ */ new Map();
+  }
+  getConfig() {
+    const settings = dbStore.getSettings();
+    const oid = String(process.env.TIMEWALL_OID || settings.timewallOid || "").trim();
+    const placementUrlTemplate = String(
+      process.env.TIMEWALL_PLACEMENT_URL || settings.timewallPlacementUrl || "https://timewall.io/users/login?oid={oid}&uid={userid}"
+    ).trim();
+    const secret = String(
+      process.env.TIMEWALL_SECRET || settings.timewallSecret || "3e8f2c753e704d59013d34c6474363c3"
+    ).trim();
+    const rawAllowedIps = String(
+      process.env.TIMEWALL_ALLOWED_IPS || settings.timewallAllowedIps || DEFAULT_TIMEWALL_ALLOWED_IPS.join(",")
+    );
+    const allowedIps = rawAllowedIps.split(",").map((s) => s.trim()).filter(Boolean);
+    const coinsPerUsd = Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : Number(settings.timewallCoinsPerUsd) > 0 ? Number(settings.timewallCoinsPerUsd) : Number(settings.pointsPerUsdt) > 0 ? Number(settings.pointsPerUsdt) : 5e3;
+    const allowDecimals = process.env.TIMEWALL_ALLOW_DECIMALS !== void 0 ? String(process.env.TIMEWALL_ALLOW_DECIMALS).toLowerCase() === "true" : Boolean(settings.timewallAllowDecimals ?? false);
+    const rawCreditTypes = String(
+      process.env.TIMEWALL_CREDIT_TYPES ?? settings.timewallCreditTypes ?? ""
+    );
+    const creditTypes = rawCreditTypes.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const rawReversalTypes = String(
+      process.env.TIMEWALL_REVERSAL_TYPES ?? settings.timewallReversalTypes ?? "chargeback,reversal,cancel,deduct,2"
+    );
+    const reversalTypes = rawReversalTypes.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const negativeBalanceMode = (process.env.TIMEWALL_NEGATIVE_BALANCE_MODE || settings.timewallNegativeBalanceMode) === "flag_account" ? "flag_account" : "allow";
+    const maxSingleRevenueUsd = String(
+      process.env.TIMEWALL_MAX_SINGLE_REVENUE_USD || settings.timewallMaxSingleRevenueUsd || "50.00"
+    ).trim();
+    const rawTrustedProxies = String(
+      process.env.TRUSTED_PROXIES || settings.trustedProxies || "cloudflare,vercel,127.0.0.1,::1"
+    );
+    const trustedProxies = rawTrustedProxies.split(",").map((s) => s.trim()).filter(Boolean);
+    return {
+      oid,
+      placementUrlTemplate,
+      secret,
+      allowedIps: allowedIps.length > 0 ? allowedIps : [...DEFAULT_TIMEWALL_ALLOWED_IPS],
+      coinsPerUsd,
+      allowDecimals,
+      creditTypes,
+      reversalTypes,
+      negativeBalanceMode,
+      maxSingleRevenueUsd,
+      trustedProxies
+    };
+  }
+  isConfigured() {
+    const cfg = this.getConfig();
+    return Boolean(cfg.oid || !cfg.placementUrlTemplate.includes("{oid}"));
+  }
+  /**
+   * Builds the TimeWall offerwall URL SERVER-SIDE exclusively from the authenticated user's ID.
+   * Never accepts a user ID from the client query/body.
+   */
+  buildOfferwallUrl(userId) {
+    const cfg = this.getConfig();
+    const safeUid = encodeURIComponent(String(userId || "").trim());
+    const safeOid = encodeURIComponent(cfg.oid || "YOUR_TIMEWALL_OID");
+    let url = cfg.placementUrlTemplate || "https://timewall.io/users/login?oid={oid}&uid={userid}";
+    url = url.replace(/\{userid\}/gi, safeUid).replace(/\{user_id\}/gi, safeUid).replace(/\{uid\}/gi, safeUid).replace(/\{oid\}/gi, safeOid);
+    if (!url.includes(safeUid)) {
+      const sep = url.includes("?") ? "&" : "?";
+      url = `${url}${sep}uid=${safeUid}`;
+    }
+    return url;
+  }
+  /**
+   * Per-IP rate limiter for `/postback/timewall`.
+   * Generous limit (120 req / min) for non-exempt IPs; whitelisted TimeWall IPs are completely exempt.
+   */
+  checkRateLimit(sourceIp, allowedIps) {
+    if (isAllowedTimewallIp(sourceIp, allowedIps)) {
+      return true;
+    }
+    const now = Date.now();
+    const key = sourceIp || "unknown";
+    const existing = this.ipBuckets.get(key);
+    if (!existing || now >= existing.resetAtMs) {
+      this.ipBuckets.set(key, { count: 1, resetAtMs: now + 6e4 });
+      return true;
+    }
+    existing.count += 1;
+    return existing.count <= 120;
+  }
+  /**
+   * Logs every postback request with secrets and full hashes masked.
+   */
+  logPostbackEvent(params) {
+    const logPayload = {
+      event: "timewall_postback",
+      outcome: params.outcome,
+      reason: params.reason,
+      sourceIp: params.sourceIp,
+      userIp: params.userIp,
+      userId: params.userId,
+      txid: params.txid,
+      revenueRaw: params.revenueRaw,
+      currencyRaw: params.currencyRaw,
+      hash: params.maskedHash,
+      type: params.type,
+      pointsDelta: params.pointsDelta,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    console.info("[TimeWall Postback]", JSON.stringify(logPayload));
+    try {
+      dbStore.addCallbackLog?.({
+        provider: "timewall",
+        transId: params.txid || "unknown",
+        extUserId: params.userId || "unknown",
+        matchedUserId: params.matchedUserId,
+        matchedUserEmail: params.matchedUserEmail,
+        rawQuery: params.rawQueryMasked,
+        ipAddress: params.sourceIp,
+        hashValid: params.hashValid,
+        result: params.outcome === "credited" ? "credited" : params.outcome === "duplicate" || params.outcome === "duplicate_reversal" ? "duplicate" : params.outcome === "reversed" ? "reversed" : params.outcome === "bad_hash" || params.outcome === "forbidden_ip" ? "bad_hash" : params.outcome === "unknown_user" ? "unknown_user" : "error",
+        pointsDelta: params.pointsDelta,
+        amountUsd: Number(params.revenueRaw) || 0,
+        notes: `[${params.outcome}] ${params.reason}`
+      });
+    } catch {
+    }
+  }
+  /**
+   * Executes the full TimeWall GET postback specification in exact required order (steps a–i).
+   *
+   * TODO (Confirm with TimeWall support upon receiving live test postback):
+   * 1. Exact values of `type` that represent credit vs chargeback/reversal, and semantics of `withdrawid` and `reason`.
+   * 2. Whether `revenue` is negative on reversals.
+   * 3. Confirm that HTTP 200 with body `"OK"` is the expected success response and HTTP 4xx/5xx triggers retry.
+   */
+  async handlePostback(params) {
+    const cfg = {
+      ...this.getConfig(),
+      ...params.overrideConfig || {}
+    };
+    const rawQuery = extractRawQueryParams(params.rawUrl);
+    const userId = String(rawQuery.userid ?? "").trim();
+    const txid = String(rawQuery.txid ?? "").trim();
+    const revenueRaw = String(rawQuery.revenue ?? "").trim();
+    const currencyRaw = String(rawQuery.currency ?? "").trim();
+    const receivedHash = String(rawQuery.hash ?? "").trim();
+    const userIp = String(rawQuery.ip ?? "").trim();
+    const typeRaw = String(rawQuery.type ?? "").trim();
+    const withdrawid = String(rawQuery.withdrawid ?? "").trim();
+    const reason = String(rawQuery.reason ?? "").trim();
+    const offerName = String(rawQuery.offername ?? "").trim();
+    const offerDetail = String(rawQuery.offerdetail ?? "").trim();
+    const maskedHash = maskSecretOrHash(receivedHash);
+    const rawQueryMasked = {
+      ...rawQuery,
+      ...receivedHash ? { hash: maskedHash } : {}
+    };
+    try {
+      const sourceIp = resolveRealSourceIp({
+        socketIp: params.socketIp,
+        headers: params.headers,
+        trustedProxies: cfg.trustedProxies
+      });
+      if (!this.checkRateLimit(sourceIp, cfg.allowedIps)) {
+        const res = {
+          httpStatus: 429,
+          body: "TOO_MANY_REQUESTS",
+          outcome: "rate_limited",
+          reason: `Rate limit exceeded for IP ${sourceIp}`,
+          sourceIp,
+          userId,
+          txid
+        };
+        this.logPostbackEvent({
+          outcome: res.outcome,
+          reason: res.reason,
+          sourceIp,
+          userIp,
+          userId,
+          txid,
+          revenueRaw,
+          currencyRaw,
+          maskedHash,
+          type: typeRaw,
+          pointsDelta: 0,
+          rawQueryMasked,
+          hashValid: false
+        });
+        return res;
+      }
+      if (!isAllowedTimewallIp(sourceIp, cfg.allowedIps)) {
+        const res = {
+          httpStatus: 403,
+          body: "FORBIDDEN_IP",
+          outcome: "forbidden_ip",
+          reason: `Source IP ${sourceIp} is not in TIMEWALL_ALLOWED_IPS`,
+          sourceIp,
+          userId,
+          txid
+        };
+        this.logPostbackEvent({
+          outcome: res.outcome,
+          reason: res.reason,
+          sourceIp,
+          userIp,
+          userId,
+          txid,
+          revenueRaw,
+          currencyRaw,
+          maskedHash,
+          type: typeRaw,
+          pointsDelta: 0,
+          rawQueryMasked,
+          hashValid: false
+        });
+        return res;
+      }
+      if (!userId || !txid || !revenueRaw || !receivedHash) {
+        const res = {
+          httpStatus: 400,
+          body: "MISSING_REQUIRED_PARAMS",
+          outcome: "invalid_params",
+          reason: "Missing one or more required parameters: userid, txid, revenue, hash",
+          sourceIp,
+          userId,
+          txid
+        };
+        this.logPostbackEvent({
+          outcome: res.outcome,
+          reason: res.reason,
+          sourceIp,
+          userIp,
+          userId,
+          txid,
+          revenueRaw,
+          currencyRaw,
+          maskedHash,
+          type: typeRaw,
+          pointsDelta: 0,
+          rawQueryMasked,
+          hashValid: false
+        });
+        return res;
+      }
+      if (!cfg.secret) {
+        const res = {
+          httpStatus: 500,
+          body: "SERVER_MISCONFIGURED",
+          outcome: "internal_error",
+          reason: "TIMEWALL_SECRET is not configured on the server",
+          sourceIp,
+          userId,
+          txid
+        };
+        this.logPostbackEvent({
+          outcome: res.outcome,
+          reason: res.reason,
+          sourceIp,
+          userIp,
+          userId,
+          txid,
+          revenueRaw,
+          currencyRaw,
+          maskedHash,
+          type: typeRaw,
+          pointsDelta: 0,
+          rawQueryMasked,
+          hashValid: false
+        });
+        return res;
+      }
+      const hashValid = verifyTimewallHash({
+        userId,
+        revenueRaw,
+        secretKey: cfg.secret,
+        receivedHash
+      });
+      if (!hashValid) {
+        const res = {
+          httpStatus: 403,
+          body: "INVALID_HASH",
+          outcome: "bad_hash",
+          reason: `SHA-256 signature mismatch for userid=${userId}, revenueRaw="${revenueRaw}"`,
+          sourceIp,
+          userId,
+          txid
+        };
+        this.logPostbackEvent({
+          outcome: res.outcome,
+          reason: res.reason,
+          sourceIp,
+          userIp,
+          userId,
+          txid,
+          revenueRaw,
+          currencyRaw,
+          maskedHash,
+          type: typeRaw,
+          pointsDelta: 0,
+          rawQueryMasked,
+          hashValid: false
+        });
+        return res;
+      }
+      const coinCalc = verifyAndComputeTimewallCoins({
+        revenueRaw,
+        currencyRaw,
+        coinsPerUsd: cfg.coinsPerUsd,
+        allowDecimals: cfg.allowDecimals
+      });
+      if (!coinCalc.validNumbers) {
+        const res = {
+          httpStatus: 400,
+          body: "INVALID_NUMERIC_PARAMS",
+          outcome: "invalid_params",
+          reason: coinCalc.mismatchReason || "Invalid numeric format for revenue or currency",
+          sourceIp,
+          userId,
+          txid
+        };
+        this.logPostbackEvent({
+          outcome: res.outcome,
+          reason: res.reason,
+          sourceIp,
+          userIp,
+          userId,
+          txid,
+          revenueRaw,
+          currencyRaw,
+          maskedHash,
+          type: typeRaw,
+          pointsDelta: 0,
+          rawQueryMasked,
+          hashValid: true
+        });
+        return res;
+      }
+      const matchedUser = dbStore.getUserById(userId) || dbStore.getUserByExternalId(userId);
+      if (!matchedUser) {
+        const res = {
+          httpStatus: 200,
+          body: "OK",
+          outcome: "unknown_user",
+          reason: `Unknown userid="${userId}"; acknowledged with HTTP 200 OK to prevent endless retries`,
+          sourceIp,
+          userId,
+          txid,
+          pointsDelta: 0
+        };
+        this.logPostbackEvent({
+          outcome: res.outcome,
+          reason: res.reason,
+          sourceIp,
+          userIp,
+          userId,
+          txid,
+          revenueRaw,
+          currencyRaw,
+          maskedHash,
+          type: typeRaw,
+          pointsDelta: 0,
+          rawQueryMasked,
+          hashValid: true
+        });
+        return res;
+      }
+      const normalizedType = typeRaw.toLowerCase();
+      const isReversal = normalizedType !== "" && cfg.reversalTypes.includes(normalizedType) || coinCalc.revenueIsNegative;
+      const isUnconfirmedCreditType = !isReversal && cfg.creditTypes.length > 0 && (!normalizedType || !cfg.creditTypes.includes(normalizedType));
+      const recentTransactions = dbStore.getAllOfferwallTransactionsRaw();
+      const fraudEval = evaluateTimewallFraudFlags({
+        userId: matchedUser.id,
+        userIp,
+        revenueRaw,
+        maxSingleRevenueUsd: cfg.maxSingleRevenueUsd,
+        recentTransactions
+      });
+      const needsReview = !isReversal && (!coinCalc.withinTolerance || isUnconfirmedCreditType || fraudEval.holdForReview);
+      const reviewReasons = [];
+      if (!coinCalc.withinTolerance && coinCalc.mismatchReason) {
+        reviewReasons.push(coinCalc.mismatchReason);
+      }
+      if (isUnconfirmedCreditType) {
+        reviewReasons.push(
+          `Unconfirmed type="${typeRaw}" not in TIMEWALL_CREDIT_TYPES (${cfg.creditTypes.join(",")})`
+        );
+      }
+      if (fraudEval.holdForReview) {
+        reviewReasons.push(`Fraud flag triggered: ${fraudEval.flags.join(", ")}`);
+      }
+      const atomicResult = await dbStore.processTimewallPostbackAtomic({
+        providerTxid: txid,
+        user: matchedUser,
+        offerName: offerName || "TimeWall Offer",
+        offerDetail,
+        revenueRaw,
+        revenueUsd: coinCalc.revenueFormatted6,
+        coinsFormatted: coinCalc.finalCoinsFormatted,
+        coinsInt: coinCalc.finalCoinsInt,
+        type: typeRaw,
+        withdrawid,
+        reason,
+        userIp,
+        sourceIp,
+        rawQuery: rawQueryMasked,
+        isReversal,
+        needsReview,
+        reviewReason: reviewReasons.join(" | "),
+        fraudFlags: fraudEval.flags,
+        negativeBalanceMode: cfg.negativeBalanceMode,
+        coinsPerUsd: cfg.coinsPerUsd
+      });
+      const finalRes = {
+        httpStatus: 200,
+        body: "OK",
+        outcome: atomicResult.outcome,
+        reason: atomicResult.notes,
+        sourceIp,
+        userId: matchedUser.id,
+        txid,
+        pointsDelta: atomicResult.pointsDelta
+      };
+      this.logPostbackEvent({
+        outcome: finalRes.outcome,
+        reason: finalRes.reason,
+        sourceIp,
+        userIp,
+        userId,
+        txid,
+        revenueRaw,
+        currencyRaw,
+        maskedHash,
+        type: typeRaw,
+        pointsDelta: atomicResult.pointsDelta,
+        rawQueryMasked,
+        hashValid: true,
+        matchedUserId: matchedUser.id,
+        matchedUserEmail: matchedUser.email
+      });
+      return finalRes;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[TimeWall Postback Internal Error]", message);
+      return {
+        httpStatus: 500,
+        body: "INTERNAL_ERROR",
+        outcome: "internal_error",
+        reason: message,
+        sourceIp: "unknown",
+        userId,
+        txid
+      };
+    }
+  }
+};
+var timewallService = new TimewallService();
+
 // server.ts
 dotenv2.config();
 var app = express();
@@ -5375,16 +6731,18 @@ var PORT = Number(process.env.PORT) || 3e3;
 var isProduction = process.env.NODE_ENV === "production";
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use((req, _res, next) => {
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "frame-src 'self' https://timewall.io https://*.timewall.io https://offers.cpx-research.com https://*.cpx-research.com https://challenges.cloudflare.com https://*;"
+  );
   const rewrittenPath = typeof req.query.__pathname === "string" && req.query.__pathname || typeof req.headers["x-invoke-path"] === "string" && req.headers["x-invoke-path"] || "";
   if (rewrittenPath && (req.path === "/api" || req.path === "/api/index" || req.path === "/")) {
     const cleanPath = rewrittenPath.startsWith("/") ? rewrittenPath : `/${rewrittenPath}`;
     const qIndex = req.url.indexOf("?");
     if (qIndex !== -1) {
-      const params = new URLSearchParams(req.url.slice(qIndex + 1));
-      params.delete("__pathname");
-      const qs = params.toString();
-      req.url = qs ? `${cleanPath}?${qs}` : cleanPath;
+      const rawQs = req.url.slice(qIndex + 1).split("&").filter((part) => !part.startsWith("__pathname=")).join("&");
+      req.url = rawQs ? `${cleanPath}?${rawQs}` : cleanPath;
     } else {
       req.url = cleanPath;
     }
@@ -5445,7 +6803,7 @@ async function ensureAdminAndCreateResponse() {
       displayName: "Reward River Admin",
       emailVerified: true,
       role: "admin",
-      externalOpaqueId: `rr_cpx_admin_${crypto5.randomBytes(8).toString("hex")}`,
+      externalOpaqueId: `rr_cpx_admin_${crypto6.randomBytes(8).toString("hex")}`,
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
       provider: "password",
@@ -5569,7 +6927,7 @@ app.post("/api/auth/register", async (req, res) => {
       return;
     }
     const { hash, salt } = hashPassword(cleanPass);
-    const userId = `usr_${crypto5.randomUUID()}`;
+    const userId = `usr_${crypto6.randomUUID()}`;
     const externalOpaqueId = `rr_cpx_${userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
     const effectiveDisplayName = rawUsername || effectiveEmail.split("@")[0];
     const newUser = {
@@ -5683,7 +7041,7 @@ app.post("/api/auth/login", async (req, res) => {
         return;
       }
       const { hash, salt } = hashPassword(cleanPass);
-      const userId = `usr_${crypto5.randomUUID()}`;
+      const userId = `usr_${crypto6.randomUUID()}`;
       const externalOpaqueId = `rr_cpx_${userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
       const effectiveEmail = normalizedLoginId.includes("@") ? normalizedLoginId : `${normalizedLoginId.replace(/[^a-z0-9._-]/g, "") || "user"}@gmail.com`;
       const effectiveDisplayName = normalizedLoginId.includes("@") ? normalizedLoginId.split("@")[0] : loginId;
@@ -6446,7 +7804,7 @@ app.all(
         return;
       }
       await dbStore.addLedgerEntry({
-        id: `ledg_${crypto5.randomUUID()}`,
+        id: `ledg_${crypto6.randomUUID()}`,
         userId: targetUser.id,
         providerTxId: `${transId}_rev`,
         amountCents: existingCredit.amountCents || userAmountCents,
@@ -6465,7 +7823,7 @@ app.all(
       return;
     }
     await dbStore.addLedgerEntry({
-      id: `ledg_${crypto5.randomUUID()}`,
+      id: `ledg_${crypto6.randomUUID()}`,
       userId: targetUser.id,
       providerTxId: transId,
       amountCents: userAmountCents,
@@ -6537,7 +7895,7 @@ app.post("/api/tasks/complete", requireAuth, blockWhenImpersonating, async (req,
     );
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const ledgerEntry = {
-      id: `ledg_${crypto5.randomUUID()}`,
+      id: `ledg_${crypto6.randomUUID()}`,
       userId: user.id,
       providerTxId,
       taskId: matchedTask?.id || cleanTaskId,
@@ -6560,7 +7918,7 @@ app.post("/api/tasks/complete", requireAuth, blockWhenImpersonating, async (req,
       return;
     }
     await dbStore.addTaskCompletion({
-      id: `tc_${crypto5.randomUUID()}`,
+      id: `tc_${crypto6.randomUUID()}`,
       userId: user.id,
       taskId: matchedTask?.id || cleanTaskId,
       providerTxId,
@@ -6625,7 +7983,7 @@ app.all(["/wh/aoytasks", "/api/aoytasks/postback"], async (req, res) => {
   const cleanOfferName = sanitizeWhiteLabelText(offerNameRaw, `Sponsored ${offerTypeRaw}`);
   if (statusRaw === 2) {
     const revEntry = {
-      id: `ledg_${crypto5.randomUUID()}`,
+      id: `ledg_${crypto6.randomUUID()}`,
       userId: targetUser.id,
       providerTxId: `aoy_rev_${transIdRaw}`,
       amountCents: split.userRewardCents,
@@ -6645,7 +8003,7 @@ app.all(["/wh/aoytasks", "/api/aoytasks/postback"], async (req, res) => {
     return;
   }
   const creditEntry = {
-    id: `ledg_${crypto5.randomUUID()}`,
+    id: `ledg_${crypto6.randomUUID()}`,
     userId: targetUser.id,
     providerTxId: `aoy_${transIdRaw}`,
     amountCents: split.userRewardCents,
@@ -6736,7 +8094,7 @@ app.post("/api/withdrawals", requireAuth, blockWhenImpersonating, async (req, re
       res.status(400).json({ error: payoutCalc.error || "Net payout must be greater than zero." });
       return;
     }
-    const withdrawalId = `w_${crypto5.randomUUID()}`;
+    const withdrawalId = `w_${crypto6.randomUUID()}`;
     const newRequest = await dbStore.createWithdrawalRequest({
       id: withdrawalId,
       userId: user.id,
@@ -7161,7 +8519,18 @@ app.post("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
         metaKeywords: typeof metaKeywords === "string" ? metaKeywords.trim() : current.metaKeywords,
         ogImageUrl: typeof ogImageUrl === "string" && ogImageUrl.trim() ? ogImageUrl.trim() : current.ogImageUrl,
         googleSearchConsoleKey: typeof googleSearchConsoleKey === "string" ? googleSearchConsoleKey.trim() : current.googleSearchConsoleKey,
-        sitemapEnabled: sitemapEnabled !== void 0 ? Boolean(sitemapEnabled) : current.sitemapEnabled
+        sitemapEnabled: sitemapEnabled !== void 0 ? Boolean(sitemapEnabled) : current.sitemapEnabled,
+        timewallOid: typeof req.body.timewallOid === "string" ? req.body.timewallOid.trim() : current.timewallOid,
+        timewallPlacementUrl: typeof req.body.timewallPlacementUrl === "string" && req.body.timewallPlacementUrl.trim() ? req.body.timewallPlacementUrl.trim() : current.timewallPlacementUrl,
+        timewallSecret: typeof req.body.timewallSecret === "string" && req.body.timewallSecret.trim() ? req.body.timewallSecret.trim() : current.timewallSecret,
+        timewallAllowedIps: typeof req.body.timewallAllowedIps === "string" && req.body.timewallAllowedIps.trim() ? req.body.timewallAllowedIps.trim() : current.timewallAllowedIps,
+        timewallCoinsPerUsd: Number(req.body.timewallCoinsPerUsd) > 0 ? Math.round(Number(req.body.timewallCoinsPerUsd)) : current.timewallCoinsPerUsd || 5e3,
+        timewallAllowDecimals: req.body.timewallAllowDecimals !== void 0 ? Boolean(req.body.timewallAllowDecimals) : Boolean(current.timewallAllowDecimals),
+        timewallCreditTypes: typeof req.body.timewallCreditTypes === "string" ? req.body.timewallCreditTypes.trim() : current.timewallCreditTypes,
+        timewallReversalTypes: typeof req.body.timewallReversalTypes === "string" ? req.body.timewallReversalTypes.trim() : current.timewallReversalTypes,
+        timewallNegativeBalanceMode: req.body.timewallNegativeBalanceMode === "flag_account" ? "flag_account" : "allow",
+        timewallMaxSingleRevenueUsd: typeof req.body.timewallMaxSingleRevenueUsd === "string" && req.body.timewallMaxSingleRevenueUsd.trim() ? req.body.timewallMaxSingleRevenueUsd.trim() : current.timewallMaxSingleRevenueUsd || "50.00",
+        trustedProxies: typeof req.body.trustedProxies === "string" && req.body.trustedProxies.trim() ? req.body.trustedProxies.trim() : current.trustedProxies
       },
       admin?.id || "usr_admin_rewardriver"
     );
@@ -7309,7 +8678,7 @@ app.post(["/api/admin/create-manager", "/api/admin/managers"], requireAuth, requ
         emailVerified: true
       }) || user;
     } else {
-      const userId = `usr_${crypto5.randomUUID()}`;
+      const userId = `usr_${crypto6.randomUUID()}`;
       const externalOpaqueId = `rr_cpx_${userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
       user = await dbStore.createUser({
         id: userId,
@@ -7863,7 +9232,7 @@ app.post("/api/admin/test-aoy-postback", requireAuth, requireAdmin, async (req, 
     const transId = `aoy_sim_${Date.now()}`;
     const cleanTitle = sanitizeWhiteLabelText(String(offerName), "Sponsored Partner Task");
     const entry = {
-      id: `ledg_${crypto5.randomUUID()}`,
+      id: `ledg_${crypto6.randomUUID()}`,
       userId: user.id,
       providerTxId: transId,
       amountCents: split.userRewardCents,
@@ -8024,7 +9393,7 @@ app.post("/api/admin/test-cpx-postback", requireAuth, requireAdmin, async (req, 
     const split = calculateHybridSurveySplit(effectiveGrossCents, userSharePercent, pointsPerUsdt);
     const transId = `test_cpx_${Date.now()}`;
     const entry = {
-      id: `ledg_${crypto5.randomUUID()}`,
+      id: `ledg_${crypto6.randomUUID()}`,
       userId: user.id,
       providerTxId: transId,
       amountCents: split.userRewardCents,
@@ -8167,6 +9536,195 @@ app.post("/api/admin/run-full-integration-check", requireAuth, requireAdmin, asy
     res.status(500).json({ error: "Failed to run full integration check." });
   }
 });
+var handleTimewallPostbackRoute = async (req, res) => {
+  const rawUrl = req.url || req.originalUrl || "";
+  const socketIp = req.socket?.remoteAddress || req.ip || "";
+  const result = await timewallService.handlePostback({
+    rawUrl,
+    socketIp,
+    headers: req.headers
+  });
+  res.status(result.httpStatus).type("text/plain").send(result.body);
+};
+app.get("/postback/timewall", handleTimewallPostbackRoute);
+app.get("/api/postback/timewall", handleTimewallPostbackRoute);
+app.get("/api/earn/timewall", requireAuth, async (req, res) => {
+  await dbStore.syncFromSupabase();
+  const sessionUser = req.user;
+  const freshUser = dbStore.getUserById(sessionUser.id) || sessionUser;
+  if (freshUser.offerwallBlocked) {
+    res.status(403).json({
+      blocked: true,
+      error: "Your offerwall access has been restricted by an administrator. Please contact support if you believe this is an error."
+    });
+    return;
+  }
+  const cfg = timewallService.getConfig();
+  const iframeUrl = timewallService.buildOfferwallUrl(freshUser.id);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(50, Math.max(5, Number(req.query.pageSize) || 15));
+  const history = dbStore.getOfferwallTransactionsForUser(freshUser.id, page, pageSize);
+  const balances = dbStore.getUserBalances(freshUser.id);
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.json({
+    blocked: false,
+    provider: "timewall",
+    displayName: "TimeWall.io",
+    isConfigured: timewallService.isConfigured(),
+    oidConfigured: Boolean(cfg.oid),
+    iframeUrl,
+    coinsPerUsd: cfg.coinsPerUsd,
+    allowDecimals: cfg.allowDecimals,
+    note: "Rewards are credited after the advertiser confirms, which can take minutes to days.",
+    balances,
+    history
+  });
+});
+app.get("/api/user/offerwall-history", requireAuth, async (req, res) => {
+  await dbStore.syncFromSupabase();
+  const user = req.user;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(50, Math.max(5, Number(req.query.pageSize) || 15));
+  const history = dbStore.getOfferwallTransactionsForUser(user.id, page, pageSize);
+  const balances = dbStore.getUserBalances(user.id);
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.json({
+    history,
+    balances
+  });
+});
+app.get("/api/admin/timewall/transactions", requireAuth, requireAdmin, async (req, res) => {
+  await dbStore.syncFromSupabase();
+  const userQuery = typeof req.query.user === "string" ? req.query.user : void 0;
+  const status = typeof req.query.status === "string" ? req.query.status : void 0;
+  const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : void 0;
+  const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : void 0;
+  const data = dbStore.getAdminOfferwallTransactions({
+    provider: "timewall",
+    userQuery,
+    status,
+    dateFrom,
+    dateTo
+  });
+  const cfg = timewallService.getConfig();
+  res.json({
+    ...data,
+    configStatus: {
+      oidConfigured: Boolean(cfg.oid),
+      secretConfigured: Boolean(cfg.secret),
+      oid: cfg.oid,
+      placementUrlTemplate: cfg.placementUrlTemplate,
+      allowedIps: cfg.allowedIps,
+      coinsPerUsd: cfg.coinsPerUsd,
+      allowDecimals: cfg.allowDecimals,
+      creditTypes: cfg.creditTypes,
+      reversalTypes: cfg.reversalTypes,
+      negativeBalanceMode: cfg.negativeBalanceMode,
+      maxSingleRevenueUsd: cfg.maxSingleRevenueUsd,
+      trustedProxies: cfg.trustedProxies,
+      postbackUrlTemplate: "https://rewardriver.online/postback/timewall?userid={userID}&txid={transactionID}&revenue={revenue}&currency={currencyAmount}&hash={hash}&ip={ip}&type={type}&withdrawid={withdrawid}&reason={reason}&offername={offername}&offerdetail={offerdetail}"
+    }
+  });
+});
+app.post(
+  "/api/admin/timewall/transactions/:id/review",
+  requireAuth,
+  requireAdmin,
+  blockWhenImpersonating,
+  async (req, res) => {
+    try {
+      const admin = req.user;
+      const action = req.body?.action === "approve" ? "approve" : req.body?.action === "reject" ? "reject" : null;
+      if (!action) {
+        res.status(400).json({ error: 'Action must be "approve" or "reject".' });
+        return;
+      }
+      const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : void 0;
+      const updated = await dbStore.reviewOfferwallTransaction({
+        transactionId: req.params.id,
+        action,
+        adminUserId: admin.id,
+        adminEmail: admin.email,
+        notes
+      });
+      res.json({ success: true, transaction: updated });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to review transaction." });
+    }
+  }
+);
+app.post(
+  "/api/admin/users/:id/offerwall-block",
+  requireAuth,
+  requireAdmin,
+  blockWhenImpersonating,
+  async (req, res) => {
+    try {
+      const admin = req.user;
+      const blocked = Boolean(req.body?.blocked);
+      const updatedUser = await dbStore.setUserOfferwallBlocked({
+        userId: req.params.id,
+        blocked,
+        adminUserId: admin.id,
+        adminEmail: admin.email
+      });
+      res.json({
+        success: true,
+        userId: updatedUser.id,
+        offerwallBlocked: Boolean(updatedUser.offerwallBlocked)
+      });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to update offerwall block status." });
+    }
+  }
+);
+app.post(
+  "/api/admin/timewall/simulate",
+  requireAuth,
+  requireAdmin,
+  blockWhenImpersonating,
+  async (req, res) => {
+    try {
+      const cfg = timewallService.getConfig();
+      const testSecret = cfg.secret || "sim_test_secret_key";
+      const userId = String(req.body?.userid || req.user.id).trim();
+      const txid = String(req.body?.txid || `tw_sim_${Date.now()}`).trim();
+      const revenueRaw = String(req.body?.revenue ?? "0.50").trim();
+      const currencyRaw = String(
+        req.body?.currency ?? Math.round(Number(revenueRaw) * cfg.coinsPerUsd)
+      ).trim();
+      const type = String(req.body?.type ?? "credit").trim();
+      const offerName = String(req.body?.offername ?? "TimeWall QA Simulated Offer").trim();
+      const offerDetail = String(req.body?.offerdetail ?? "Complete survey & verify email").trim();
+      const userIp = String(req.body?.ip ?? "203.0.113.45").trim();
+      const sourceIp = String(req.body?.sourceIp || cfg.allowedIps[0] || "18.156.132.55").trim();
+      const useBadHash = Boolean(req.body?.useBadHash);
+      const validHash = computeTimewallHash(userId, revenueRaw, testSecret);
+      const hashToSend = useBadHash ? "0000000000000000000000000000000000000000000000000000000000000000" : String(req.body?.hash || validHash);
+      const rawUrl = `/postback/timewall?userid=${encodeURIComponent(userId)}&txid=${encodeURIComponent(txid)}&revenue=${revenueRaw}&currency=${encodeURIComponent(currencyRaw)}&hash=${encodeURIComponent(hashToSend)}&ip=${encodeURIComponent(userIp)}&type=${encodeURIComponent(type)}&offername=${encodeURIComponent(offerName)}&offerdetail=${encodeURIComponent(offerDetail)}`;
+      const simResult = await timewallService.handlePostback({
+        rawUrl,
+        socketIp: "127.0.0.1",
+        headers: {
+          "cf-connecting-ip": sourceIp,
+          "x-forwarded-for": sourceIp
+        },
+        overrideConfig: {
+          secret: testSecret,
+          trustedProxies: ["127.0.0.1", "cloudflare"]
+        }
+      });
+      res.json({
+        success: true,
+        simulatedUrl: rawUrl,
+        computedHashPreview: `${validHash.slice(0, 6)}...${validHash.slice(-6)}`,
+        result: simResult
+      });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Simulation failed." });
+    }
+  }
+);
 async function startServer() {
   await dbStore.init();
   const existingAdmin = dbStore.getUserById("usr_admin_rewardriver") || dbStore.getUserByUsernameOrEmail("admin@reward-river") || dbStore.getUserByUsernameOrEmail("admin@rewardriver");
@@ -8181,7 +9739,7 @@ async function startServer() {
       displayName: "Reward River Admin",
       emailVerified: true,
       role: "admin",
-      externalOpaqueId: `rr_cpx_admin_${crypto5.randomBytes(8).toString("hex")}`,
+      externalOpaqueId: `rr_cpx_admin_${crypto6.randomBytes(8).toString("hex")}`,
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
       provider: "password",

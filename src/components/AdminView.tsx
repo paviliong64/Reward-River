@@ -9,6 +9,7 @@ import {
   CpxScreenoutRecord,
   CpxTransactionCheckResult
 } from '../utils/cpx';
+import { AdminTimewallTab } from './AdminTimewallTab';
 import {
   LayoutGrid,
   BarChart3,
@@ -73,6 +74,7 @@ type AdminSection =
   | 'completions'
   | 'callback_logs'
   | 'cpx_manager'
+  | 'timewall'
   | 'aoy_manager'
   | 'withdrawals'
   | 'user_analytics'
@@ -1374,6 +1376,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     { id: 'completions', label: 'Survey Completions', icon: FileCheck2, badge: adminCompletions.length || undefined },
     { id: 'callback_logs', label: 'Callback Logs', icon: Server, badge: callbackLogs.length || undefined },
     { id: 'cpx_manager', label: 'CPX Research Manager', icon: Megaphone },
+    { id: 'timewall', label: 'TimeWall Offerwall', icon: Globe },
     { id: 'withdrawals', label: 'USDT Withdrawals', icon: FilePlus2, badge: pendingCount > 0 ? pendingCount : undefined },
     { id: 'aoy_manager', label: 'AoyTasks Manager', icon: Zap },
     { id: 'user_analytics', label: 'User Analytics', icon: LineChart },
@@ -6105,6 +6108,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 )}
               </div>
             </div>
+          )}
+
+          {activeSection === 'timewall' && (
+            <AdminTimewallTab
+              token={localStorage.getItem('rr_auth_token') || ''}
+              users={usersList}
+              settings={settings}
+              onRefreshGlobal={() => {
+                fetchAdminData();
+                triggerRefresh();
+              }}
+            />
           )}
         </div>
       </div>

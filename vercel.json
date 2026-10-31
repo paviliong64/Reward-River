@@ -12,6 +12,10 @@
       "destination": "/api?__pathname=/wh/$1"
     },
     {
+      "source": "/postback/(.*)",
+      "destination": "/api?__pathname=/postback/$1"
+    },
+    {
       "source": "/downloads/(.*)",
       "destination": "/downloads/$1"
     },

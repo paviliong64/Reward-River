@@ -43,6 +43,8 @@ import {
 import { runUserAndLedgerBackfill } from './server/migrateBackfillUsers';
 import { verifyCloudflareTurnstile } from './server/turnstile';
 export { verifyCloudflareTurnstile };
+import { timewallService } from './server/timewallService';
+import { computeTimewallHash, maskSecretOrHash } from './src/utils/timewall';
 
 dotenv.config();
 
@@ -55,8 +57,13 @@ const isProduction = process.env.NODE_ENV === 'production';
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Normalize rewritten Vercel Serverless URLs (e.g., /api?__pathname=/api/auth/login)
-app.use((req, _res, next) => {
+// Normalize rewritten Vercel Serverless URLs (e.g., /api?__pathname=/postback/timewall)
+// Preserves raw query string parameters byte-for-byte so revenue="0.50" or "0.002" is never altered
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "frame-src 'self' https://timewall.io https://*.timewall.io https://offers.cpx-research.com https://*.cpx-research.com https://challenges.cloudflare.com https://*;"
+  );
   const rewrittenPath =
     (typeof req.query.__pathname === 'string' && req.query.__pathname) ||
     (typeof req.headers['x-invoke-path'] === 'string' && req.headers['x-invoke-path']) ||
@@ -65,10 +72,12 @@ app.use((req, _res, next) => {
     const cleanPath = rewrittenPath.startsWith('/') ? rewrittenPath : `/${rewrittenPath}`;
     const qIndex = req.url.indexOf('?');
     if (qIndex !== -1) {
-      const params = new URLSearchParams(req.url.slice(qIndex + 1));
-      params.delete('__pathname');
-      const qs = params.toString();
-      req.url = qs ? `${cleanPath}?${qs}` : cleanPath;
+      const rawQs = req.url
+        .slice(qIndex + 1)
+        .split('&')
+        .filter(part => !part.startsWith('__pathname='))
+        .join('&');
+      req.url = rawQs ? `${cleanPath}?${rawQs}` : cleanPath;
     } else {
       req.url = cleanPath;
     }
@@ -2275,7 +2284,50 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
         metaKeywords: typeof metaKeywords === 'string' ? metaKeywords.trim() : current.metaKeywords,
         ogImageUrl: typeof ogImageUrl === 'string' && ogImageUrl.trim() ? ogImageUrl.trim() : current.ogImageUrl,
         googleSearchConsoleKey: typeof googleSearchConsoleKey === 'string' ? googleSearchConsoleKey.trim() : current.googleSearchConsoleKey,
-        sitemapEnabled: sitemapEnabled !== undefined ? Boolean(sitemapEnabled) : current.sitemapEnabled
+        sitemapEnabled: sitemapEnabled !== undefined ? Boolean(sitemapEnabled) : current.sitemapEnabled,
+        timewallOid: typeof req.body.timewallOid === 'string' && req.body.timewallOid.trim() ? req.body.timewallOid.trim() : current.timewallOid,
+        timewallPlacementUrl:
+          typeof req.body.timewallPlacementUrl === 'string' && req.body.timewallPlacementUrl.trim()
+            ? req.body.timewallPlacementUrl.trim()
+            : current.timewallPlacementUrl,
+        timewallApiKey:
+          typeof req.body.timewallApiKey === 'string' && req.body.timewallApiKey.trim()
+            ? req.body.timewallApiKey.trim()
+            : current.timewallApiKey,
+        timewallSecret:
+          typeof req.body.timewallSecret === 'string' && req.body.timewallSecret.trim()
+            ? req.body.timewallSecret.trim()
+            : current.timewallSecret,
+        timewallAllowedIps:
+          typeof req.body.timewallAllowedIps === 'string' && req.body.timewallAllowedIps.trim()
+            ? req.body.timewallAllowedIps.trim()
+            : current.timewallAllowedIps,
+        timewallCoinsPerUsd:
+          Number(req.body.timewallCoinsPerUsd) > 0
+            ? Math.round(Number(req.body.timewallCoinsPerUsd))
+            : current.timewallCoinsPerUsd || 10000,
+        timewallAllowDecimals:
+          req.body.timewallAllowDecimals !== undefined
+            ? Boolean(req.body.timewallAllowDecimals)
+            : Boolean(current.timewallAllowDecimals),
+        timewallCreditTypes:
+          typeof req.body.timewallCreditTypes === 'string'
+            ? req.body.timewallCreditTypes.trim()
+            : current.timewallCreditTypes,
+        timewallReversalTypes:
+          typeof req.body.timewallReversalTypes === 'string'
+            ? req.body.timewallReversalTypes.trim()
+            : current.timewallReversalTypes,
+        timewallNegativeBalanceMode:
+          req.body.timewallNegativeBalanceMode === 'flag_account' ? 'flag_account' : 'allow',
+        timewallMaxSingleRevenueUsd:
+          typeof req.body.timewallMaxSingleRevenueUsd === 'string' && req.body.timewallMaxSingleRevenueUsd.trim()
+            ? req.body.timewallMaxSingleRevenueUsd.trim()
+            : current.timewallMaxSingleRevenueUsd || '50.00',
+        trustedProxies:
+          typeof req.body.trustedProxies === 'string' && req.body.trustedProxies.trim()
+            ? req.body.trustedProxies.trim()
+            : current.trustedProxies
       },
       admin?.id || 'usr_admin_rewardriver'
     );
@@ -3465,6 +3517,343 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
     res.status(500).json({ error: 'Failed to run full integration check.' });
   }
 });
+
+// -----------------------------------------------------------------------------
+// TimeWall.io Offerwall Integration Routes (Postback, User Offerwall & History, Admin)
+// -----------------------------------------------------------------------------
+
+/**
+ * GET /postback/timewall (and /api/postback/timewall)
+ * Public S2S postback endpoint for TimeWall.io (no session auth, excluded from CSRF).
+ * Enforces IP whitelist (TIMEWALL_ALLOWED_IPS via TRUSTED_PROXIES), raw revenue SHA-256 signature
+ * verification with constant-time compare, idempotency on (provider, provider_txid), BigInt decimal math,
+ * atomic balance + ledger crediting, and reversal handling.
+ */
+const handleTimewallPostbackRoute = async (req: Request, res: Response) => {
+  const rawUrl = req.url || req.originalUrl || '';
+  const socketIp = req.socket?.remoteAddress || req.ip || '';
+  const result = await timewallService.handlePostback({
+    rawUrl,
+    socketIp,
+    headers: req.headers as Record<string, string | string[] | undefined>
+  });
+  res.status(result.httpStatus).type('text/plain').send(result.body);
+};
+
+app.get('/postback/timewall', handleTimewallPostbackRoute);
+app.get('/api/postback/timewall', handleTimewallPostbackRoute);
+
+/**
+ * GET /api/earn/timewall
+ * Auth-required route that builds the TimeWall offerwall URL SERVER-SIDE exclusively
+ * from the logged-in user's ID (never accepts a user ID from the client).
+ * Blocks access if `user.offerwallBlocked` is true.
+ */
+app.get('/api/earn/timewall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
+  const sessionUser = req.user!;
+  const freshUser = dbStore.getUserById(sessionUser.id) || sessionUser;
+
+  if (freshUser.offerwallBlocked) {
+    res.status(403).json({
+      blocked: true,
+      error: 'Your offerwall access has been restricted by an administrator. Please contact support if you believe this is an error.'
+    });
+    return;
+  }
+
+  const cfg = timewallService.getConfig();
+  const iframeUrl = timewallService.buildOfferwallUrl(freshUser.id);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(50, Math.max(5, Number(req.query.pageSize) || 15));
+  const history = dbStore.getOfferwallTransactionsForUser(freshUser.id, page, pageSize);
+  const balances = dbStore.getUserBalances(freshUser.id);
+
+  // Extract end-user's real IP and User-Agent for TimeWall S2S Survey API (`POST https://api.timewall.io/get-surveys`)
+  const endUserIp = (
+    (req.headers['cf-connecting-ip'] as string) ||
+    (req.headers['x-real-ip'] as string) ||
+    (req.headers['x-client-ip'] as string) ||
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+    req.ip ||
+    req.socket?.remoteAddress ||
+    ''
+  ).trim();
+  const userAgent =
+    (req.headers['user-agent'] as string) ||
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+  const screenWidth = Number(req.query.screenWidth) || 390;
+  const screenHeight = Number(req.query.screenHeight) || 844;
+  const limit = Number(req.query.limit) || 10;
+
+  const surveyApi = await timewallService.fetchSurveysForUser({
+    userId: freshUser.id,
+    userIp: endUserIp,
+    userAgent,
+    screenWidth,
+    screenHeight,
+    limit,
+    provider: 'all'
+  });
+
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.json({
+    blocked: false,
+    provider: 'timewall',
+    displayName: 'TimeWall.io',
+    isConfigured: timewallService.isConfigured(),
+    oidConfigured: Boolean(cfg.oid),
+    apiKeyConfigured: Boolean(cfg.apiKey),
+    iframeUrl,
+    coinsPerUsd: cfg.coinsPerUsd,
+    allowDecimals: cfg.allowDecimals,
+    note: 'Rewards are credited after the advertiser confirms, which can take minutes to days.',
+    balances,
+    history,
+    surveyApi
+  });
+});
+
+/**
+ * POST /api/earn/timewall/surveys
+ * Dedicated S2S proxy endpoint that fetches live TimeWall surveys (`POST https://api.timewall.io/get-surveys`)
+ * using the server-side `TIMEWALL_API_KEY` (`Authorization: Bearer YOUR_API_KEY`) and the end-user's real IP and User-Agent.
+ */
+app.post('/api/earn/timewall/surveys', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const sessionUser = req.user!;
+  const freshUser = dbStore.getUserById(sessionUser.id) || sessionUser;
+  if (freshUser.offerwallBlocked) {
+    res.status(403).json({
+      blocked: true,
+      error: 'Your offerwall access has been restricted by an administrator.'
+    });
+    return;
+  }
+
+  const endUserIp = (
+    (req.headers['cf-connecting-ip'] as string) ||
+    (req.headers['x-real-ip'] as string) ||
+    (req.headers['x-client-ip'] as string) ||
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+    req.ip ||
+    req.socket?.remoteAddress ||
+    ''
+  ).trim();
+  const userAgent =
+    (req.headers['user-agent'] as string) ||
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+  const screenWidth = Number(req.body?.screen_width ?? req.body?.screenWidth) || 390;
+  const screenHeight = Number(req.body?.screen_height ?? req.body?.screenHeight) || 844;
+  const limit = Number(req.body?.limit) || 10;
+  const provider = typeof req.body?.provider === 'string' ? req.body.provider : 'all';
+
+  const surveyApi = await timewallService.fetchSurveysForUser({
+    userId: freshUser.id,
+    userIp: endUserIp,
+    userAgent,
+    screenWidth,
+    screenHeight,
+    limit,
+    provider
+  });
+
+  res.json(surveyApi);
+});
+
+/**
+ * GET /api/user/offerwall-history
+ * Paginated offerwall transaction history for the currently logged-in user.
+ */
+app.get('/api/user/offerwall-history', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
+  const user = req.user!;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(50, Math.max(5, Number(req.query.pageSize) || 15));
+  const history = dbStore.getOfferwallTransactionsForUser(user.id, page, pageSize);
+  const balances = dbStore.getUserBalances(user.id);
+
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.json({
+    history,
+    balances
+  });
+});
+
+/**
+ * GET /api/admin/timewall/transactions
+ * Admin view: filtered TimeWall transactions, USD revenue vs coins paid & platform margin totals,
+ * and active configuration status.
+ */
+app.get('/api/admin/timewall/transactions', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  await dbStore.syncFromSupabase();
+  const userQuery = typeof req.query.user === 'string' ? req.query.user : undefined;
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined;
+  const dateTo = typeof req.query.dateTo === 'string' ? req.query.dateTo : undefined;
+
+  const data = dbStore.getAdminOfferwallTransactions({
+    provider: 'timewall',
+    userQuery,
+    status,
+    dateFrom,
+    dateTo
+  });
+
+  const cfg = timewallService.getConfig();
+  res.json({
+    ...data,
+    configStatus: {
+      oidConfigured: Boolean(cfg.oid),
+      apiKeyConfigured: Boolean(cfg.apiKey),
+      apiKeyMasked: maskSecretOrHash(cfg.apiKey),
+      secretConfigured: Boolean(cfg.secret),
+      secretMasked: maskSecretOrHash(cfg.secret),
+      oid: cfg.oid,
+      placementUrlTemplate: cfg.placementUrlTemplate,
+      allowedIps: cfg.allowedIps,
+      coinsPerUsd: cfg.coinsPerUsd,
+      allowDecimals: cfg.allowDecimals,
+      creditTypes: cfg.creditTypes,
+      reversalTypes: cfg.reversalTypes,
+      negativeBalanceMode: cfg.negativeBalanceMode,
+      maxSingleRevenueUsd: cfg.maxSingleRevenueUsd,
+      trustedProxies: cfg.trustedProxies,
+      postbackUrlTemplate:
+        'https://rewardriver.online/postback/timewall?userid={userID}&txid={transactionID}&revenue={revenue}&currency={currencyAmount}&hash={hash}&ip={ip}&type={type}&withdrawid={withdrawid}&reason={reason}&offername={offername}&offerdetail={offerdetail}'
+    }
+  });
+});
+
+/**
+ * POST /api/admin/timewall/transactions/:id/review
+ * Approve or reject a `needs_review` TimeWall transaction.
+ */
+app.post(
+  '/api/admin/timewall/transactions/:id/review',
+  requireAuth,
+  requireAdmin,
+  blockWhenImpersonating,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const admin = req.user!;
+      const action = req.body?.action === 'approve' ? 'approve' : req.body?.action === 'reject' ? 'reject' : null;
+      if (!action) {
+        res.status(400).json({ error: 'Action must be "approve" or "reject".' });
+        return;
+      }
+      const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined;
+      const updated = await dbStore.reviewOfferwallTransaction({
+        transactionId: req.params.id,
+        action,
+        adminUserId: admin.id,
+        adminEmail: admin.email,
+        notes
+      });
+      res.json({ success: true, transaction: updated });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to review transaction.' });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/users/:id/offerwall-block
+ * Admin toggle for `users.offerwall_blocked`.
+ */
+app.post(
+  '/api/admin/users/:id/offerwall-block',
+  requireAuth,
+  requireAdmin,
+  blockWhenImpersonating,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const admin = req.user!;
+      const blocked = Boolean(req.body?.blocked);
+      const updatedUser = await dbStore.setUserOfferwallBlocked({
+        userId: req.params.id,
+        blocked,
+        adminUserId: admin.id,
+        adminEmail: admin.email
+      });
+      res.json({
+        success: true,
+        userId: updatedUser.id,
+        offerwallBlocked: Boolean(updatedUser.offerwallBlocked)
+      });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to update offerwall block status.' });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/timewall/simulate
+ * Local postback simulator for Admin & QA testing.
+ * Supports testing valid credits, sub-cent revenue ("0.002", "0.50"), duplicate txids,
+ * bad hashes, non-whitelisted IPs, currency mismatches, and reversals.
+ */
+app.post(
+  '/api/admin/timewall/simulate',
+  requireAuth,
+  requireAdmin,
+  blockWhenImpersonating,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const cfg = timewallService.getConfig();
+      const testSecret = cfg.secret || 'sim_test_secret_key';
+      const userId = String(req.body?.userid || req.user!.id).trim();
+      const txid = String(req.body?.txid || `tw_sim_${Date.now()}`).trim();
+      const revenueRaw = String(req.body?.revenue ?? '0.50').trim();
+      const currencyRaw = String(
+        req.body?.currency ?? Math.round(Number(revenueRaw) * cfg.coinsPerUsd)
+      ).trim();
+      const type = String(req.body?.type ?? 'credit').trim();
+      const offerName = String(req.body?.offername ?? 'TimeWall QA Simulated Offer').trim();
+      const offerDetail = String(req.body?.offerdetail ?? 'Complete survey & verify email').trim();
+      const userIp = String(req.body?.ip ?? '203.0.113.45').trim();
+      const sourceIp = String(req.body?.sourceIp || cfg.allowedIps[0] || '18.156.132.55').trim();
+      const useBadHash = Boolean(req.body?.useBadHash);
+
+      const validHash = computeTimewallHash(userId, revenueRaw, testSecret);
+      const hashToSend = useBadHash
+        ? '0000000000000000000000000000000000000000000000000000000000000000'
+        : String(req.body?.hash || validHash);
+
+      const rawUrl =
+        `/postback/timewall?userid=${encodeURIComponent(userId)}` +
+        `&txid=${encodeURIComponent(txid)}` +
+        `&revenue=${revenueRaw}` +
+        `&currency=${encodeURIComponent(currencyRaw)}` +
+        `&hash=${encodeURIComponent(hashToSend)}` +
+        `&ip=${encodeURIComponent(userIp)}` +
+        `&type=${encodeURIComponent(type)}` +
+        `&offername=${encodeURIComponent(offerName)}` +
+        `&offerdetail=${encodeURIComponent(offerDetail)}`;
+
+      const simResult = await timewallService.handlePostback({
+        rawUrl,
+        socketIp: '127.0.0.1',
+        headers: {
+          'cf-connecting-ip': sourceIp,
+          'x-forwarded-for': sourceIp
+        },
+        overrideConfig: {
+          secret: testSecret,
+          trustedProxies: ['127.0.0.1', 'cloudflare']
+        }
+      });
+
+      res.json({
+        success: true,
+        simulatedUrl: rawUrl,
+        computedHashPreview: `${validHash.slice(0, 6)}...${validHash.slice(-6)}`,
+        result: simResult
+      });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Simulation failed.' });
+    }
+  }
+);
 
 // -----------------------------------------------------------------------------
 // Vite Middleware / Static Serve Setup

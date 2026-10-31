@@ -58,7 +58,8 @@ export function calculateUserBalances(
   entries: LedgerEntry[],
   withdrawals: WithdrawalRecord[],
   pointsPerUsdt: number = 5000,
-  userSharePercent: number = 50
+  userSharePercent: number = 50,
+  allowNegativeBalance: boolean = false
 ): UserBalanceSummary {
   let totalConfirmedCredits = 0;
   let totalDebitsAndReversals = 0;
@@ -76,7 +77,7 @@ export function calculateUserBalances(
   const shareRatio = safeShare / 100;
   const centsToPts = (c: number) => Math.round((Math.max(0, c) / safeShare) * safePointsRate);
   const ptsToCents = (pts: number) =>
-    Math.round((Math.max(0, pts) / safePointsRate) * shareRatio * 100);
+    Math.round((pts / safePointsRate) * shareRatio * 100);
 
   for (const entry of entries) {
     if (entry.userId !== userId) continue;
@@ -116,8 +117,11 @@ export function calculateUserBalances(
   totalDebitsAndReversals = ptsToCents(totalDebitReversalPoints);
   pendingCents = ptsToCents(pendingPointsAccum);
   totalEarnedCents = totalConfirmedCredits;
-  const netConfirmedEarnings = Math.max(0, totalConfirmedCredits - totalDebitsAndReversals);
-  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - netConfirmedEarnings);
+  const rawNetEarnings = totalConfirmedCredits - totalDebitsAndReversals;
+  const netConfirmedEarnings = allowNegativeBalance
+    ? rawNetEarnings
+    : Math.max(0, rawNetEarnings);
+  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - Math.max(0, netConfirmedEarnings));
 
   // Active reserved withdrawals (requested, under_review, approved, processing)
   let reservedWithdrawalCents = 0;
@@ -135,10 +139,13 @@ export function calculateUserBalances(
     // 'rejected', 'failed', 'cancelled' release the reservation
   }
 
-  const availableCents = Math.max(0, netConfirmedEarnings - reservedWithdrawalCents);
+  const rawAvailableCents = netConfirmedEarnings - reservedWithdrawalCents;
+  const availableCents = allowNegativeBalance ? rawAvailableCents : Math.max(0, rawAvailableCents);
   const reservedWithdrawalPoints = centsToPts(reservedWithdrawalCents);
-  const netConfirmedPoints = Math.max(0, totalConfirmedPoints - totalDebitReversalPoints);
-  const availablePoints = Math.max(0, netConfirmedPoints - reservedWithdrawalPoints);
+  const rawNetPoints = totalConfirmedPoints - totalDebitReversalPoints;
+  const netConfirmedPoints = allowNegativeBalance ? rawNetPoints : Math.max(0, rawNetPoints);
+  const rawAvailablePoints = netConfirmedPoints - reservedWithdrawalPoints;
+  const availablePoints = allowNegativeBalance ? rawAvailablePoints : Math.max(0, rawAvailablePoints);
 
   return {
     availableCents,

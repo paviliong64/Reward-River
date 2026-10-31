@@ -18,6 +18,7 @@ export interface User {
   teamId?: string;
   teamName?: string;
   teamCode?: string;
+  offerwallBlocked?: boolean;
 }
 
 export interface ImpersonationSessionInfo {
@@ -233,7 +234,63 @@ export interface SystemSettings {
   sitemapEnabled?: boolean;
   turnstileSiteKey?: string;
   turnstileSecretKey?: string;
+  timewallOid?: string;
+  timewallPlacementUrl?: string;
+  timewallApiKey?: string;
+  timewallSecret?: string;
+  timewallAllowedIps?: string;
+  timewallCoinsPerUsd?: number;
+  timewallAllowDecimals?: boolean;
+  timewallCreditTypes?: string;
+  timewallReversalTypes?: string;
+  timewallNegativeBalanceMode?: 'allow' | 'flag_account';
+  timewallMaxSingleRevenueUsd?: string;
+  trustedProxies?: string;
   updatedAt: string;
+}
+
+export interface TimewallSurveyItem {
+  id: string;
+  loi: number;
+  usd_rate: number;
+  currency_amount: number;
+  link: string;
+}
+
+export interface TimewallSurveyFeed {
+  configured: boolean;
+  success: boolean;
+  prescreenerRequired: boolean;
+  currency: string;
+  surveys: TimewallSurveyItem[];
+  statusCode: number;
+  message?: string;
+}
+
+export interface OfferwallTransaction {
+  id: string;
+  provider: string;
+  providerTxid: string;
+  userId: string | null;
+  userEmail?: string;
+  userDisplayName?: string;
+  offerName: string;
+  offerDetail: string;
+  revenueRaw: string;
+  revenueUsd: string;
+  coins: string;
+  coinsInt: number;
+  type: string;
+  withdrawid: string;
+  reason: string;
+  userIp: string;
+  sourceIp: string;
+  status: 'credited' | 'reversed' | 'needs_review' | 'rejected' | 'blocked';
+  fraudFlags: string[];
+  rawQuery: Record<string, string>;
+  createdAt: string;
+  createdAtKarachi?: string;
+  reversedAt?: string | null;
 }
 
 export interface WhiteLabelTask {
