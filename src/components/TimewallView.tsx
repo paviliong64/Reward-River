@@ -13,8 +13,12 @@ import {
   Lock,
   Layers,
   ClipboardList,
-  UserCheck
+  UserCheck,
+  ShieldCheck,
+  Wrench,
+  Eye
 } from 'lucide-react';
+import { Logo } from './Logo';
 import { User, OfferwallTransaction, UserBalances, TimewallSurveyFeed } from '../types';
 
 interface TimewallViewProps {
@@ -32,6 +36,10 @@ interface TimewallPageResponse {
   isConfigured: boolean;
   oidConfigured: boolean;
   apiKeyConfigured?: boolean;
+  offerwallLive?: boolean;
+  offerwallReason?: string;
+  surveyApiLive?: boolean;
+  taskMaintenanceMode?: 'auto' | 'live' | 'maintenance';
   iframeUrl: string;
   coinsPerUsd: number;
   allowDecimals: boolean;
@@ -60,18 +68,25 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string>('');
   const [oidConfigured, setOidConfigured] = useState<boolean>(true);
+  const [offerwallLive, setOfferwallLive] = useState<boolean>(true);
+  const [offerwallReason, setOfferwallReason] = useState<string | undefined>(undefined);
+  const [taskMaintenanceMode, setTaskMaintenanceMode] = useState<'auto' | 'live' | 'maintenance'>('auto');
+  const [adminPreviewMaintenance, setAdminPreviewMaintenance] = useState<boolean>(false);
+  const [savingMode, setSavingMode] = useState<boolean>(false);
   const [coinsPerUsd, setCoinsPerUsd] = useState<number>(10000);
   const [note, setNote] = useState<string>(
-    'Rewards are credited after the advertiser confirms, which can take minutes to days.'
+    'Rewards are credited automatically to your Reward River balance after the advertiser confirms completion (usually within minutes).'
   );
   const [surveyApi, setSurveyApi] = useState<TimewallSurveyFeed | null>(null);
 
-  // Paginated Offerwall History state
+  // Paginated Task History state
   const [historyItems, setHistoryItems] = useState<OfferwallTransaction[]>([]);
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalItems, setTotalItems] = useState<number>(0);
   const pageSize = 10;
+
+  const isAdmin = user?.role === 'admin';
 
   const fetchTimewallData = useCallback(
     async (targetPage = page, isManualRefresh = false) => {
@@ -87,7 +102,7 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
         const screenW = typeof window !== 'undefined' && window.screen?.width ? window.screen.width : 390;
         const screenH = typeof window !== 'undefined' && window.screen?.height ? window.screen.height : 844;
         const res = await fetch(
-          `/api/earn/timewall?page=${targetPage}&pageSize=${pageSize}&screenWidth=${screenW}&screenHeight=${screenH}&limit=10&_t=${Date.now()}`,
+          `/api/earn/timewall?page=${targetPage}&pageSize=${pageSize}&screenWidth=${screenW}&screenHeight=${screenH}&limit=10${isManualRefresh ? '&force=1' : ''}&_t=${Date.now()}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -101,19 +116,25 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
           setBlocked(true);
           setErrorMsg(
             data.error ||
-              'Your offerwall access has been restricted by an administrator.'
+              'Your task access has been restricted by an administrator.'
           );
           return;
         }
 
         if (!res.ok) {
-          setErrorMsg(data.error || 'Could not load TimeWall offerwall.');
+          setErrorMsg(data.error || 'Task feed is temporarily undergoing maintenance.');
+          setOfferwallLive(false);
           return;
         }
 
         setBlocked(false);
         setIframeUrl(data.iframeUrl || '');
         setOidConfigured(Boolean(data.oidConfigured));
+        setOfferwallLive(data.offerwallLive !== false);
+        setOfferwallReason(data.offerwallReason);
+        if (data.taskMaintenanceMode) {
+          setTaskMaintenanceMode(data.taskMaintenanceMode);
+        }
         setCoinsPerUsd(data.coinsPerUsd || 10000);
         if (data.note) setNote(data.note);
         if (data.surveyApi) setSurveyApi(data.surveyApi);
@@ -129,7 +150,8 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
           onBalancesUpdated(data.balances);
         }
       } catch {
-        setErrorMsg('Network error while loading TimeWall offerwall.');
+        setErrorMsg('Task network is refreshing. Please wait a moment.');
+        setOfferwallLive(false);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -142,29 +164,35 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
     fetchTimewallData(1, false);
   }, [user?.id, token]);
 
-  // Poll user offerwall history & balance every 30s while on the TimeWall page so new credits appear automatically
+  // Poll live status, history & balance every 30s so when tasks/surveys go live they auto-activate immediately
   useEffect(() => {
     if (!user || !token || blocked) return;
     const interval = setInterval(() => {
-      fetch(`/api/user/offerwall-history?page=${page}&pageSize=${pageSize}&_t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(r => (r.ok ? r.json() : null))
-        .then(data => {
-          if (!data) return;
-          if (data.history) {
-            setHistoryItems(data.history.items || []);
-            setTotalPages(data.history.totalPages || 1);
-            setTotalItems(data.history.total || 0);
-          }
-          if (data.balances && onBalancesUpdated) {
-            onBalancesUpdated(data.balances);
-          }
-        })
-        .catch(() => {});
+      fetchTimewallData(page, true);
     }, 30000);
     return () => clearInterval(interval);
-  }, [user, token, blocked, page, onBalancesUpdated]);
+  }, [user, token, blocked, page, fetchTimewallData]);
+
+  // Determine which sub-features are working & live right now
+  const hasWorkingSurveys = Boolean(
+    surveyApi?.success &&
+      ((surveyApi.surveys && surveyApi.surveys.length > 0) || surveyApi.prescreenerRequired)
+  );
+  const isOfferwallWorking = Boolean(
+    taskMaintenanceMode === 'live' ||
+      (taskMaintenanceMode === 'auto' && offerwallLive && oidConfigured && iframeUrl && !errorMsg)
+  );
+  const isAnyTaskLiveForUsers =
+    taskMaintenanceMode !== 'maintenance' && (isOfferwallWorking || hasWorkingSurveys);
+
+  // Automatically switch users away from any sub-tab that isn't live
+  useEffect(() => {
+    if (activeSubTab === 'surveys' && !hasWorkingSurveys && isOfferwallWorking) {
+      setActiveSubTab('offerwall');
+    } else if (activeSubTab === 'offerwall' && !isOfferwallWorking && hasWorkingSurveys) {
+      setActiveSubTab('surveys');
+    }
+  }, [activeSubTab, hasWorkingSurveys, isOfferwallWorking]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage < 1 || newPage > totalPages) return;
@@ -192,7 +220,7 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
             <Clock className="w-3.5 h-3.5" />
-            Pending Review
+            Pending Verification
           </span>
         );
       case 'rejected':
@@ -204,7 +232,7 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
       case 'blocked':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            Blocked
+            Restricted
           </span>
         );
     }
@@ -213,19 +241,22 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
   if (!user || !token) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-8 text-center">
-          <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-6 h-6 text-teal-700" />
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-8 text-center space-y-4">
+          <div className="flex justify-center">
+            <Logo size="md" showTagline={false} />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">
-            Sign In to Access TimeWall.io Offerwall
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-100 dark:border-emerald-800 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6 text-[#079B55]" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+            Sign In to Access Reward River Tasks
           </h2>
-          <p className="text-sm text-slate-600 max-w-md mx-auto mb-6">
-            Complete verified micro-tasks, surveys, and advertiser offers on TimeWall.io to earn Points directly to your Reward River account.
+          <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+            Complete verified tasks, quizzes, and partner offers on Reward River to earn Points directly into your account.
           </p>
           <button
             onClick={onRequireAuth}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-teal-700 text-white hover:bg-teal-800 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#079B55] text-white hover:bg-[#058246] transition-colors cursor-pointer"
           >
             Sign In / Create Account
           </button>
@@ -237,16 +268,16 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
   if (blocked || user.offerwallBlocked) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
-        <div className="bg-rose-50/70 rounded-2xl border border-rose-200 p-8 text-center">
+        <div className="bg-rose-50/70 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-800 p-8 text-center">
           <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center mx-auto mb-4">
             <ShieldAlert className="w-6 h-6" />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">
-            Offerwall Access Restricted
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+            Task Center Access Restricted
           </h2>
-          <p className="text-sm text-slate-600 max-w-lg mx-auto">
+          <p className="text-sm text-slate-600 dark:text-slate-300 max-w-lg mx-auto">
             {errorMsg ||
-              'Your account is currently restricted from opening the TimeWall offerwall. Please contact support if you need assistance.'}
+              'Your account is currently restricted from accessing the Reward River Task Center. Please contact support if you need assistance.'}
           </p>
         </div>
       </div>
@@ -254,384 +285,413 @@ export const TimewallView: React.FC<TimewallViewProps> = ({
   }
 
   const prescreenerLink = surveyApi?.surveys?.[0]?.link || iframeUrl;
+  const showUserMaintenanceScreen = !loading && !isAnyTaskLiveForUsers;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Header Banner */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-teal-700 text-white flex items-center justify-center shadow-xs">
-                <Layers className="w-5 h-5" />
-              </div>
-              <div>
-                <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                  TimeWall.io Offerwall & Surveys
-                </h1>
-                <p className="text-xs text-slate-500">
-                  Complete tasks, quizzes, and advertiser offers to earn site coins ({coinsPerUsd.toLocaleString('en-US')} Points per $1.00 rate)
-                </p>
-              </div>
+      {/* WHITE-LABEL REWARD RIVER MAINTENANCE SCREEN (Only shown if Task Wall is under maintenance) */}
+      {showUserMaintenanceScreen ? (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm p-8 sm:p-12 text-center max-w-3xl mx-auto space-y-6">
+          <div className="flex flex-col items-center gap-3">
+            <Logo size="lg" showTagline={true} />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-extrabold uppercase tracking-wider">
+              <Wrench className="w-3.5 h-3.5 text-amber-600 animate-spin" style={{ animationDuration: '6s' }} />
+              <span>Reward River Official • Scheduled Maintenance</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Sub-navigation between Offerwall, Live Surveys (API), and History */}
-            <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200/60">
-              <button
-                onClick={() => setActiveSubTab('offerwall')}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeSubTab === 'offerwall'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-                Offerwall
-              </button>
-              <button
-                onClick={() => setActiveSubTab('surveys')}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeSubTab === 'surveys'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <ClipboardList className="w-3.5 h-3.5 text-teal-600" />
-                Live Surveys ({surveyApi?.surveys?.length || 0})
-              </button>
-              <button
-                onClick={() => setActiveSubTab('history')}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeSubTab === 'history'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <History className="w-3.5 h-3.5 text-teal-600" />
-                Offerwall History ({totalItems})
-              </button>
-            </div>
-
-            <button
-              onClick={() => fetchTimewallData(page, true)}
-              disabled={refreshing}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer disabled:opacity-50"
-              title="Refresh balance, surveys, and offerwall history"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-
-            {iframeUrl && (
-              <a
-                href={iframeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-teal-700 text-white hover:bg-teal-800 transition-colors"
-              >
-                <span>Open in new tab</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            )}
-          </div>
-        </div>
-
-        {/* Advertiser Confirmation Notice */}
-        <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 px-3.5 py-2.5 text-xs text-amber-900">
-          <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold">Note:</span> {note}
-          </div>
-        </div>
-
-        {/* Prescreener Required Prompt (Per TimeWall Survey API Spec: when prescreener_required: true, show "complete your profile" prompt) */}
-        {surveyApi?.prescreenerRequired && (
-          <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-teal-50 border border-teal-200 px-4 py-3 text-xs text-teal-950">
-            <div className="flex items-start gap-2.5">
-              <UserCheck className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
-              <div>
-                <div className="font-bold text-teal-900">
-                  Complete Your Profile to Unlock Higher-Paying Surveys
-                </div>
-                <p className="text-teal-800 mt-0.5">
-                  TimeWall requires a quick demographic prescreener before matching you with full surveys. Click below to complete your profile.
-                </p>
-              </div>
-            </div>
-            {prescreenerLink && (
-              <a
-                href={prescreenerLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-700 text-white font-semibold hover:bg-teal-800 shrink-0 transition-colors"
-              >
-                <span>Complete Your Profile</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            )}
-          </div>
-        )}
-      </div>
-
-      {errorMsg && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-700 flex items-center justify-between">
-          <span>{errorMsg}</span>
-          <button
-            onClick={() => fetchTimewallData(page, true)}
-            className="font-semibold underline ml-4 cursor-pointer"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {activeSubTab === 'offerwall' ? (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-          {!oidConfigured && (
-            <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between text-xs text-slate-600">
-              <span>
-                TimeWall placement URL is active. If the wall does not load yet, ensure <code className="font-mono text-slate-800">TIMEWALL_OID</code> is configured in Admin Settings or <code className="font-mono text-slate-800">.env</code>.
-              </span>
-              {iframeUrl && (
-                <a
-                  href={iframeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-teal-700 font-semibold hover:underline inline-flex items-center gap-1 shrink-0 ml-2"
-                >
-                  Open directly <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
-          )}
-
-          {loading ? (
-            <div className="min-h-[800px] flex flex-col items-center justify-center p-8 text-slate-500">
-              <RefreshCw className="w-7 h-7 animate-spin text-teal-600 mb-3" />
-              <p className="text-sm font-medium">Loading TimeWall.io Offerwall...</p>
-            </div>
-          ) : (
-            <iframe
-              src={iframeUrl}
-              title="TimeWall.io Offerwall"
-              className="w-full min-h-[800px] border-0 bg-slate-50"
-              allow="clipboard-write; fullscreen"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
-          )}
-        </div>
-      ) : null}
-
-      {activeSubTab === 'surveys' ? (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden p-5 sm:p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-teal-600" />
-                TimeWall Direct Survey Feed
-              </h2>
-              <p className="text-xs text-slate-500">
-                Real-time surveys fetched server-to-server for your profile and location
-              </p>
-            </div>
-            {iframeUrl && (
-              <a
-                href={iframeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-semibold text-teal-700 hover:underline inline-flex items-center gap-1"
-              >
-                Open Full TimeWall Portal <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            )}
-          </div>
-
-          {surveyApi?.prescreenerRequired && (
-            <div className="rounded-xl bg-teal-50 border border-teal-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-bold text-teal-900">
-                  Step 1: Complete Your Profile Prescreener
-                </div>
-                <p className="text-xs text-teal-800 mt-0.5">
-                  All survey links below currently point to TimeWall&apos;s profile prescreener. Complete it once to unlock direct survey payouts.
-                </p>
-              </div>
-              {prescreenerLink && (
-                <a
-                  href={prescreenerLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-700 text-white text-xs font-semibold hover:bg-teal-800 shrink-0"
-                >
-                  Complete Your Profile <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-            </div>
-          )}
-
-          {!surveyApi?.surveys || surveyApi.surveys.length === 0 ? (
-            <div className="py-10 text-center space-y-3">
-              <p className="text-sm text-slate-600">
-                {surveyApi?.message ||
-                  'No direct API surveys are currently available for your IP/location. You can still browse all tasks, clicks, and offers in the Offerwall tab.'}
-              </p>
-              <button
-                onClick={() => setActiveSubTab('offerwall')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-700 text-white text-xs font-semibold hover:bg-teal-800 cursor-pointer"
-              >
-                Switch to Full Offerwall
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {surveyApi.surveys.map(item => (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-slate-200 p-4 flex flex-col justify-between hover:border-teal-600/50 transition-colors bg-slate-50/40"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600">
-                        <Clock className="w-3.5 h-3.5 text-teal-600" />
-                        {item.loi} min
-                      </span>
-                      <span className="font-mono text-sm font-black text-teal-700">
-                        +{item.currency_amount.toLocaleString('en-US')} Pts
-                      </span>
-                    </div>
-                    <div className="text-sm font-bold text-slate-900">
-                      {surveyApi.prescreenerRequired
-                        ? 'Profile Prescreener Survey'
-                        : `TimeWall Research Survey #${item.id.slice(0, 6)}`}
-                    </div>
-                  </div>
-
-                  <a
-                    href={item.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-xl bg-teal-700 text-white text-xs font-semibold hover:bg-teal-800 transition-colors"
-                  >
-                    <span>
-                      {surveyApi.prescreenerRequired ? 'Complete Profile' : 'Start Survey'}
-                    </span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {/* Offerwall History Table (Always visible on History tab, and compact preview below Offerwall) */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <History className="w-4 h-4 text-teal-600" />
-              Offerwall History
-            </h2>
-            <p className="text-xs text-slate-500">
-              Your completed TimeWall.io offers, coin rewards, and verification statuses
+          <div className="space-y-2 max-w-xl mx-auto">
+            <h1 className="text-xl sm:text-2xl font-black text-[#192F40] dark:text-white tracking-tight">
+              Reward River Task Center is Upgrading
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              Our partner task wall and instant reward campaigns are currently undergoing scheduled quality verification for your region. As soon as live tasks are verified, this page will <strong className="text-[#079B55] dark:text-emerald-400">activate automatically</strong>.
             </p>
           </div>
-          <div className="text-xs text-slate-500 font-medium">
-            Total records: <span className="font-semibold text-slate-800">{totalItems}</span>
+
+          <div className="inline-flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => fetchTimewallData(page, true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#079B55] hover:bg-[#058246] text-white text-xs font-extrabold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? 'Checking Live Status...' : 'Check Live Status'}</span>
+            </button>
+
+            {totalItems > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('history')}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <History className="w-4 h-4 text-[#079B55]" />
+                <span>View Task History ({totalItems})</span>
+              </button>
+            )}
           </div>
         </div>
+      ) : (
+        <>
+          {/* White-Label Reward River Header Banner */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm p-5 sm:p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-[#079B55] text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#F0FBF5] dark:bg-emerald-950/60 border border-[#D9EFE3] dark:border-emerald-800 text-[#079B55] dark:text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                      <ShieldCheck className="w-3 h-3" />
+                      Reward River Official • rewardriver.online
+                    </span>
+                  </div>
+                  <h1 className="text-lg sm:text-xl font-black text-[#192F40] dark:text-white tracking-tight mt-1">
+                    Reward River Task &amp; Offer Center
+                  </h1>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Complete verified tasks, quizzes, and partner offers to earn Reward River Points ({coinsPerUsd.toLocaleString('en-US')} Points = $1.00 USD)
+                  </p>
+                </div>
+              </div>
 
-        {historyItems.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No TimeWall.io offer transactions recorded yet. Complete an offer above to earn Points!
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Sub-navigation: only show working sub-tabs; non-working sub-tabs are automatically hidden */}
+                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200/60 dark:border-slate-700">
+                  {isOfferwallWorking && (
+                    <button
+                      onClick={() => setActiveSubTab('offerwall')}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        activeSubTab === 'offerwall'
+                          ? 'bg-white dark:bg-slate-900 text-[#192F40] dark:text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-[#079B55]" />
+                      <span>Task Wall</span>
+                    </button>
+                  )}
+
+                  {hasWorkingSurveys && (
+                    <button
+                      onClick={() => setActiveSubTab('surveys')}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        activeSubTab === 'surveys'
+                          ? 'bg-white dark:bg-slate-900 text-[#192F40] dark:text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                      }`}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 text-[#079B55]" />
+                      <span>Bonus Surveys ({surveyApi?.surveys?.length || 0})</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => setActiveSubTab('history')}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      activeSubTab === 'history'
+                        ? 'bg-white dark:bg-slate-900 text-[#192F40] dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    <History className="w-3.5 h-3.5 text-[#079B55]" />
+                    <span>Task History ({totalItems})</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => fetchTimewallData(page, true)}
+                  disabled={refreshing}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Refresh balance and live tasks"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+
+                {iframeUrl && (isOfferwallWorking || isAdmin) && (
+                  <a
+                    href={iframeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#079B55] text-white hover:bg-[#058246] transition-colors"
+                  >
+                    <span>Open in New Tab</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* Reward Confirmation Notice */}
+            <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-[#F0FBF5] dark:bg-emerald-950/40 border border-[#D9EFE3] dark:border-emerald-800/80 px-3.5 py-2.5 text-xs text-[#192F40] dark:text-emerald-200">
+              <CheckCircle2 className="w-4 h-4 text-[#079B55] shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Reward River Guarantee:</span> {note}
+              </div>
+            </div>
+
+            {/* Prescreener Required Prompt (Only shown when prescreenerRequired is active) */}
+            {surveyApi?.prescreenerRequired && (
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 px-4 py-3 text-xs text-teal-950 dark:text-teal-200">
+                <div className="flex items-start gap-2.5">
+                  <UserCheck className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-teal-900 dark:text-teal-100">
+                      Complete Your Reward River Profile to Unlock Higher-Paying Surveys
+                    </div>
+                    <p className="text-teal-800 dark:text-teal-300 mt-0.5">
+                      Complete a quick 1-time demographic profile prescreener to unlock targeted high-reward surveys for your account.
+                    </p>
+                  </div>
+                </div>
+                {prescreenerLink && (
+                  <a
+                    href={prescreenerLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#079B55] text-white font-bold hover:bg-[#058246] shrink-0 transition-colors"
+                  >
+                    <span>Complete Profile</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Offer Name</th>
-                  <th className="py-3 px-4">Transaction ID</th>
-                  <th className="py-3 px-4 text-right">Coins (Points)</th>
-                  <th className="py-3 px-4 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-                {historyItems.map(tx => (
-                  <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3 px-4 text-slate-600 whitespace-nowrap font-mono text-xs">
-                      {tx.createdAtKarachi || new Date(tx.createdAt).toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-slate-900">
-                        {tx.offerName || 'TimeWall Offer'}
-                      </div>
-                      {tx.offerDetail && (
-                        <div className="text-xs text-slate-500 line-clamp-1">
-                          {tx.offerDetail}
+
+          {activeSubTab === 'offerwall' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm overflow-hidden">
+              {/* Branded White-Label Top Frame Bar */}
+              <div className="px-4 py-3 bg-[#192F40] text-white flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-bold">Reward River Verified Task Wall</span>
+                  <span className="text-slate-400 hidden sm:inline">• Instant Auto-Credit Enabled</span>
+                </div>
+                <span className="font-mono text-[11px] text-emerald-300 font-semibold">
+                  $1.00 = {coinsPerUsd.toLocaleString('en-US')} Pts
+                </span>
+              </div>
+
+              {loading ? (
+                <div className="min-h-[800px] flex flex-col items-center justify-center p-8 text-slate-500">
+                  <RefreshCw className="w-7 h-7 animate-spin text-[#079B55] mb-3" />
+                  <p className="text-sm font-bold text-[#192F40] dark:text-white">
+                    Loading Reward River Verified Tasks...
+                  </p>
+                </div>
+              ) : (
+                <iframe
+                  src={iframeUrl}
+                  title="Reward River Task Wall"
+                  className="w-full min-h-[800px] border-0 bg-slate-50"
+                  allow="clipboard-write; fullscreen"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              )}
+            </div>
+          ) : null}
+
+          {activeSubTab === 'surveys' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm overflow-hidden p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div>
+                  <h2 className="text-base font-bold text-[#192F40] dark:text-white flex items-center gap-2">
+                    <ClipboardList className="w-4 h-4 text-[#079B55]" />
+                    Reward River Bonus Surveys
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Real-time verified surveys matched to your Reward River profile and location
+                  </p>
+                </div>
+                {iframeUrl && (
+                  <a
+                    href={iframeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-bold text-[#079B55] hover:underline inline-flex items-center gap-1"
+                  >
+                    Open Full Task Portal <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+
+              {!surveyApi?.surveys || surveyApi.surveys.length === 0 ? (
+                <div className="py-10 text-center space-y-3">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-slate-800 text-amber-600 flex items-center justify-center mx-auto">
+                    <Wrench className="w-5 h-5" />
+                  </div>
+                  <div className="text-sm font-bold text-slate-800 dark:text-white">
+                    Bonus Survey Feed is Under Maintenance for Your Region
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    {isAdmin
+                      ? 'Admin Note: This empty survey tab is automatically hidden from regular users until live surveys are returned.'
+                      : 'New bonus surveys will appear here automatically as soon as they become available.'}
+                  </p>
+                  {isOfferwallWorking && (
+                    <button
+                      onClick={() => setActiveSubTab('offerwall')}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#079B55] text-white text-xs font-bold hover:bg-[#058246] cursor-pointer"
+                    >
+                      Switch to Task Wall
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {surveyApi.surveys.map(item => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col justify-between hover:border-[#079B55]/60 transition-colors bg-slate-50/40 dark:bg-slate-800/40"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                            <Clock className="w-3.5 h-3.5 text-[#079B55]" />
+                            {item.loi} min
+                          </span>
+                          <span className="font-mono text-sm font-black text-[#079B55]">
+                            +{item.currency_amount.toLocaleString('en-US')} Pts
+                          </span>
                         </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-500">
-                      {tx.providerTxid}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold whitespace-nowrap">
-                      {tx.status === 'reversed' ? (
-                        <span className="text-red-600">
-                          -{tx.coinsInt.toLocaleString('en-US')} Pts
-                        </span>
-                      ) : tx.status === 'credited' ? (
-                        <span className="text-emerald-700">
-                          +{tx.coinsInt.toLocaleString('en-US')} Pts
-                        </span>
-                      ) : (
-                        <span className="text-slate-600">
-                          {tx.coinsInt.toLocaleString('en-US')} Pts
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
-                      {renderStatusBadge(tx.status)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                        <div className="text-sm font-bold text-[#192F40] dark:text-white">
+                          {surveyApi.prescreenerRequired
+                            ? 'Reward River Profile Prescreener'
+                            : `Reward River Survey #${item.id.slice(0, 6)}`}
+                        </div>
+                      </div>
 
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="px-5 py-3.5 bg-slate-50/60 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-600">
-            <div>
-              Page <span className="font-semibold text-slate-900">{page}</span> of{' '}
-              <span className="font-semibold text-slate-900">{totalPages}</span>
+                      <a
+                        href={item.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-xl bg-[#079B55] text-white text-xs font-bold hover:bg-[#058246] transition-colors"
+                      >
+                        <span>
+                          {surveyApi.prescreenerRequired ? 'Complete Profile' : 'Start Survey'}
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => handlePageChange(page - 1)}
-                disabled={page <= 1}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Prev
-              </button>
-              <button
-                onClick={() => handlePageChange(page + 1)}
-                disabled={page >= totalPages}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-              >
-                Next
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+          ) : null}
+        </>
+      )}
+
+      {/* White-Label Task History Table */}
+      {(activeSubTab === 'history' || !showUserMaintenanceScreen) && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-[#192F40] dark:text-white flex items-center gap-2">
+                <History className="w-4 h-4 text-[#079B55]" />
+                Reward River Task &amp; Offer History
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Your completed tasks, Points rewards, and verification statuses on rewardriver.online
+              </p>
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Total records: <span className="font-semibold text-slate-800 dark:text-white">{totalItems}</span>
             </div>
           </div>
-        )}
-      </div>
+
+          {historyItems.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+              No completed task transactions recorded yet. Complete a task above to earn Reward River Points!
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Task / Offer</th>
+                    <th className="py-3 px-4">Reference ID</th>
+                    <th className="py-3 px-4 text-right">Points</th>
+                    <th className="py-3 px-4 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs sm:text-sm">
+                  {historyItems.map(tx => (
+                    <tr key={tx.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap font-mono text-xs">
+                        {tx.createdAtKarachi || new Date(tx.createdAt).toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900 dark:text-white">
+                          {(tx.offerName || 'Reward River Verified Offer').replace(/TimeWall(\.io)?/gi, 'Reward River')}
+                        </div>
+                        {tx.offerDetail && (
+                          <div className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">
+                            {tx.offerDetail}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-xs text-slate-500">
+                        {tx.providerTxid}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold whitespace-nowrap">
+                        {tx.status === 'reversed' ? (
+                          <span className="text-red-600">
+                            -{tx.coinsInt.toLocaleString('en-US')} Pts
+                          </span>
+                        ) : tx.status === 'credited' ? (
+                          <span className="text-[#079B55]">
+                            +{tx.coinsInt.toLocaleString('en-US')} Pts
+                          </span>
+                        ) : (
+                          <span className="text-slate-600">
+                            {tx.coinsInt.toLocaleString('en-US')} Pts
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        {renderStatusBadge(tx.status)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="px-5 py-3.5 bg-slate-50/60 dark:bg-slate-800/40 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+              <div>
+                Page <span className="font-semibold text-slate-900 dark:text-white">{page}</span> of{' '}
+                <span className="font-semibold text-slate-900 dark:text-white">{totalPages}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page <= 1}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Prev
+                </button>
+                <button
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page >= totalPages}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  Next
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
-

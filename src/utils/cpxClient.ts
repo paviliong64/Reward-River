@@ -271,7 +271,7 @@ export async function fetchLiveCpxSurveysBrowser(params: {
   const url = new URL('https://live-api.cpx-research.com/api/get-surveys.php');
   url.searchParams.set('app_id', appId);
   url.searchParams.set('ext_user_id', extUserId);
-  url.searchParams.set('output_method', 'api');
+  url.searchParams.set('output_method', 'jsscriptv1');
   url.searchParams.set('limit', String(limit));
   if (secureHash) {
     url.searchParams.set('secure_hash', secureHash);

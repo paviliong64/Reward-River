@@ -32,8 +32,10 @@ fullstack_zip_path = os.path.join(public_downloads, 'reward-river-fullstack.zip'
 with zipfile.ZipFile(fullstack_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     add_dir_to_zip(zf, 'src', 'src')
     add_dir_to_zip(zf, 'server', 'server')
+    add_dir_to_zip(zf, 'api', 'api')
+    add_dir_to_zip(zf, 'scripts', 'scripts')
     add_dir_to_zip(zf, 'public', 'public')
-    for f in ['server.ts', 'package.json', 'tsconfig.json', 'vite.config.ts', 'index.html', 'metadata.json', '.env.example', 'README.md', 'firebase-blueprint.json', 'firestore.rules']:
+    for f in ['server.ts', 'package.json', 'tsconfig.json', 'vite.config.ts', 'vercel.json', 'index.html', 'metadata.json', '.env.example', 'README.md', 'supabase-schema.sql', 'supabase-migration-upgrade.sql']:
         add_file_to_zip(zf, f)
 
 # 2. Frontend Only ZIP
@@ -41,14 +43,16 @@ frontend_zip_path = os.path.join(public_downloads, 'reward-river-frontend.zip')
 with zipfile.ZipFile(frontend_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     add_dir_to_zip(zf, 'src', 'src')
     add_dir_to_zip(zf, 'public', 'public')
-    for f in ['package.json', 'tsconfig.json', 'vite.config.ts', 'index.html', 'metadata.json', '.env.example', 'README.md']:
+    for f in ['package.json', 'tsconfig.json', 'vite.config.ts', 'vercel.json', 'index.html', 'metadata.json', '.env.example', 'README.md']:
         add_file_to_zip(zf, f)
 
 # 3. Backend Only ZIP
 backend_zip_path = os.path.join(public_downloads, 'reward-river-backend.zip')
 with zipfile.ZipFile(backend_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     add_dir_to_zip(zf, 'server', 'server')
-    for f in ['server.ts', 'package.json', 'tsconfig.json', '.env.example', 'README.md', 'firebase-blueprint.json', 'firestore.rules']:
+    add_dir_to_zip(zf, 'api', 'api')
+    add_dir_to_zip(zf, 'scripts', 'scripts')
+    for f in ['server.ts', 'package.json', 'tsconfig.json', 'vercel.json', '.env.example', 'README.md', 'supabase-schema.sql', 'supabase-migration-upgrade.sql']:
         add_file_to_zip(zf, f)
 
 # 4. Admin Portal Package ZIP

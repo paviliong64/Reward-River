@@ -162,13 +162,13 @@ export class CpxResearchService {
         effectiveIp = '142.250.190.46';
       }
 
-      const fetchFromCpxEndpoint = async (targetIp: string) => {
+      const fetchFromCpxEndpoint = async (targetIp: string, outputMethod: 'api' | 'jsscriptv1' = 'api') => {
         const url = new URL('https://live-api.cpx-research.com/api/get-surveys.php');
         url.searchParams.set('app_id', this.appId);
         url.searchParams.set('ext_user_id', externalUserId);
         url.searchParams.set('subid_1', subid1);
         url.searchParams.set('subid_2', subid2);
-        url.searchParams.set('output_method', 'jsscriptv1');
+        url.searchParams.set('output_method', outputMethod);
         url.searchParams.set('ip_user', targetIp);
         url.searchParams.set('limit', String(maxSurveys));
         url.searchParams.set('secure_hash', secureHash);
@@ -190,7 +190,8 @@ export class CpxResearchService {
           const response = await fetch(url.toString(), {
             headers: {
               Accept: 'application/json',
-              'User-Agent': effectiveUa
+              'User-Agent': effectiveUa,
+              'X-Forwarded-For': targetIp
             },
             signal: controller.signal
           });
@@ -203,18 +204,19 @@ export class CpxResearchService {
         }
       };
 
-      let json = await fetchFromCpxEndpoint(effectiveIp);
+      let json = await fetchFromCpxEndpoint(effectiveIp, 'api');
       let normalized = json && json.status === 'success'
         ? normalizeCpxSurveyList(json, this.appId, externalUserId, this.hashKey)
         : [];
 
-      // If regional/ISP IP returned 0 live surveys, retry live CPX Research endpoint with global pool IP
-      // so the user always receives 100% genuine live CPX Research surveys (never mock data).
-      if (normalized.length === 0 && effectiveIp !== '142.250.190.46') {
-        const retryJson = await fetchFromCpxEndpoint('142.250.190.46');
-        if (retryJson && retryJson.status === 'success') {
-          json = retryJson;
-          normalized = normalizeCpxSurveyList(retryJson, this.appId, externalUserId, this.hashKey);
+      if (normalized.length === 0) {
+        const fallbackJson = await fetchFromCpxEndpoint(effectiveIp, 'jsscriptv1');
+        if (fallbackJson && fallbackJson.status === 'success') {
+          const fallbackList = normalizeCpxSurveyList(fallbackJson, this.appId, externalUserId, this.hashKey);
+          if (fallbackList.length > 0 || !json) {
+            json = fallbackJson;
+            normalized = fallbackList;
+          }
         }
       }
 

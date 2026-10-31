@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Survey, UsdtQuote, CpxConfigStatus, WhiteLabelTask, User, UserBalances } from '../types';
+import { normalizeBrowserCpxSurveys } from '../utils/cpxClient';
+import { Logo } from './Logo';
 import {
   ClipboardList,
   Clock,
@@ -18,7 +20,9 @@ import {
   Layers,
   Sparkles,
   Coins,
-  UserCheck
+  UserCheck,
+  Wrench,
+  Eye
 } from 'lucide-react';
 
 interface SurveysViewProps {
@@ -50,6 +54,8 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
   error,
   cpxStatus,
   balances,
+  pointsPerUsdt = 5000,
+  userSharePercent = 50,
   onRefresh,
   onStartSurvey,
   onTaskCompleted,
@@ -69,6 +75,10 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
   const [taskSecondsLeft, setTaskSecondsLeft] = useState(0);
   const [taskClaiming, setTaskClaiming] = useState(false);
   const [taskFeedback, setTaskFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [earnMaintenanceMode, setEarnMaintenanceMode] = useState<'auto' | 'live' | 'maintenance'>('auto');
+  const [widgetSurveys, setWidgetSurveys] = useState<Survey[]>([]);
+
+  const isAdmin = user?.role === 'admin';
 
   // Active started survey session tracking in background (no manual banner needed)
   const [activeSurveySession, setActiveSurveySession] = useState<Survey | null>(null);
@@ -156,6 +166,16 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
         setCpxWidgetCount(payload.count);
       } else if (payload.type === 'get_all_surveys' && Array.isArray(payload.surveys)) {
         setCpxWidgetCount(payload.surveys.length);
+        const normalizedFromWidget = normalizeBrowserCpxSurveys(payload.surveys, {
+          appId: String(cpxConfig?.appId || '37699'),
+          extUserId: cpxConfig?.extUserId || user?.externalOpaqueId || user?.id || 'rr_member_1',
+          secureHash: cpxConfig?.secureHash || '',
+          userSharePercent,
+          pointsPerUsdt
+        });
+        if (normalizedFromWidget.length > 0) {
+          setWidgetSurveys(normalizedFromWidget);
+        }
       } else if (payload.type === 'get_transaction' && payload.transactions) {
         syncCpxTransactionsToServer(payload.transactions);
       }
@@ -163,7 +183,7 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [syncCpxTransactionsToServer]);
+  }, [syncCpxTransactionsToServer, cpxConfig, user?.externalOpaqueId, user?.id, userSharePercent, pointsPerUsdt]);
 
   // Secure user identifier generation: strictly use Supabase UUID or opaque ID, NEVER pass user email or PII
   const effectiveAppId = Number(cpxConfig?.appId || '37699') || 37699;
@@ -438,8 +458,11 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
     };
   }, [activeSurveySession, handleConfirmSurveyCompletion, onTaskCompleted]);
 
+  // Combine API surveys with any browser-received widget surveys
+  const combinedSurveys = surveys.length > 0 ? surveys : widgetSurveys;
+
   // Filter surveys
-  const filteredSurveys = [...surveys].sort((a, b) => {
+  const filteredSurveys = [...combinedSurveys].sort((a, b) => {
     if (filter === 'quick') {
       return a.loiMinutes - b.loiMinutes;
     }
@@ -486,6 +509,32 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
       </div>
     );
   };
+
+  // Auto-poll every 30s when in empty state so new live survey cards activate automatically
+  useEffect(() => {
+    if (filteredSurveys.length > 0 && earnMaintenanceMode !== 'maintenance') return;
+    const timer = setInterval(() => {
+      onRefresh();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [filteredSurveys.length, earnMaintenanceMode, onRefresh]);
+
+  const hasLiveSurveys = filteredSurveys.length > 0;
+  const hasLiveTasks = filteredTasks.length > 0;
+  const isSurveyWallLive = Boolean(cpxStatus?.isConfigured !== false && cpxStatus?.integrationMode !== 'paused');
+  const isEarnLiveForUsers =
+    earnMaintenanceMode !== 'maintenance' && (hasLiveSurveys || isSurveyWallLive || hasLiveTasks);
+
+  // If user was on 'tasks' but tasks has 0 live items, automatically switch back to 'surveys'
+  useEffect(() => {
+    if (loading || tasksLoading) return;
+    if (marketplaceSection === 'tasks' && !hasLiveTasks) {
+      setMarketplaceSection('surveys');
+    }
+  }, [loading, tasksLoading, marketplaceSection, hasLiveTasks]);
+
+  const showUserMaintenanceScreen = !loading && !isEarnLiveForUsers;
+  const liveWallUrl = `https://offers.cpx-research.com/index.php?app_id=${effectiveAppId}&ext_user_id=${encodeURIComponent(effectiveUserId)}${effectiveHash ? `&secure_hash=${effectiveHash}` : ''}&main_color=079b55`;
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -537,22 +586,126 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
         </div>
       )}
 
+      {/* WHITE-LABEL REWARD RIVER MAINTENANCE SCREEN (Only shown if survey wall is explicitly paused/under maintenance) */}
+      {showUserMaintenanceScreen ? (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm p-8 sm:p-12 text-center max-w-3xl mx-auto space-y-6">
+          <div className="flex flex-col items-center gap-3">
+            <Logo size="lg" showTagline={true} />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-extrabold uppercase tracking-wider">
+              <Wrench className="w-3.5 h-3.5 text-amber-600 animate-spin" style={{ animationDuration: '6s' }} />
+              <span>Reward River Official • Scheduled Maintenance</span>
+            </div>
+          </div>
+
+          <div className="space-y-2 max-w-xl mx-auto">
+            <h1 className="text-xl sm:text-2xl font-black text-[#192F40] dark:text-white tracking-tight">
+              Reward River Earn Center is Upgrading
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              Our market research routing engine is currently refreshing and verifying high-paying surveys for your profile and location. As soon as live surveys become available, this page will <strong className="text-[#079B55] dark:text-emerald-400">activate automatically</strong>.
+            </p>
+          </div>
+
+          <div className="inline-flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#079B55] hover:bg-[#058246] text-white text-xs font-extrabold shadow-xs transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Check Live Surveys Now</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* =====================================================================
           VIEW A: RESEARCH SURVEYS
          ===================================================================== */}
-      {marketplaceSection === 'surveys' && (
+      {!showUserMaintenanceScreen && marketplaceSection === 'surveys' && (
         <>
-          {error && (
-            <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
-                <span>{error}</span>
+          {/* White-Label Reward River Earn Header */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-[#079B55] text-white flex items-center justify-center shadow-xs shrink-0">
+                <ClipboardList className="w-5 h-5" />
               </div>
-              <button onClick={onRefresh} className="font-semibold underline hover:text-red-900 dark:hover:text-red-100">
-                Try Again
-              </button>
+              <div>
+                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#F0FBF5] dark:bg-emerald-950/60 border border-[#D9EFE3] dark:border-emerald-800 text-[#079B55] dark:text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>Reward River Official • rewardriver.online</span>
+                </div>
+                <h1 className="text-lg sm:text-xl font-black text-[#192F40] dark:text-white tracking-tight mt-1">
+                  Reward River Verified Surveys
+                </h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Complete verified market research surveys to earn Reward River Points (10,000 Points = $1.00 USD)
+                </p>
+              </div>
             </div>
-          )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              {hasLiveSurveys && (
+                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200/70 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setSurveyPresentation('cards')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      surveyPresentation === 'cards'
+                        ? 'bg-white dark:bg-slate-900 text-[#192F40] dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    Survey Cards ({filteredSurveys.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSurveyPresentation('offerwall')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      surveyPresentation === 'offerwall'
+                        ? 'bg-white dark:bg-slate-900 text-[#192F40] dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    Live Survey Wall
+                  </button>
+                </div>
+              )}
+
+              {hasLiveTasks && (
+                <button
+                  type="button"
+                  onClick={() => setMarketplaceSection('tasks')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#F0FBF5] dark:bg-slate-800 text-[#079B55] border border-[#D9EFE3] dark:border-slate-700 hover:border-[#079B55] cursor-pointer"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Express Tasks ({filteredTasks.length})</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onRefresh();
+                  setCpxWidgetReloadKey((prev) => prev + 1);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+
+              <a
+                href={liveWallUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#079B55] text-white hover:bg-[#058246] transition-colors"
+              >
+                <span>Open in New Tab</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
 
           {/* Hidden background transaction listener iframe when in cards mode */}
           {surveyPresentation !== 'official_widget' && (
@@ -575,13 +728,15 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSurveyPresentation('cards')}
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
-                  >
-                    <span>Back to Survey Cards</span>
-                  </button>
+                  {hasLiveSurveys && (
+                    <button
+                      type="button"
+                      onClick={() => setSurveyPresentation('cards')}
+                      className="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
+                    >
+                      <span>Back to Survey Cards</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setCpxWidgetReloadKey((prev) => prev + 1)}
@@ -606,35 +761,41 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
             </div>
           )}
 
-          {/* SUB-VIEW 2: FULL RESPONSIVE SURVEY WALL IFRAME */}
-          {surveyPresentation === 'offerwall' && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-              <div className="p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* SUB-VIEW 2: FULL RESPONSIVE SURVEY WALL IFRAME (or auto-shown when 0 individual JSON cards returned so users can complete profile & take live surveys) */}
+          {(surveyPresentation === 'offerwall' || (surveyPresentation === 'cards' && !loading && filteredSurveys.length === 0)) && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#D9EFE3] dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-[#192F40] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-sm font-bold">Reward River Live Survey Portal</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-bold">Reward River Verified Survey Wall</span>
+                  <span className="text-slate-400 hidden sm:inline">• Instant Auto-Credit Enabled</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSurveyPresentation('cards')}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
-                  >
-                    <span>Back to Survey Cards</span>
-                  </button>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[11px] text-emerald-300 font-semibold">
+                    $1.00 = 10,000 Pts
+                  </span>
+                  {hasLiveSurveys && (
+                    <button
+                      type="button"
+                      onClick={() => setSurveyPresentation('cards')}
+                      className="px-2.5 py-1 rounded-lg bg-[#079B55] hover:bg-[#058246] text-white text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <span>View Survey Cards</span>
+                    </button>
+                  )}
                 </div>
               </div>
               <iframe
-                src={`https://wall.cpx-research.com/index.php?app_id=${cpxConfig?.appId || '37699'}&ext_user_id=${encodeURIComponent(cpxConfig?.extUserId || user?.externalOpaqueId || 'member')}${cpxConfig?.secureHash ? `&secure_hash=${cpxConfig.secureHash}` : ''}&main_color=10b981`}
-                title="Reward River Survey Wall"
-                className="w-full h-[750px] border-0"
+                src={liveWallUrl}
+                title="Reward River Verified Survey Wall"
+                className="w-full min-h-[780px] border-0 bg-slate-50"
                 allow="clipboard-write; fullscreen"
               />
             </div>
           )}
 
           {/* SUB-VIEW 3: NATIVE DIRECT VERIFIED CARDS GRID */}
-          {surveyPresentation === 'cards' && (
+          {surveyPresentation === 'cards' && (loading || filteredSurveys.length > 0) && (
             loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -647,25 +808,6 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
                     <div className="h-6 w-full bg-slate-100 dark:bg-slate-800/70 rounded-lg"></div>
                   </div>
                 ))}
-              </div>
-            ) : filteredSurveys.length === 0 ? (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-800 max-w-lg mx-auto space-y-3 shadow-sm">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
-                  <ClipboardList className="w-6 h-6" />
-                </div>
-                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">At this moment no surveys available for your profile</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Market research studies depend on your demographic profile. Please refresh shortly as new Reward River surveys become available.
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
-                  <button
-                    onClick={onRefresh}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-2 shadow-xs"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Refresh Surveys</span>
-                  </button>
-                </div>
               </div>
             ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -742,9 +884,9 @@ export const SurveysView: React.FC<SurveysViewProps> = ({
       )}
 
       {/* =====================================================================
-          VIEW B: INSTANT TASKS & AOYCO OFFERWALL
+          VIEW B: INSTANT TASKS & PARTNER OFFERWALL
          ===================================================================== */}
-      {marketplaceSection === 'tasks' && (
+      {!showUserMaintenanceScreen && marketplaceSection === 'tasks' && (
         <div className="space-y-6">
           {/* Offerwall Launch Banner Card */}
           <div className="bg-gradient-to-br from-[#079B55] via-[#047A43] to-[#192F40] text-white rounded-3xl p-6 sm:p-8 shadow-md relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
