@@ -128,31 +128,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Home
               </button>
               {user ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleNavClick('surveys')}
-                    className={`text-xs lg:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap px-1.5 py-1 ${
-                      currentTab === 'surveys'
-                        ? 'text-[#079B55] dark:text-[#4CC65A]'
-                        : 'text-[#192F40] dark:text-slate-200 hover:text-[#079B55] dark:hover:text-[#4CC65A]'
-                    }`}
-                  >
-                    Earn
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleNavClick('timewall')}
-                    className={`inline-flex items-center gap-1 text-xs lg:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap px-1.5 py-1 ${
-                      currentTab === 'timewall'
-                        ? 'text-[#079B55] dark:text-[#4CC65A]'
-                        : 'text-[#192F40] dark:text-slate-200 hover:text-[#079B55] dark:hover:text-[#4CC65A]'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5 shrink-0 text-[#079B55]" />
-                    <span>Task</span>
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => handleNavClick('surveys')}
+                  className={`text-xs lg:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap px-1.5 py-1 ${
+                    currentTab === 'surveys'
+                      ? 'text-[#079B55] dark:text-[#4CC65A]'
+                      : 'text-[#192F40] dark:text-slate-200 hover:text-[#079B55] dark:hover:text-[#4CC65A]'
+                  }`}
+                >
+                  Earn
+                </button>
               ) : (
                 <button
                   type="button"
@@ -322,16 +308,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 Earn
               </button>
-              {user && (
-                <button
-                  type="button"
-                  onClick={() => handleNavClick('timewall')}
-                  className="w-full text-left px-3 py-2 text-sm font-bold text-[#192F40] dark:text-slate-200 hover:bg-[#F0FBF5] dark:hover:bg-slate-800 rounded-lg flex items-center gap-2"
-                >
-                  <Layers className="w-4 h-4 text-[#079B55]" />
-                  <span>Task</span>
-                </button>
-              )}
               {user && (
                 <button
                   type="button"

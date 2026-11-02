@@ -21,7 +21,6 @@ import { ManagerPortal } from './components/ManagerPortal';
 import { LegalModal } from './components/LegalModal';
 import { ArticleView } from './components/ArticleView';
 import { PhoneOnboardingModal } from './components/PhoneOnboardingModal';
-import { TimewallView } from './components/TimewallView';
 import { supabase } from './supabase';
 
 export default function App() {
@@ -274,9 +273,7 @@ export default function App() {
 
     if (token) {
       fetchUserData(token).then((loadedUser) => {
-        if (pathname === '/earn/timewall' || pathname.startsWith('/earn/timewall')) {
-          setCurrentTab('timewall');
-        } else if (loadedUser?.role === 'admin') {
+        if (loadedUser?.role === 'admin') {
           setCurrentTab('admin');
         } else if (loadedUser?.role === 'manager') {
           setCurrentTab('manager');
@@ -287,9 +284,6 @@ export default function App() {
           setCurrentTab((prev) => (prev === 'landing' || prev === 'dashboard' ? 'surveys' : prev));
         }
       });
-    } else if (pathname === '/earn/timewall' || pathname.startsWith('/earn/timewall')) {
-      setAuthInitialMode('signin');
-      setAuthModalOpen(true);
     } else if (pathname === '/admin' || pathname.startsWith('/admin/')) {
       setAuthInitialMode('signin');
       setAuthModalOpen(true);
@@ -785,15 +779,6 @@ export default function App() {
         onSelectTab={(tab) => {
           setCurrentTab(tab);
           setActiveArticle(null);
-          try {
-            if (tab === 'timewall') {
-              window.history.replaceState({}, '', '/earn/timewall');
-            } else if (window.location.pathname === '/earn/timewall') {
-              window.history.replaceState({}, '', '/');
-            }
-          } catch {
-            // ignore history API errors
-          }
         }}
         onOpenAuth={(mode) => {
           setAuthInitialMode(mode);
@@ -864,23 +849,10 @@ export default function App() {
               <ManagerPortal token={getAuthToken() || ''} />
             )}
 
-            {currentTab === 'timewall' && (
-              <TimewallView
-                user={user}
-                token={getAuthToken()}
-                onRequireAuth={() => {
-                  setAuthInitialMode('signin');
-                  setAuthModalOpen(true);
-                }}
-                onBalancesUpdated={(newBalances) => setBalances(newBalances)}
-              />
-            )}
-
             {(currentTab === 'surveys' ||
               (currentTab !== 'landing' &&
                 currentTab !== 'admin' &&
                 currentTab !== 'manager' &&
-                currentTab !== 'timewall' &&
                 currentTab !== 'withdraw' &&
                 currentTab !== 'transactions' &&
                 currentTab !== 'settings')) && (
