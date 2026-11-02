@@ -10,7 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // src/utils/ledger.ts
-function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3, userSharePercent = 50) {
+function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3, userSharePercent = 50, allowNegativeBalance = false) {
   let totalConfirmedCredits = 0;
   let totalDebitsAndReversals = 0;
   let pendingCents = 0;
@@ -25,7 +25,7 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
   const safeShare = Math.min(100, Math.max(1, Math.round(userSharePercent || 50)));
   const shareRatio = safeShare / 100;
   const centsToPts = (c) => Math.round(Math.max(0, c) / safeShare * safePointsRate);
-  const ptsToCents = (pts) => Math.round(Math.max(0, pts) / safePointsRate * shareRatio * 100);
+  const ptsToCents = (pts) => Math.round(pts / safePointsRate * shareRatio * 100);
   for (const entry of entries) {
     if (entry.userId !== userId) continue;
     const entryPts = typeof entry.points === "number" && !isNaN(entry.points) && entry.points !== 0 ? Math.abs(Math.round(entry.points)) : centsToPts(Math.abs(entry.amountCents));
@@ -49,8 +49,9 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
   totalDebitsAndReversals = ptsToCents(totalDebitReversalPoints);
   pendingCents = ptsToCents(pendingPointsAccum);
   totalEarnedCents = totalConfirmedCredits;
-  const netConfirmedEarnings = Math.max(0, totalConfirmedCredits - totalDebitsAndReversals);
-  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - netConfirmedEarnings);
+  const rawNetEarnings = totalConfirmedCredits - totalDebitsAndReversals;
+  const netConfirmedEarnings = allowNegativeBalance ? rawNetEarnings : Math.max(0, rawNetEarnings);
+  totalAdminProfitCents = Math.max(0, totalGrossRevenueCents - Math.max(0, netConfirmedEarnings));
   let reservedWithdrawalCents = 0;
   let totalWithdrawnCents = 0;
   for (const w of withdrawals) {
@@ -62,10 +63,13 @@ function calculateUserBalances(userId, entries, withdrawals, pointsPerUsdt = 5e3
       reservedWithdrawalCents += w.amountCents;
     }
   }
-  const availableCents = Math.max(0, netConfirmedEarnings - reservedWithdrawalCents);
+  const rawAvailableCents = netConfirmedEarnings - reservedWithdrawalCents;
+  const availableCents = allowNegativeBalance ? rawAvailableCents : Math.max(0, rawAvailableCents);
   const reservedWithdrawalPoints = centsToPts(reservedWithdrawalCents);
-  const netConfirmedPoints = Math.max(0, totalConfirmedPoints - totalDebitReversalPoints);
-  const availablePoints = Math.max(0, netConfirmedPoints - reservedWithdrawalPoints);
+  const rawNetPoints = totalConfirmedPoints - totalDebitReversalPoints;
+  const netConfirmedPoints = allowNegativeBalance ? rawNetPoints : Math.max(0, rawNetPoints);
+  const rawAvailablePoints = netConfirmedPoints - reservedWithdrawalPoints;
+  const availablePoints = allowNegativeBalance ? rawAvailablePoints : Math.max(0, rawAvailablePoints);
   return {
     availableCents,
     pendingCents,
@@ -2554,16 +2558,6 @@ var DatabaseStore = class {
       }
       this.data.users[idx].role = "manager";
       this.data.users[idx].updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-      const existingTeams = this.getTeamsForManager(target.id);
-      if (existingTeams.length === 0) {
-        const defaultTeamName = `${target.displayName || target.username || target.email.split("@")[0]}'s Team`;
-        await this.createTeam({
-          name: defaultTeamName,
-          managerId: target.id,
-          actorUser,
-          ipAddress
-        });
-      }
     } else if (newRole === "user") {
       this.data.users[idx].role = "user";
       this.data.users[idx].updatedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -3741,13 +3735,13 @@ var CpxResearchService = class {
       if (!effectiveIp || effectiveIp === "127.0.0.1" || effectiveIp === "::1" || effectiveIp === "localhost" || effectiveIp.startsWith("10.") || effectiveIp.startsWith("192.168.") || effectiveIp.startsWith("172.16.") || effectiveIp.startsWith("172.17.") || effectiveIp.startsWith("172.18.") || effectiveIp.startsWith("172.19.") || effectiveIp.startsWith("172.2") || effectiveIp.startsWith("172.3") || effectiveIp.includes(":")) {
         effectiveIp = "142.250.190.46";
       }
-      const fetchFromCpxEndpoint = async (targetIp) => {
+      const fetchFromCpxEndpoint = async (targetIp, outputMethod = "api") => {
         const url = new URL("https://live-api.cpx-research.com/api/get-surveys.php");
         url.searchParams.set("app_id", this.appId);
         url.searchParams.set("ext_user_id", externalUserId);
         url.searchParams.set("subid_1", subid1);
         url.searchParams.set("subid_2", subid2);
-        url.searchParams.set("output_method", "jsscriptv1");
+        url.searchParams.set("output_method", outputMethod);
         url.searchParams.set("ip_user", targetIp);
         url.searchParams.set("limit", String(maxSurveys));
         url.searchParams.set("secure_hash", secureHash);
@@ -3767,7 +3761,8 @@ var CpxResearchService = class {
           const response = await fetch(url.toString(), {
             headers: {
               Accept: "application/json",
-              "User-Agent": effectiveUa
+              "User-Agent": effectiveUa,
+              "X-Forwarded-For": targetIp
             },
             signal: controller.signal
           });
@@ -3779,13 +3774,16 @@ var CpxResearchService = class {
           return null;
         }
       };
-      let json = await fetchFromCpxEndpoint(effectiveIp);
+      let json = await fetchFromCpxEndpoint(effectiveIp, "api");
       let normalized = json && json.status === "success" ? normalizeCpxSurveyList(json, this.appId, externalUserId, this.hashKey) : [];
-      if (normalized.length === 0 && effectiveIp !== "142.250.190.46") {
-        const retryJson = await fetchFromCpxEndpoint("142.250.190.46");
-        if (retryJson && retryJson.status === "success") {
-          json = retryJson;
-          normalized = normalizeCpxSurveyList(retryJson, this.appId, externalUserId, this.hashKey);
+      if (normalized.length === 0) {
+        const fallbackJson = await fetchFromCpxEndpoint(effectiveIp, "jsscriptv1");
+        if (fallbackJson && fallbackJson.status === "success") {
+          const fallbackList = normalizeCpxSurveyList(fallbackJson, this.appId, externalUserId, this.hashKey);
+          if (fallbackList.length > 0 || !json) {
+            json = fallbackJson;
+            normalized = fallbackList;
+          }
         }
       }
       if (!json) {
@@ -6219,13 +6217,6 @@ app.get("/api/admin/system-health", requireAuth, requireAdmin, async (req, res) 
         details: `App #${cpxResearchService.appId} \u2022 HMAC/MD5 signature check active`
       },
       {
-        id: "aoytasks_api",
-        name: "AoyTasks White-Label Feed & Callback",
-        status: aoyConfig.isConfigured ? "healthy" : "warning",
-        latencyMs: aoyLatencyMs,
-        details: `Endpoint /wh/aoytasks \u2022 MD5 hash verification active`
-      },
-      {
         id: "usdt_price_feed",
         name: "USDT Price & 1:1 Peg Service",
         status: !usdtStatus.isStale ? "healthy" : "degraded",
@@ -7962,80 +7953,6 @@ app.get("/api/manager/members/:userId", requireAuth, requireManagerOrAdmin, (req
     ledger: detail.ledger
   });
 });
-app.post("/api/admin/test-aoy-connection", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const startMs = Date.now();
-    const admin = req.user;
-    const status = aoyTasksService.getConfigStatus();
-    const feed = await aoyTasksService.fetchWhiteLabelTasks({
-      rawUserId: admin.externalOpaqueId || admin.id,
-      ipAddress: "5.146.176.100",
-      userAgent: req.headers["user-agent"] || "Mozilla/5.0",
-      forceRefresh: true
-    });
-    const cleanSubId = sanitizeAoySubId(admin.externalOpaqueId || admin.id);
-    res.json({
-      success: true,
-      latencyMs: Date.now() - startMs,
-      configStatus: status,
-      sanitizedSubId: cleanSubId,
-      ptcEndpoint: `https://aoyco.in/api/v1/ptc/${aoyTasksService.apiKey || "[API_KEY]"}/${cleanSubId}/5.146.176.100`,
-      shortlinkEndpoint: `https://aoyco.in/api/v1/sl-api/${aoyTasksService.apiKey || "[API_KEY]"}/${cleanSubId}/5.146.176.100`,
-      offerwallUrlSample: aoyTasksService.generateOfferwallUrl(cleanSubId),
-      tasksReturned: feed.tasks.length,
-      source: feed.source
-    });
-  } catch {
-    res.status(500).json({ error: "Failed to test AoyTasks connection." });
-  }
-});
-app.post("/api/admin/test-aoy-postback", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { targetUserId, grossCents = 50, offerName = "Sponsored PTC Campaign #41", offerType = "ptc", status = 1 } = req.body;
-    const user = dbStore.getUserById(targetUserId) || req.user;
-    const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 50;
-    const pointsPerUsdt = settings.pointsPerUsdt || 5e3;
-    const effectiveGrossCents = Math.max(5, Number(grossCents) || 50);
-    const split = calculateHybridSurveySplit(effectiveGrossCents, userSharePercent, pointsPerUsdt);
-    const transId = `aoy_sim_${Date.now()}`;
-    const cleanTitle = sanitizeWhiteLabelText(String(offerName), "Sponsored Partner Task");
-    const entry = {
-      id: `ledg_${crypto5.randomUUID()}`,
-      userId: user.id,
-      providerTxId: transId,
-      amountCents: split.userRewardCents,
-      points: split.userRewardPoints,
-      grossCents: split.grossCents,
-      adminProfitCents: split.adminProfitCents,
-      appliedSharePercent: split.userSharePercent,
-      entryType: status === 2 ? "reversal" : "credit",
-      status: "confirmed",
-      description: `Instant Task Reward (${status === 2 ? "-" : "+"}${split.userRewardPointsFormatted} Pts \u2022 ${cleanTitle})`,
-      cpxOfferId: `${offerType}_${transId}`,
-      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-      processedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    const result = await dbStore.addLedgerEntry(entry);
-    await dbStore.addAuditLog({
-      adminUserId: req.user.id,
-      adminEmail: req.user.email,
-      action: "ADMIN_SIMULATE_AOYTASKS_POSTBACK",
-      targetEntity: "reward_ledger",
-      targetId: entry.id,
-      details: `Simulated AoyTasks S2S Postback ($${(split.grossCents / 100).toFixed(2)} Gross @ ${split.userSharePercent}% share): User saw white-label "${entry.description}" (${split.userRewardUsdtFormatted}), Hidden Admin Profit: ${split.adminProfitUsdFormatted}`
-    });
-    res.json({
-      success: result.success,
-      webhookResponse: "ok",
-      entry: result.entry,
-      split,
-      balances: dbStore.getUserBalances(user.id)
-    });
-  } catch {
-    res.status(500).json({ error: "Failed to simulate AoyTasks postback." });
-  }
-});
 app.post("/api/admin/test-cpx-connection", requireAuth, requireAdmin, async (req, res) => {
   try {
     const startMs = Date.now();
@@ -8227,22 +8144,6 @@ app.post("/api/admin/run-full-integration-check", requireAuth, requireAdmin, asy
     const cpxSecret = cpxResearchService.hashKey;
     const cpxExpectedSig = generateCpxSecureHash(testCpxTransId, cpxSecret);
     const cpxSigVerified = verifyCpxPostbackSignature(testCpxTransId, extId, cpxExpectedSig, cpxSecret);
-    const cleanSubId = sanitizeAoySubId(extId);
-    const subIdAlphanumericOnly = /^[a-zA-Z0-9]+$/.test(cleanSubId);
-    const aoyFeed = await aoyTasksService.fetchWhiteLabelTasks({
-      rawUserId: extId,
-      ipAddress: "5.146.176.100",
-      userAgent: req.headers["user-agent"] || "Mozilla/5.0",
-      forceRefresh: true
-    });
-    const whiteLabelClean = aoyFeed.tasks.every(
-      (t) => !/aoytasks|aoyco\.in/i.test(`${t.title} ${t.description}`)
-    );
-    const testAoyTransId = `diag_aoy_${Date.now()}`;
-    const testAoyReward = "5000";
-    const aoySecret = aoyTasksService.secretKey || "diag_secret_key_test";
-    const aoySig = generateAoyPostbackSignature(cleanSubId, testAoyTransId, testAoyReward, aoySecret);
-    const aoySigVerified = verifyAoyPostbackSignature(cleanSubId, testAoyTransId, testAoyReward, aoySecret, aoySig);
     const splitTest = calculateHybridSurveySplit(100, userSharePercent, pointsPerUsdt);
     const splitVerified = splitTest.grossCents === 100 && splitTest.userRewardCents === userSharePercent && splitTest.adminProfitCents === 100 - userSharePercent && splitTest.userRewardPoints === pointsPerUsdt;
     const users = dbStore.getAllUsers();
@@ -8269,20 +8170,6 @@ app.post("/api/admin/run-full-integration-check", requireAuth, requireAdmin, asy
         detail: `Webhook /api/cpx/postback verified \u2022 MD5(trans_id-secret) signature check passed`
       },
       {
-        id: "aoy_whitelabel_feed",
-        partner: "AoyTasks (aoyco.in)",
-        title: "AoyTasks 100% White-Label Tasks & Strict Alphanumeric SubId",
-        passed: subIdAlphanumericOnly && whiteLabelClean,
-        detail: `${aoyFeed.tasks.length} live tasks active (Source: ${aoyFeed.source}) \u2022 SubId "${cleanSubId}" alphanumeric \u2022 Zero "AoyTasks" brand leak to users`
-      },
-      {
-        id: "aoy_s2s_postback",
-        partner: "AoyTasks (aoyco.in)",
-        title: "AoyTasks /wh/aoytasks S2S Postback & MD5 Signature",
-        passed: aoySigVerified,
-        detail: `Webhook /wh/aoytasks verified \u2022 md5(subId+transId+reward+secret_key) & lowercase "ok" / "DUP" response ready`
-      },
-      {
         id: "hybrid_profit_split",
         partner: "Split Engine",
         title: `${pointsPerUsdt.toLocaleString("en-US")} Points = ${userSharePercent}% User ($${(userSharePercent / 100).toFixed(2)}) / ${100 - userSharePercent}% Admin Profit ($${((100 - userSharePercent) / 100).toFixed(2)})`,
@@ -8300,8 +8187,8 @@ app.post("/api/admin/run-full-integration-check", requireAuth, requireAdmin, asy
         id: "partner_accounting",
         partner: "Partner Accounting",
         title: "Partner Revenue & Profit Accounting Dashboard Sync",
-        passed: accountingReport.partners.length === 2,
-        detail: `Tracking CPX Research (${accountingReport.partners[0].adminProfitUsdFormatted} profit) & AoyTasks (${accountingReport.partners[1].adminProfitUsdFormatted} profit) \u2022 Total Net Profit: +${accountingReport.totals.adminProfitUsdFormatted}`
+        passed: accountingReport.partners.length >= 1,
+        detail: `Tracking CPX Research (${accountingReport.partners[0].adminProfitUsdFormatted} profit) \u2022 Total Net Profit: +${accountingReport.totals.adminProfitUsdFormatted}`
       }
     ];
     res.json({

@@ -74,7 +74,6 @@ type AdminSection =
   | 'completions'
   | 'callback_logs'
   | 'cpx_manager'
-  | 'aoy_manager'
   | 'withdrawals'
   | 'user_analytics'
   | 'system_health'
@@ -388,14 +387,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [testingCpxConnection, setTestingCpxConnection] = useState(false);
   const [copiedPostback, setCopiedPostback] = useState(false);
 
-  // AoyTasks (White-Label) Admin state
-  const [aoyConnectionResult, setAoyConnectionResult] = useState<any>(null);
-  const [testingAoyConnection, setTestingAoyConnection] = useState(false);
-  const [copiedAoyPostback, setCopiedAoyPostback] = useState(false);
-  const [aoyTestGrossCents, setAoyTestGrossCents] = useState(50);
-  const [aoyTestOfferName, setAoyTestOfferName] = useState('Sponsored Cloud Visit #41');
-  const [aoyTestOfferType, setAoyTestOfferType] = useState<'ptc' | 'shortlink'>('ptc');
-  const [aoyTestStatus, setAoyTestStatus] = useState<number>(1);
   const [integrationDiagResult, setIntegrationDiagResult] = useState<any>(null);
   const [runningIntegrationCheck, setRunningIntegrationCheck] = useState(false);
 
@@ -475,73 +466,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [cpxCompletionCountryFilter, setCpxCompletionCountryFilter] = useState<string>('ALL');
 
   const postbackWebhookUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/cpx/postback?status={status}&trans_id={trans_id}&ext_user_id={user_id}&amount_usd={amount_usd}&amount_local={amount_local}&offer_id={offer_id}&secure_hash={secure_hash}`;
-  const aoyPostbackWebhookUrl = typeof window !== 'undefined' && window.location.hostname === 'rewardriver.online'
-    ? 'https://rewardriver.online/wh/aoytasks'
-    : `${typeof window !== 'undefined' ? window.location.origin : 'https://rewardriver.online'}/wh/aoytasks`;
-  const aoyProductionPostbackUrl = 'https://rewardriver.online/wh/aoytasks';
 
   const handleCopyPostbackUrl = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(postbackWebhookUrl);
       setCopiedPostback(true);
       setTimeout(() => setCopiedPostback(false), 2500);
-    }
-  };
-
-  const handleCopyAoyPostbackUrl = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(aoyPostbackWebhookUrl);
-      setCopiedAoyPostback(true);
-      setTimeout(() => setCopiedAoyPostback(false), 2500);
-    }
-  };
-
-  const handleTestAoyConnection = async () => {
-    setTestingAoyConnection(true);
-    setAoyConnectionResult(null);
-    try {
-      const res = await fetch('/api/admin/test-aoy-connection', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('rr_auth_token')}`
-        }
-      });
-      const data = await res.json();
-      setAoyConnectionResult(data);
-    } catch {
-      setAoyConnectionResult({ error: 'Failed to test AoyTasks Direct API connection.' });
-    } finally {
-      setTestingAoyConnection(false);
-    }
-  };
-
-  const handleSimulateAoyPostback = async () => {
-    try {
-      const res = await fetch('/api/admin/test-aoy-postback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('rr_auth_token')}`
-        },
-        body: JSON.stringify({
-          grossCents: aoyTestGrossCents,
-          offerName: aoyTestOfferName,
-          offerType: aoyTestOfferType,
-          status: aoyTestStatus
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.split) {
-        setActionMessage({
-          text: `AoyTasks S2S Postback ("ok"): User saw white-label "Instant Task Reward (+${data.split.userRewardPointsFormatted} Pts • ${data.split.userRewardUsdtFormatted})" • Your Hidden Profit: +${data.split.adminProfitUsdFormatted}`,
-          type: 'success'
-        });
-      }
-      fetchAdminData();
-      triggerRefresh();
-    } catch {
-      setActionMessage({ text: 'Failed to simulate AoyTasks postback.', type: 'error' });
     }
   };
 
@@ -1402,7 +1332,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
     { id: 'callback_logs', label: 'Callback Logs', icon: Server, badge: callbackLogs.length || undefined },
     { id: 'cpx_manager', label: 'CPX Research Manager', icon: Megaphone },
     { id: 'withdrawals', label: 'USDT Withdrawals', icon: FilePlus2, badge: pendingCount > 0 ? pendingCount : undefined },
-    { id: 'aoy_manager', label: 'AoyTasks Manager', icon: Zap },
     { id: 'user_analytics', label: 'User Analytics', icon: LineChart },
     { id: 'system_health', label: 'System Health', icon: Cpu },
     { id: 'seo_analytics', label: 'SEO & Analytics', icon: SearchCheck },
@@ -2329,7 +2258,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           type="text"
                           value={taskForm.id}
                           onChange={(e) => setTaskForm({ ...taskForm, id: e.target.value })}
-                          placeholder="e.g. task_aoy_ptc"
+                          placeholder="e.g. task_daily_checkin"
                           className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-mono text-xs"
                         />
                       </div>
@@ -2861,12 +2790,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setActiveSection('aoy_manager')}
+                    onClick={() => setActiveSection('managers_teams')}
                     className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50/70 text-left transition-all"
                   >
-                    <Zap className="w-4 h-4 text-sky-500 shrink-0" />
+                    <Award className="w-4 h-4 text-sky-500 shrink-0" />
                     <span className="text-xs font-bold text-slate-800 truncate">
-                      AoyTasks Manager
+                      Managers &amp; Teams
                     </span>
                   </button>
                 </div>
@@ -3989,242 +3918,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   )}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* =====================================================================
-              SECTION 3B: AOYTASKS (WHITE-LABEL) MANAGER — ADMIN ONLY
-             ===================================================================== */}
-          {activeSection === 'aoy_manager' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-[28px] font-extrabold text-slate-900 tracking-tight leading-tight">
-                  AoyTasks Manager
-                </h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Connect your <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">aoyco.in</code> API Key, Secret Key, and Bearer Token. Users only see <strong>Reward River Instant Tasks &amp; PTC</strong> with real Points/USDT rewards.
-                </p>
-              </div>
-
-              {settings && (
-                <form
-                  onSubmit={(e) => handleSaveSettings(e)}
-                  className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                    <div>
-                      <h2 className="text-base font-bold text-slate-900">
-                        AoyTasks Direct API &amp; Security Credentials
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Fetches PTC (<code className="font-mono">/api/v1/ptc/...</code>) and Shortlinks (<code className="font-mono">/api/v1/sl-api/...</code>) and rebrands them automatically as Reward River Tasks.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleTestAoyConnection}
-                      disabled={testingAoyConnection}
-                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors self-start"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${testingAoyConnection ? 'animate-spin' : ''}`} />
-                      <span>{testingAoyConnection ? 'Testing AoyTasks API...' : 'Test AoyTasks Feed'}</span>
-                    </button>
-                  </div>
-
-                  {aoyConnectionResult && (
-                    <div
-                      className={`p-4 rounded-xl border text-xs ${
-                        aoyConnectionResult.error
-                          ? 'bg-red-50 border-red-200 text-red-700'
-                          : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                      }`}
-                    >
-                      {aoyConnectionResult.error ? (
-                        <p className="font-bold">{aoyConnectionResult.error}</p>
-                      ) : (
-                        <div className="space-y-1">
-                          <div className="font-bold">
-                            AoyTasks Feed Ready ({aoyConnectionResult.latencyMs}ms) — {aoyConnectionResult.tasksReturned} White-Label Tasks Active (Source: {aoyConnectionResult.source})
-                          </div>
-                          <div className="text-[11px] text-emerald-700 font-mono break-all">
-                            Sanitized Alphanumeric SubId: {aoyConnectionResult.sanitizedSubId}
-                          </div>
-                          <div className="text-[11px] text-emerald-700 font-mono break-all">
-                            PTC Endpoint: {aoyConnectionResult.ptcEndpoint}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        AoyTasks API KEY (<code className="font-mono">[API_KEY]</code>)
-                      </label>
-                      <input
-                        type="text"
-                        value={settings.aoyApiKey || ''}
-                        onChange={(e) => setSettings({ ...settings, aoyApiKey: e.target.value })}
-                        placeholder="Paste your aoyco.in App API Key"
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        AoyTasks SECRET KEY (For MD5 Postback Signature)
-                      </label>
-                      <input
-                        type="password"
-                        value={settings.aoySecretKey || ''}
-                        onChange={(e) => setSettings({ ...settings, aoySecretKey: e.target.value })}
-                        placeholder="Paste your aoyco.in App Secret Key"
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        AoyTasks BEARER TOKEN (<code className="font-mono">Authorization: Bearer ...</code>)
-                      </label>
-                      <input
-                        type="password"
-                        value={settings.aoyBearerToken || ''}
-                        onChange={(e) => setSettings({ ...settings, aoyBearerToken: e.target.value })}
-                        placeholder="Paste your aoyco.in Direct API Bearer Token"
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        AoyTasks Currency Exchange Rate (Units per $1.00 USD)
-                      </label>
-                      <input
-                        type="number"
-                        min={100}
-                        value={settings.aoyExchangeRate || 10000}
-                        onChange={(e) => setSettings({ ...settings, aoyExchangeRate: Number(e.target.value) || 10000 })}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Postback URL & Security Spec */}
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-800">
-                          AoyTasks S2S Postback URL (Set in aoyco.in Publisher &rarr; My Apps)
-                        </span>
-                        <p className="text-[11px] text-slate-500">
-                          Verifies <code className="font-mono">md5(subId + transId + reward + secret_key)</code> and responds with exact lowercase <code className="font-mono font-bold text-emerald-700">ok</code>. Whitelisted IPs: <code className="font-mono">145.79.26.204, 2a02:4780:5c:2200:0:1957:fb47:1</code>
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopyAoyPostbackUrl}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors shrink-0"
-                      >
-                        {copiedAoyPostback ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedAoyPostback ? 'Copied!' : 'Copy Postback URL'}</span>
-                      </button>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-bold text-slate-600">
-                        Production Domain Postback (For Vercel / rewardriver.online):
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-400 font-mono text-[11px] break-all select-all flex items-center justify-between">
-                        <span>{aoyProductionPostbackUrl}</span>
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Target</span>
-                      </div>
-                      {typeof window !== 'undefined' && window.location.hostname !== 'rewardriver.online' && (
-                        <>
-                          <div className="text-[10px] text-slate-500 font-medium">
-                            Current Preview Sandbox Webhook:
-                          </div>
-                          <div className="p-2 rounded-lg bg-slate-100 text-slate-700 font-mono text-[10px] break-all select-all">
-                            {aoyPostbackWebhookUrl}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                    <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-700">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.aoyEnableFallback !== false}
-                          onChange={(e) => setSettings({ ...settings, aoyEnableFallback: e.target.checked })}
-                          className="rounded border-slate-300 text-blue-600"
-                        />
-                        <span>Keep White-Label Catalog Active When Live Feed Empty</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.aoyVerifySignature !== false}
-                          onChange={(e) => setSettings({ ...settings, aoyVerifySignature: e.target.checked })}
-                          className="rounded border-slate-300 text-blue-600"
-                        />
-                        <span>Enforce MD5 Signature Check</span>
-                      </label>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors"
-                    >
-                      Save AoyTasks Configuration
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Step-by-Step AoyTasks (aoyco.in) White-Label Integration Guide */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-4">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    How to Integrate AoyTasks (aoyco.in) as 100% White-Label (Step-by-Step Instructions)
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Official integration guide based on <code className="font-mono">aoyco.in/offerwall_doc.html</code> — completely hidden from users under Reward River branding.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 1: Create App in aoyco.in Publisher Portal</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      Log in to <strong className="text-slate-900">aoyco.in</strong> &rarr; navigate to <strong className="text-slate-900">Publisher Dashboard &rarr; My Apps &rarr; Create App</strong>. Enter your site URL and set Currency Exchange Rate = <strong className="text-slate-900">10000</strong> ($1.00 = 10,000 Points).
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 2: Paste API Key, Secret Key &amp; Bearer Token</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      Copy your <strong className="text-slate-900">API Key</strong> (<code className="font-mono">[API_KEY]</code>), <strong className="text-slate-900">Secret Key</strong> (for MD5 signature verification), and <strong className="text-slate-900">Bearer Token</strong> into the fields above and click <strong>Save AoyTasks Configuration</strong>.
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 3: Configure S2S Postback URL (/wh/aoytasks)</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      In <strong className="text-slate-900">aoyco.in &rarr; My Apps &rarr; Postback URL</strong>, paste <code className="font-mono text-slate-900">{aoyPostbackWebhookUrl}</code>. Our server automatically verifies <code className="font-mono">md5(subId + transId + reward + secret_key)</code>, replies with exact lowercase <code className="font-mono font-bold text-emerald-700">ok</code> (or <code className="font-mono">DUP</code> on duplicate), and supports AoyTasks IPs (<code className="font-mono">145.79.26.204</code>).
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                    <div className="font-extrabold text-slate-900">Step 4: 100% White-Label User Experience</div>
-                    <p className="text-slate-600 leading-relaxed">
-                      Reward River automatically fetches PTC (<code className="font-mono">/api/v1/ptc/...</code>) and Shortlinks (<code className="font-mono">/api/v1/sl-api/...</code>) with a 60s cache, strips all &ldquo;AoyTasks&rdquo; / &ldquo;aoyco.in&rdquo; names, and displays them to users as <strong className="text-slate-900">Reward River Instant Tasks &amp; PTC</strong> with instant real point rewards credited directly to user balances.
-                    </p>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
@@ -6508,7 +6201,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   System Audit & Activity Logs
                 </h1>
                 <p className="text-sm text-slate-500 mt-1">
-                  Immutable administrative log of payout approvals, profit split updates, and CPX/AoyTasks postback events.
+                  Immutable administrative log of payout approvals, profit split updates, and CPX Research postback events.
                 </p>
               </div>
 

@@ -924,13 +924,6 @@ app.get('/api/admin/system-health', requireAuth, requireAdmin, async (req: Authe
         details: `App #${cpxResearchService.appId} • HMAC/MD5 signature check active`
       },
       {
-        id: 'aoytasks_api',
-        name: 'AoyTasks White-Label Feed & Callback',
-        status: aoyConfig.isConfigured ? 'healthy' : 'warning',
-        latencyMs: aoyLatencyMs,
-        details: `Endpoint /wh/aoytasks • MD5 hash verification active`
-      },
-      {
         id: 'usdt_price_feed',
         name: 'USDT Price & 1:1 Peg Service',
         status: !usdtStatus.isStale ? 'healthy' : 'degraded',
@@ -3083,89 +3076,6 @@ app.get('/api/manager/members/:userId', requireAuth, requireManagerOrAdmin, (req
   });
 });
 
-// POST /api/admin/test-aoy-connection
-app.post('/api/admin/test-aoy-connection', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const startMs = Date.now();
-    const admin = req.user!;
-    const status = aoyTasksService.getConfigStatus();
-    const feed = await aoyTasksService.fetchWhiteLabelTasks({
-      rawUserId: admin.externalOpaqueId || admin.id,
-      ipAddress: '5.146.176.100',
-      userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
-      forceRefresh: true
-    });
-    const cleanSubId = sanitizeAoySubId(admin.externalOpaqueId || admin.id);
-
-    res.json({
-      success: true,
-      latencyMs: Date.now() - startMs,
-      configStatus: status,
-      sanitizedSubId: cleanSubId,
-      ptcEndpoint: `https://aoyco.in/api/v1/ptc/${aoyTasksService.apiKey || '[API_KEY]'}/${cleanSubId}/5.146.176.100`,
-      shortlinkEndpoint: `https://aoyco.in/api/v1/sl-api/${aoyTasksService.apiKey || '[API_KEY]'}/${cleanSubId}/5.146.176.100`,
-      offerwallUrlSample: aoyTasksService.generateOfferwallUrl(cleanSubId),
-      tasksReturned: feed.tasks.length,
-      source: feed.source
-    });
-  } catch {
-    res.status(500).json({ error: 'Failed to test AoyTasks connection.' });
-  }
-});
-
-// POST /api/admin/test-aoy-postback
-app.post('/api/admin/test-aoy-postback', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { targetUserId, grossCents = 50, offerName = 'Sponsored PTC Campaign #41', offerType = 'ptc', status = 1 } = req.body;
-    const user = dbStore.getUserById(targetUserId) || req.user!;
-    const settings = dbStore.getSettings();
-    const userSharePercent = settings.userSharePercent || 50;
-    const pointsPerUsdt = settings.pointsPerUsdt || 5000;
-
-    const effectiveGrossCents = Math.max(5, Number(grossCents) || 50);
-    const split = calculateHybridSurveySplit(effectiveGrossCents, userSharePercent, pointsPerUsdt);
-    const transId = `aoy_sim_${Date.now()}`;
-    const cleanTitle = sanitizeWhiteLabelText(String(offerName), 'Sponsored Partner Task');
-
-    const entry = {
-      id: `ledg_${crypto.randomUUID()}`,
-      userId: user.id,
-      providerTxId: transId,
-      amountCents: split.userRewardCents,
-      points: split.userRewardPoints,
-      grossCents: split.grossCents,
-      adminProfitCents: split.adminProfitCents,
-      appliedSharePercent: split.userSharePercent,
-      entryType: status === 2 ? ('reversal' as const) : ('credit' as const),
-      status: 'confirmed' as const,
-      description: `Instant Task Reward (${status === 2 ? '-' : '+'}${split.userRewardPointsFormatted} Pts • ${cleanTitle})`,
-      cpxOfferId: `${offerType}_${transId}`,
-      createdAt: new Date().toISOString(),
-      processedAt: new Date().toISOString()
-    };
-
-    const result = await dbStore.addLedgerEntry(entry);
-    await dbStore.addAuditLog({
-      adminUserId: req.user!.id,
-      adminEmail: req.user!.email,
-      action: 'ADMIN_SIMULATE_AOYTASKS_POSTBACK',
-      targetEntity: 'reward_ledger',
-      targetId: entry.id,
-      details: `Simulated AoyTasks S2S Postback ($${(split.grossCents / 100).toFixed(2)} Gross @ ${split.userSharePercent}% share): User saw white-label "${entry.description}" (${split.userRewardUsdtFormatted}), Hidden Admin Profit: ${split.adminProfitUsdFormatted}`
-    });
-
-    res.json({
-      success: result.success,
-      webhookResponse: 'ok',
-      entry: result.entry,
-      split,
-      balances: dbStore.getUserBalances(user.id)
-    });
-  } catch {
-    res.status(500).json({ error: 'Failed to simulate AoyTasks postback.' });
-  }
-});
-
 // POST /api/admin/test-cpx-connection
 app.post('/api/admin/test-cpx-connection', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -3397,27 +3307,7 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
     const cpxExpectedSig = generateCpxSecureHash(testCpxTransId, cpxSecret);
     const cpxSigVerified = verifyCpxPostbackSignature(testCpxTransId, extId, cpxExpectedSig, cpxSecret);
 
-    // 3. Verify AoyTasks White-Label Feed & SubId Sanitizer
-    const cleanSubId = sanitizeAoySubId(extId);
-    const subIdAlphanumericOnly = /^[a-zA-Z0-9]+$/.test(cleanSubId);
-    const aoyFeed = await aoyTasksService.fetchWhiteLabelTasks({
-      rawUserId: extId,
-      ipAddress: '5.146.176.100',
-      userAgent: req.headers['user-agent'] || 'Mozilla/5.0',
-      forceRefresh: true
-    });
-    const whiteLabelClean = aoyFeed.tasks.every(
-      t => !/aoytasks|aoyco\.in/i.test(`${t.title} ${t.description}`)
-    );
-
-    // 4. Verify AoyTasks S2S Postback MD5 Signature (md5(subId + transId + reward + secret_key))
-    const testAoyTransId = `diag_aoy_${Date.now()}`;
-    const testAoyReward = '5000';
-    const aoySecret = aoyTasksService.secretKey || 'diag_secret_key_test';
-    const aoySig = generateAoyPostbackSignature(cleanSubId, testAoyTransId, testAoyReward, aoySecret);
-    const aoySigVerified = verifyAoyPostbackSignature(cleanSubId, testAoyTransId, testAoyReward, aoySecret, aoySig);
-
-    // 5. Verify 40% User / 60% Hidden Admin Split Math on 10,000 Points ($1.00 Gross)
+    // 3. Verify User / Hidden Admin Split Math on 10,000 Points ($1.00 Gross)
     const splitTest = calculateHybridSurveySplit(100, userSharePercent, pointsPerUsdt);
     const splitVerified =
       splitTest.grossCents === 100 &&
@@ -3425,7 +3315,7 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
       splitTest.adminProfitCents === 100 - userSharePercent &&
       splitTest.userRewardPoints === pointsPerUsdt;
 
-    // 6. Verify Partner Revenue & Settlement Engine
+    // 4. Verify Partner Revenue & Settlement Engine
     const users = dbStore.getAllUsers();
     const userDirectoryMap = new Map(users.map(u => [u.id, { email: u.email, displayName: u.displayName }]));
     const accountingReport = buildPartnerAccountingReport(
@@ -3451,20 +3341,6 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
         detail: `Webhook /api/cpx/postback verified • MD5(trans_id-secret) signature check passed`
       },
       {
-        id: 'aoy_whitelabel_feed',
-        partner: 'AoyTasks (aoyco.in)',
-        title: 'AoyTasks 100% White-Label Tasks & Strict Alphanumeric SubId',
-        passed: subIdAlphanumericOnly && whiteLabelClean,
-        detail: `${aoyFeed.tasks.length} live tasks active (Source: ${aoyFeed.source}) • SubId "${cleanSubId}" alphanumeric • Zero "AoyTasks" brand leak to users`
-      },
-      {
-        id: 'aoy_s2s_postback',
-        partner: 'AoyTasks (aoyco.in)',
-        title: 'AoyTasks /wh/aoytasks S2S Postback & MD5 Signature',
-        passed: aoySigVerified,
-        detail: `Webhook /wh/aoytasks verified • md5(subId+transId+reward+secret_key) & lowercase "ok" / "DUP" response ready`
-      },
-      {
         id: 'hybrid_profit_split',
         partner: 'Split Engine',
         title: `${pointsPerUsdt.toLocaleString('en-US')} Points = ${userSharePercent}% User ($${(userSharePercent / 100).toFixed(2)}) / ${100 - userSharePercent}% Admin Profit ($${((100 - userSharePercent) / 100).toFixed(2)})`,
@@ -3484,8 +3360,8 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
         id: 'partner_accounting',
         partner: 'Partner Accounting',
         title: 'Partner Revenue & Profit Accounting Dashboard Sync',
-        passed: accountingReport.partners.length === 2,
-        detail: `Tracking CPX Research (${accountingReport.partners[0].adminProfitUsdFormatted} profit) & AoyTasks (${accountingReport.partners[1].adminProfitUsdFormatted} profit) • Total Net Profit: +${accountingReport.totals.adminProfitUsdFormatted}`
+        passed: accountingReport.partners.length >= 1,
+        detail: `Tracking CPX Research (${accountingReport.partners[0].adminProfitUsdFormatted} profit) • Total Net Profit: +${accountingReport.totals.adminProfitUsdFormatted}`
       }
     ];
 
