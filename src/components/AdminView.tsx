@@ -9,7 +9,6 @@ import {
   CpxScreenoutRecord,
   CpxTransactionCheckResult
 } from '../utils/cpx';
-import { AdminTimewallTab } from './AdminTimewallTab';
 import {
   LayoutGrid,
   BarChart3,
@@ -31,6 +30,7 @@ import {
   MessageSquare,
   CheckCircle2,
   Eye,
+  EyeOff,
   X,
   Calendar,
   DollarSign,
@@ -74,7 +74,6 @@ type AdminSection =
   | 'completions'
   | 'callback_logs'
   | 'cpx_manager'
-  | 'timewall'
   | 'aoy_manager'
   | 'withdrawals'
   | 'user_analytics'
@@ -137,6 +136,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [passwordModalUser, setPasswordModalUser] = useState<{ id: string; name: string; email: string } | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+
+  const [showCpxHashKey, setShowCpxHashKey] = useState(false);
+  const [showCpxApiKey, setShowCpxApiKey] = useState(false);
+  const [editingTeamModal, setEditingTeamModal] = useState<{ id: string; name: string } | null>(null);
+  const [deletingTeamModal, setDeletingTeamModal] = useState<{ id: string; name: string } | null>(null);
+  const [managingTeamMembersModal, setManagingTeamMembersModal] = useState<any | null>(null);
+  const [memberToAddUserId, setMemberToAddUserId] = useState<string>('');
+  const [promoteUserSelectId, setPromoteUserSelectId] = useState<string>('');
 
   const teamsList = managersData?.teams || [];
   const managersList = managersData?.managers || [];
@@ -353,8 +360,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
     turnstileSecretKey: '',
     newUserDays: 7,
     timezone: 'Asia/Karachi',
-    teamSystemEnabled: false,
-    managersCanCreateTeams: false,
+    teamSystemEnabled: true,
+    managersCanCreateTeams: true,
     maxTeamsPerManager: 5,
     teamBonusEnabled: false,
     teamBonusPercent: 0,
@@ -551,11 +558,20 @@ export const AdminView: React.FC<AdminViewProps> = ({
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('rr_auth_token')}`
-        }
+        },
+        body: JSON.stringify({
+          cpxAppId: settings?.cpxAppId,
+          cpxHashKey: settings?.cpxHashKey,
+          cpxApiKey: settings?.cpxApiKey
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && !data.error) {
         setCpxConnectionResult(data);
+        setActionMessage({
+          text: `Live CPX Connection Verified (${data.latencyMs}ms): App ID #${data.cpxAppId} • ${data.liveSurveysReturned ?? 0} live surveys returned.`,
+          type: 'success'
+        });
         return;
       }
 
@@ -670,6 +686,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       if (compRes.ok) {
         const cData = await compRes.json();
         setAdminCompletions(cData.completions || []);
+        setCompletionsList(cData.completions || []);
       }
       if (cbRes.ok) {
         const cbData = await cbRes.json();
@@ -748,47 +765,55 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
-  const handleEditTeamName = async (teamId: string, currentName: string) => {
-    const newName = window.prompt(`Enter new name for team "${currentName}":`, currentName);
-    if (newName === null || !newName.trim() || newName.trim() === currentName) return;
+  const handleEditTeamName = (teamId: string, currentName: string) => {
+    setEditingTeamModal({ id: teamId, name: currentName });
+  };
+
+  const handleConfirmEditTeamName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeamModal || !editingTeamModal.name.trim()) return;
     try {
       const token = localStorage.getItem('rr_auth_token');
-      const res = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}`, {
+      const res = await fetch(`/api/admin/teams/${encodeURIComponent(editingTeamModal.id)}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ name: newName.trim() })
+        body: JSON.stringify({ name: editingTeamModal.name.trim() })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update team name.');
       setActionMessage({
-        text: `Team name updated to "${data.team.name || data.team.teamName || newName.trim()}".`,
+        text: `Team name updated to "${data.team.name || data.team.teamName || editingTeamModal.name.trim()}".`,
         type: 'success'
       });
+      setEditingTeamModal(null);
       await fetchAdminData();
     } catch (err: any) {
       setActionMessage({ text: err.message || 'Failed to edit team name.', type: 'error' });
     }
   };
 
-  const handleDeleteTeam = async (teamId: string, teamName: string) => {
-    if (!window.confirm(`Are you sure you want to delete team "${teamName}"? Any members in this team will be unassigned from the team.`)) {
-      return;
-    }
+  const handleDeleteTeam = (teamId: string, teamName: string) => {
+    setDeletingTeamModal({ id: teamId, name: teamName });
+  };
+
+  const handleConfirmDeleteTeam = async () => {
+    if (!deletingTeamModal) return;
     try {
       const token = localStorage.getItem('rr_auth_token');
-      const res = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}`, {
+      const res = await fetch(`/api/admin/teams/${encodeURIComponent(deletingTeamModal.id)}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to delete team.');
       setActionMessage({
-        text: data.message || `Team "${teamName}" deleted successfully.`,
+        text: data.message || `Team "${deletingTeamModal.name}" deleted successfully.`,
         type: 'success'
       });
+      setDeletingTeamModal(null);
       await fetchAdminData();
     } catch (err: any) {
       setActionMessage({ text: err.message || 'Failed to delete team.', type: 'error' });
@@ -1376,7 +1401,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
     { id: 'completions', label: 'Survey Completions', icon: FileCheck2, badge: adminCompletions.length || undefined },
     { id: 'callback_logs', label: 'Callback Logs', icon: Server, badge: callbackLogs.length || undefined },
     { id: 'cpx_manager', label: 'CPX Research Manager', icon: Megaphone },
-    { id: 'timewall', label: 'TimeWall Offerwall', icon: Globe },
     { id: 'withdrawals', label: 'USDT Withdrawals', icon: FilePlus2, badge: pendingCount > 0 ? pendingCount : undefined },
     { id: 'aoy_manager', label: 'AoyTasks Manager', icon: Zap },
     { id: 'user_analytics', label: 'User Analytics', icon: LineChart },
@@ -2876,7 +2900,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     </span>
                   </div>
                   <p className="text-sm text-slate-500 mt-1">
-                    Publisher ID <span className="font-mono font-bold text-slate-700">#38601</span> • App ID <span className="font-mono font-bold text-slate-700">#{settings?.cpxAppId || '37699'}</span> • Official Statistics API Key <span className="font-mono text-xs text-slate-600">257850...e095</span>
+                    Publisher ID <span className="font-mono font-bold text-slate-700">#38601</span> • App ID <span className="font-mono font-bold text-slate-700">#{settings?.cpxAppId || '37699'}</span> • Official Statistics API Key{' '}
+                    <span className="font-mono text-xs text-slate-600">
+                      {settings?.cpxApiKey && settings.cpxApiKey.length > 10
+                        ? `${settings.cpxApiKey.slice(0, 6)}...${settings.cpxApiKey.slice(-4)}`
+                        : 'Configured'}
+                    </span>
                   </p>
                   {cpxStatsTime?.error && (
                     <div className="mt-2 text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-lg inline-block">
@@ -3674,7 +3703,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <div className="space-y-6">
                   {settings && (
                     <form
-                      onSubmit={(e) => handleSaveSettings(e)}
+                      onSubmit={async (e) => {
+                        await handleSaveSettings(e);
+                        await fetchCpxStatistics();
+                      }}
                       className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] space-y-5"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
@@ -3683,66 +3715,150 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             CPX Publisher Credentials &amp; Placement Settings
                           </h2>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Connect your official CPX Research Publisher credentials for automated statistics and instant survey crediting.
+                            Update your CPX Research App ID, Security Hash / Postback Key, Statistics API Key, and user reward split. Changes sync immediately to Supabase and the live site.
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={handleTestCpxConnection}
                           disabled={testingCpxConnection}
-                          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors self-start"
+                          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors self-start cursor-pointer"
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${testingCpxConnection ? 'animate-spin' : ''}`} />
                           <span>{testingCpxConnection ? 'Testing Live API...' : 'Test Live CPX Connection'}</span>
                         </button>
                       </div>
 
+                      {cpxConnectionResult && (
+                        <div
+                          className={`p-4 rounded-xl border text-xs space-y-2 ${
+                            cpxConnectionResult.error
+                              ? 'bg-rose-50 border-rose-200 text-rose-800'
+                              : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold">
+                            <span>
+                              {cpxConnectionResult.error
+                                ? `Connection Error: ${cpxConnectionResult.error}`
+                                : `Live CPX Endpoint Connected (${cpxConnectionResult.latencyMs}ms) — App ID #${cpxConnectionResult.cpxAppId}`}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setCpxConnectionResult(null)}
+                              className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {!cpxConnectionResult.error && (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[11px] pt-1">
+                              <div className="bg-white/80 px-2.5 py-1.5 rounded-lg border border-emerald-200/70">
+                                <span className="text-slate-400 block text-[10px]">LIVE SURVEYS RETURNED</span>
+                                <span className="font-extrabold text-emerald-700">{cpxConnectionResult.liveSurveysReturned ?? 0} Active Surveys</span>
+                              </div>
+                              <div className="bg-white/80 px-2.5 py-1.5 rounded-lg border border-emerald-200/70">
+                                <span className="text-slate-400 block text-[10px]">INTEGRATION MODE</span>
+                                <span className="font-extrabold text-slate-800">{cpxConnectionResult.integrationMode || settings.cpxIntegrationMode}</span>
+                              </div>
+                              <div className="bg-white/80 px-2.5 py-1.5 rounded-lg border border-emerald-200/70">
+                                <span className="text-slate-400 block text-[10px]">SIGNATURE VERIFICATION</span>
+                                <span className="font-extrabold text-slate-800">
+                                  {cpxConnectionResult.verifySignature !== false ? 'MD5 Enforced' : 'Permissive'}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-700 mb-1">CPX App ID</label>
                           <input
                             type="text"
-                            value={settings.cpxAppId || '37699'}
+                            value={settings.cpxAppId || ''}
                             onChange={(e) => setSettings({ ...settings, cpxAppId: e.target.value })}
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                            placeholder="e.g. 37699"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                           />
+                          <p className="text-[10px] text-slate-500 mt-1">Used for Offerwall, Script Widget &amp; Live Survey API</p>
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">
-                            CPX Security Hash / Postback Key
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-bold text-slate-700">
+                              CPX Security Hash / Postback Key
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setShowCpxHashKey(!showCpxHashKey)}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
+                            >
+                              {showCpxHashKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                              <span>{showCpxHashKey ? 'Hide' : 'Show'}</span>
+                            </button>
+                          </div>
                           <input
-                            type="password"
+                            type={showCpxHashKey ? 'text' : 'password'}
                             value={settings.cpxHashKey || ''}
                             onChange={(e) => setSettings({ ...settings, cpxHashKey: e.target.value })}
                             placeholder="Paste CPX Security Hash Key"
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                           />
+                          <p className="text-[10px] text-slate-500 mt-1">Signs user <code className="font-mono">secure_hash</code> &amp; verifies S2S postbacks</p>
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">
-                            Official Statistics API Key
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-bold text-slate-700">
+                              Official Statistics API Key
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setShowCpxApiKey(!showCpxApiKey)}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
+                            >
+                              {showCpxApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                              <span>{showCpxApiKey ? 'Hide' : 'Show'}</span>
+                            </button>
+                          </div>
                           <input
-                            type="password"
-                            value={settings.cpxApiKey || '2578500163e1998b3c8929e261a3e095'}
+                            type={showCpxApiKey ? 'text' : 'password'}
+                            value={settings.cpxApiKey || ''}
                             onChange={(e) => setSettings({ ...settings, cpxApiKey: e.target.value })}
                             placeholder="Paste CPX Statistics API Key"
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                           />
+                          <p className="text-[10px] text-slate-500 mt-1">Authenticates CPX Publisher Statistics &amp; Completes Sync</p>
                         </div>
 
                         <div>
                           <label className="block text-xs font-bold text-slate-700 mb-1">Points Factor (per $1.00 USD)</label>
                           <input
                             type="number"
+                            min={100}
+                            step={100}
                             value={settings.pointsPerUsdt || 5000}
                             onChange={(e) => setSettings({ ...settings, pointsPerUsdt: Number(e.target.value) })}
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                           />
-                          <p className="text-[10px] text-slate-500 mt-1">Configured in CPX: 1 $ is 5,000.00 Points</p>
+                          <p className="text-[10px] text-slate-500 mt-1">Default: 5,000 Points per $1.00 Gross USD</p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            User Reward Share (%) — Admin Profit ({100 - (settings.userSharePercent || 50)}%)
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={settings.userSharePercent || 50}
+                            onChange={(e) => setSettings({ ...settings, userSharePercent: Math.max(1, Math.min(100, Number(e.target.value) || 50)) })}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">Percentage of gross CPX payout awarded to users</p>
                         </div>
 
                         <div>
@@ -3755,7 +3871,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                 cpxIntegrationMode: e.target.value as 'hybrid_api' | 'direct_wall' | 'paused'
                               })
                             }
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                           >
                             <option value="hybrid_api">Hybrid API Cards + Offerwall</option>
                             <option value="direct_wall">Direct Offerwall Launch Only</option>
@@ -3767,13 +3883,75 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           <label className="block text-xs font-bold text-slate-700 mb-1">Max Surveys Displayed</label>
                           <input
                             type="number"
-                            min={3}
+                            min={1}
                             max={50}
                             value={settings.cpxMaxSurveys || 12}
                             onChange={(e) => setSettings({ ...settings, cpxMaxSurveys: Number(e.target.value) })}
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                           />
                         </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Offerwall Theme Color (Hex)</label>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-8 h-8 rounded-lg border border-slate-300 shrink-0"
+                              style={{ backgroundColor: `#${(settings.cpxThemeColor || '10b981').replace('#', '')}` }}
+                            />
+                            <input
+                              type="text"
+                              value={settings.cpxThemeColor || '10b981'}
+                              onChange={(e) => setSettings({ ...settings, cpxThemeColor: e.target.value.replace('#', '') })}
+                              placeholder="10b981"
+                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Survey Reward Display Mode</label>
+                          <select
+                            value={settings.surveyDisplayMode || 'hybrid'}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                surveyDisplayMode: e.target.value as 'hybrid' | 'points_only'
+                              })
+                            }
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="hybrid">Points + USDT Equivalent</option>
+                            <option value="points_only">Points Only</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <label className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={settings.cpxVerifySignature !== false}
+                            onChange={(e) => setSettings({ ...settings, cpxVerifySignature: e.target.checked })}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          <div>
+                            <div className="text-xs font-bold text-slate-900">Enforce S2S MD5 Signature Verification</div>
+                            <div className="text-[11px] text-slate-500">Verify incoming CPX postback <code className="font-mono">secure_hash</code> using your Security Hash Key</div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(settings.cpxEnableFallback)}
+                            onChange={(e) => setSettings({ ...settings, cpxEnableFallback: e.target.checked })}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          <div>
+                            <div className="text-xs font-bold text-slate-900">Enable Fallback Survey Catalog</div>
+                            <div className="text-[11px] text-slate-500">Show backup catalog if CPX returns zero demographic matches for a user IP</div>
+                          </div>
+                        </label>
                       </div>
 
                       {/* Postback URL Copy Box */}
@@ -3785,7 +3963,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           <button
                             type="button"
                             onClick={handleCopyPostbackUrl}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors"
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
                           >
                             {copiedPostback ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                             <span>{copiedPostback ? 'Copied!' : 'Copy Postback URL'}</span>
@@ -3796,12 +3974,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex justify-end">
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          Last synced: {settings.updatedAt ? new Date(settings.updatedAt).toLocaleString() : 'Live'}
+                        </span>
                         <button
                           type="submit"
-                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors"
+                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-xs"
                         >
-                          Save CPX Configuration
+                          Save CPX Configuration to Supabase &amp; Site
                         </button>
                       </div>
                     </form>
@@ -4460,12 +4641,27 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     {teamsList.reduce((acc: number, t: any) => acc + (t.memberCount || 0), 0)}
                   </div>
                 </div>
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Feature Flag Status</div>
-                  <div className="text-sm font-extrabold font-mono mt-2">
-                    <span className={`px-2 py-0.5 rounded ${settings?.teamSystemEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                      {settings?.teamSystemEnabled ? 'ENABLED' : 'DEFAULT OFF'}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Team System Status</div>
+                  <div className="flex items-center justify-between gap-2 mt-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-extrabold font-mono ${settings?.teamSystemEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {settings?.teamSystemEnabled ? 'ENABLED' : 'PAUSED'}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = {
+                          ...settings,
+                          teamSystemEnabled: !settings?.teamSystemEnabled,
+                          managersCanCreateTeams: !settings?.teamSystemEnabled ? true : settings?.managersCanCreateTeams
+                        };
+                        setSettings(updated);
+                        handleSaveSettings(undefined, updated);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold cursor-pointer transition-colors"
+                    >
+                      {settings?.teamSystemEnabled ? 'Pause' : 'Enable Now'}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -4476,7 +4672,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 className="bg-white border border-purple-200/90 rounded-2xl p-5 shadow-2xs space-y-4 relative overflow-hidden"
               >
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-indigo-600" />
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-100 pb-3">
                   <div>
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[11px] font-bold uppercase tracking-wider mb-1">
                       <UserPlus className="w-3.5 h-3.5" />
@@ -4487,9 +4683,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       Admin can assign <strong>any custom email/username</strong> and <strong>any custom password</strong>. The manager can immediately log in at <code className="font-mono">/login</code> and access the Manager Portal.
                     </p>
                   </div>
+                  <button
+                    type="submit"
+                    disabled={creatingManager}
+                    className="px-4 py-2.5 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer shadow-xs transition-colors self-start sm:self-center"
+                  >
+                    {creatingManager ? 'Creating...' : '+ Create Manager'}
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Manager Display Name</label>
                     <input
@@ -4507,7 +4710,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       required
                       value={newManagerEmail}
                       onChange={(e) => setNewManagerEmail(e.target.value)}
-                      placeholder="e.g. manager1@rewardriver.online or manager_karachi"
+                      placeholder="e.g. manager1@rewardriver.online"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
                     />
                   </div>
@@ -4524,38 +4727,57 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Initial Team Name (Optional)</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newManagerTeamName}
-                        onChange={(e) => setNewManagerTeamName(e.target.value)}
-                        placeholder="e.g. Karachi Alpha"
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-                      />
-                      <button
-                        type="submit"
-                        disabled={creatingManager}
-                        className="px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer shadow-xs transition-colors"
-                      >
-                        {creatingManager ? 'Creating...' : '+ Create Manager'}
-                      </button>
-                    </div>
+                    <input
+                      type="text"
+                      value={newManagerTeamName}
+                      onChange={(e) => setNewManagerTeamName(e.target.value)}
+                      placeholder="e.g. Karachi Alpha"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                    />
                   </div>
                 </div>
               </form>
 
               {/* Appointed Managers Table */}
               <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
-                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-bold text-slate-900">Appointed Managers Directory</h2>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Managers have full access to the Manager Portal, team member invite links, and performance tracking.
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
-                    {usersList.filter((u) => u.role === 'manager').length} Managers Appointed
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={promoteUserSelectId}
+                      onChange={(e) => setPromoteUserSelectId(e.target.value)}
+                      className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700"
+                    >
+                      <option value="">-- Promote Existing User to Manager --</option>
+                      {usersList
+                        .filter((u) => u.role === 'user')
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.displayName} ({u.email})
+                          </option>
+                        ))}
+                    </select>
+                    {promoteUserSelectId && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await handleSetUserRole(promoteUserSelectId, 'manager', 'Promoted to Manager from Managers & Teams');
+                          setPromoteUserSelectId('');
+                        }}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold cursor-pointer"
+                      >
+                        Promote Now
+                      </button>
+                    )}
+                    <span className="text-xs font-mono font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+                      {usersList.filter((u) => u.role === 'manager').length} Managers Appointed
+                    </span>
+                  </div>
                 </div>
                 {usersList.filter((u) => u.role === 'manager').length === 0 ? (
                   <div className="p-8 text-center text-xs text-slate-400">
@@ -4598,7 +4820,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                           key={t.id}
                                           className="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-[10px] font-bold"
                                         >
-                                          {t.teamName} ({t.teamCode})
+                                          {t.teamName || t.name} ({t.teamCode})
                                         </span>
                                       ))}
                                     </div>
@@ -4613,7 +4835,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                   {totalTeamPoints.toLocaleString('en-US')} Pts
                                 </td>
                                 <td className="py-3.5 px-4 text-right">
-                                  <div className="inline-flex items-center gap-1.5 justify-end">
+                                  <div className="inline-flex items-center gap-1.5 flex-wrap justify-end">
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -4641,6 +4863,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                       title="Inspect Manager Portal as this Manager"
                                     >
                                       <span>View as Manager</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSetUserRole(mgr.id, 'user', 'Demoted to regular user by Admin')}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                      title="Demote Manager to Standard User"
+                                    >
+                                      <span>Demote</span>
                                     </button>
                                   </div>
                                 </td>
@@ -4723,7 +4953,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                   <h2 className="text-sm font-bold text-slate-900">All Teams &amp; Invite Codes ({teamsList.length})</h2>
                   <span className="text-xs text-slate-500">
-                    To promote a user to Manager, open their profile in <strong>Users &amp; Earnings</strong>.
+                    Click <strong>Manage Members</strong> on any team to add or remove members directly.
                   </span>
                 </div>
                 {teamsList.length === 0 ? (
@@ -4749,7 +4979,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           return (
                             <tr key={team.id} className="hover:bg-slate-50/70">
                               <td className="py-3.5 px-4">
-                                <div className="font-bold text-slate-900">{team.teamName}</div>
+                                <div className="font-bold text-slate-900">{team.teamName || team.name}</div>
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[11px] font-bold">
                                     {team.teamCode}
@@ -4814,6 +5044,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                 <div className="inline-flex items-center gap-1.5 flex-wrap justify-end">
                                   <button
                                     type="button"
+                                    onClick={() => {
+                                      setManagingTeamMembersModal(team);
+                                      setMemberToAddUserId('');
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold cursor-pointer"
+                                    title="Add or Remove Team Members"
+                                  >
+                                    Manage Members ({team.memberCount || 0})
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => handleEditTeamName(team.id, team.teamName || team.name)}
                                     className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-bold cursor-pointer"
                                     title="Edit Team Name"
@@ -4856,6 +5097,204 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Modal: Edit Team Name */}
+              {editingTeamModal && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <form
+                    onSubmit={handleConfirmEditTeamName}
+                    className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-slate-900">Rename Team</h3>
+                      <button
+                        type="button"
+                        onClick={() => setEditingTeamModal(null)}
+                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">New Team Name</label>
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        value={editingTeamModal.name}
+                        onChange={(e) => setEditingTeamModal({ ...editingTeamModal, name: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingTeamModal(null)}
+                        className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white cursor-pointer"
+                      >
+                        Save Team Name
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Modal: Delete Team Confirmation */}
+              {deletingTeamModal && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-rose-700">Delete Team &ldquo;{deletingTeamModal.name}&rdquo;?</h3>
+                      <button
+                        type="button"
+                        onClick={() => setDeletingTeamModal(null)}
+                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Are you sure you want to delete team <strong>{deletingTeamModal.name}</strong>? Any members currently assigned to this team will be safely unassigned without losing their earned points.
+                    </p>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setDeletingTeamModal(null)}
+                        className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmDeleteTeam}
+                        className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white cursor-pointer"
+                      >
+                        Confirm Delete Team
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal: Manage Team Members */}
+              {managingTeamMembersModal && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] flex flex-col">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">
+                          Manage Team Members — {managingTeamMembersModal.teamName || managingTeamMembersModal.name}
+                        </h3>
+                        <p className="text-xs text-slate-500 font-mono mt-0.5">
+                          Invite Code: <strong>{managingTeamMembersModal.teamCode}</strong> • Manager: {managingTeamMembersModal.managerName}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setManagingTeamMembersModal(null)}
+                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Add User to Team */}
+                    <div className="flex flex-col sm:flex-row gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                      <select
+                        value={memberToAddUserId}
+                        onChange={(e) => setMemberToAddUserId(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                      >
+                        <option value="">-- Select a User to Add/Move to this Team --</option>
+                        {usersList
+                          .filter((u) => u.role === 'user' && u.teamId !== managingTeamMembersModal.id)
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.displayName} ({u.email}) {u.teamName ? `[Currently in ${u.teamName}]` : '[No Team]'}
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!memberToAddUserId}
+                        onClick={async () => {
+                          if (!memberToAddUserId) return;
+                          await handleMoveUserTeam(memberToAddUserId, managingTeamMembersModal.id);
+                          setMemberToAddUserId('');
+                        }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold cursor-pointer shrink-0"
+                      >
+                        + Add to Team
+                      </button>
+                    </div>
+
+                    {/* Current Members List */}
+                    <div className="overflow-y-auto flex-1 border border-slate-200 rounded-xl">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                            <th className="py-2.5 px-3">Member</th>
+                            <th className="py-2.5 px-3">Points Earned</th>
+                            <th className="py-2.5 px-3">Surveys</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {usersList.filter((u) => u.teamId === managingTeamMembersModal.id).length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="py-8 text-center text-slate-400">
+                                No members assigned to this team yet. Select a user above to add them.
+                              </td>
+                            </tr>
+                          ) : (
+                            usersList
+                              .filter((u) => u.teamId === managingTeamMembersModal.id)
+                              .map((member) => (
+                                <tr key={member.id} className="hover:bg-slate-50">
+                                  <td className="py-2.5 px-3">
+                                    <div className="font-bold text-slate-900">{member.displayName}</div>
+                                    <div className="text-[10px] font-mono text-slate-500">{member.email}</div>
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
+                                    {(member.balances?.availablePoints || 0).toLocaleString('en-US')} Pts
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-slate-700">
+                                    {member.balances?.completedSurveysCount || 0}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveUserTeam(member.id, null)}
+                                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold cursor-pointer"
+                                    >
+                                      Remove from Team
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setManagingTeamMembersModal(null)}
+                        className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -6108,18 +6547,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 )}
               </div>
             </div>
-          )}
-
-          {activeSection === 'timewall' && (
-            <AdminTimewallTab
-              token={localStorage.getItem('rr_auth_token') || ''}
-              users={usersList}
-              settings={settings}
-              onRefreshGlobal={() => {
-                fetchAdminData();
-                triggerRefresh();
-              }}
-            />
           )}
         </div>
       </div>

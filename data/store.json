@@ -62,7 +62,7 @@
       "createdAt": "2026-10-29T17:44:13.000Z",
       "updatedAt": "2026-10-30T10:22:28.673Z",
       "provider": "password",
-      "storedPoints": 8900
+      "storedPoints": 6300
     },
     {
       "id": "usr_c15d5963-c63b-4a21-bf7f-83e371f8a753",
@@ -94,7 +94,7 @@
       "createdAt": "2026-10-29T15:13:14.000Z",
       "updatedAt": "2026-10-30T10:22:30.279Z",
       "provider": "password",
-      "storedPoints": 4800
+      "storedPoints": 0
     },
     {
       "id": "usr_24499975-58fe-425e-b00b-245791cfc926",
@@ -142,7 +142,7 @@
       "createdAt": "2026-10-29T02:23:32.000Z",
       "updatedAt": "2026-10-30T10:22:32.617Z",
       "provider": "password",
-      "storedPoints": 4700
+      "storedPoints": 0
     },
     {
       "id": "usr_8559f325-b56a-410a-bb8a-5f637f485e70",
@@ -406,14 +406,14 @@
       "id": "usr_admin_rewardriver",
       "username": "admin@reward-river",
       "email": "admin@reward-river",
-      "passwordHash": "72bd2353d5d02d0cca12cd9e82c08c4a9437b9c10a567297ed8215532184609b36b9bf4c7ae98a635008c0c83e71931d9d588b360939563ee6d7868586fe8789",
-      "salt": "7dc20647a29b4970e5ba779cc7255c06",
+      "passwordHash": "f3495be81101f886c7ef1871899e0173dbdfe98e3677ba92c262f59cc47446b7b1aeb21bc2a9581531036480d1450146cdf2bce865de2d5bfe95a65ce760449b",
+      "salt": "bfaa7c6723040a10b4cedb3c47c13306",
       "displayName": "admin@reward-river",
       "emailVerified": true,
       "role": "admin",
       "externalOpaqueId": "rr_cpx_admin_a8c206249cbf560a",
       "createdAt": "2026-10-28T13:43:11.84+00:00",
-      "updatedAt": "2026-10-31T14:53:08.359Z",
+      "updatedAt": "2026-11-02T13:48:05.677Z",
       "countryCode": "PK",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -519,7 +519,7 @@
       "countryCode": "US",
       "provider": "password",
       "hasPromptedPhone": false,
-      "storedPoints": 8100
+      "storedPoints": 0
     },
     {
       "id": "usr_57e00d97-7b7d-47ef-8aa0-acf59088665c",
@@ -553,7 +553,7 @@
       "countryCode": "US",
       "provider": "password",
       "hasPromptedPhone": false,
-      "storedPoints": 5850
+      "storedPoints": 0
     },
     {
       "id": "usr_692a0752-b483-45cf-bbf0-fc1a90926906",
@@ -587,7 +587,7 @@
       "countryCode": "US",
       "provider": "password",
       "hasPromptedPhone": false,
-      "storedPoints": 5500
+      "storedPoints": 3200
     },
     {
       "id": "usr_8967416e-ee33-4c9c-9bd8-28564cec8db5",
@@ -740,7 +740,7 @@
       "countryCode": "US",
       "provider": "password",
       "hasPromptedPhone": false,
-      "storedPoints": 4050
+      "storedPoints": 0
     },
     {
       "id": "usr_688ccd37-d8a3-4791-83c4-ba574d8ae2ef",
@@ -1018,6 +1018,40 @@
       "externalOpaqueId": "rr_cpx_usr4b1605dca56046498f258",
       "createdAt": "2026-10-31T12:37:46.805+00:00",
       "updatedAt": "2026-10-31T12:37:46.805+00:00",
+      "countryCode": "US",
+      "provider": "password",
+      "hasPromptedPhone": true,
+      "storedPoints": 0
+    },
+    {
+      "id": "usr_47b7ea65-6523-4213-87a3-6459855ae2d7",
+      "username": "kjhghyfd",
+      "email": "kjhghyfd@babguf.com",
+      "passwordHash": "",
+      "salt": "",
+      "displayName": "kjhghyfd",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_usr47b7ea656523421387a36",
+      "createdAt": "2026-10-31T17:17:56.744+00:00",
+      "updatedAt": "2026-10-31T17:17:56.744+00:00",
+      "countryCode": "US",
+      "provider": "password",
+      "hasPromptedPhone": true,
+      "storedPoints": 0
+    },
+    {
+      "id": "usr_99d9a2ed-3f99-4cdf-8f50-66d5d7a16bb5",
+      "username": "hocanow181",
+      "email": "hocanow181@goldvester.com",
+      "passwordHash": "",
+      "salt": "",
+      "displayName": "hocanow181",
+      "emailVerified": true,
+      "role": "user",
+      "externalOpaqueId": "rr_cpx_usr99d9a2ed3f994cdf8f506",
+      "createdAt": "2026-11-01T16:00:08.384+00:00",
+      "updatedAt": "2026-11-01T16:00:08.384+00:00",
       "countryCode": "US",
       "provider": "password",
       "hasPromptedPhone": true,
@@ -3852,6 +3886,36 @@
       "processedAt": "2026-10-30T14:46:32.875+00:00"
     },
     {
+      "id": "le_cpx_1001261719621_rev",
+      "userId": "usr_369910e2-c73c-41c9-b46b-2a4687c6a64e",
+      "providerTxId": "1001261719621_rev",
+      "amountCents": 26,
+      "points": 2600,
+      "grossCents": 52,
+      "adminProfitCents": 26,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81355725 Reversed (-2,600 Pts • Tx #1001261719621)",
+      "createdAt": "2026-11-01T02:51:32.998+00:00",
+      "processedAt": "2026-11-01T02:51:32.998+00:00"
+    },
+    {
+      "id": "le_cpx_1001262259503_rev",
+      "userId": "usr_fd5a2d5c-565f-4cff-ab8d-0fd43ef71310",
+      "providerTxId": "1001262259503_rev",
+      "amountCents": 33,
+      "points": 3250,
+      "grossCents": 65,
+      "adminProfitCents": 32,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81338269 Reversed (-3,250 Pts • Tx #1001262259503)",
+      "createdAt": "2026-11-01T03:01:33.433+00:00",
+      "processedAt": "2026-11-01T03:01:33.433+00:00"
+    },
+    {
       "id": "le_cpx_1001262282361_rev",
       "userId": "usr_07402927-3514-4149-aea9-66c9fe44fdb2",
       "providerTxId": "1001262282361_rev",
@@ -4107,6 +4171,81 @@
       "processedAt": "2026-10-30T14:46:32.843+00:00"
     },
     {
+      "id": "le_cpx_1001261518941_rev",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
+      "providerTxId": "1001261518941_rev",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81399688 Reversed (-800 Pts • Tx #1001261518941)",
+      "createdAt": "2026-11-01T02:52:02.779+00:00",
+      "processedAt": "2026-11-01T02:52:02.779+00:00"
+    },
+    {
+      "id": "le_cpx_1001261534307_rev",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
+      "providerTxId": "1001261534307_rev",
+      "amountCents": 14,
+      "points": 1400,
+      "grossCents": 28,
+      "adminProfitCents": 14,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81407778 Reversed (-1,400 Pts • Tx #1001261534307)",
+      "createdAt": "2026-11-01T02:52:03.929+00:00",
+      "processedAt": "2026-11-01T02:52:03.929+00:00"
+    },
+    {
+      "id": "le_cpx_1001262272098_rev",
+      "userId": "usr_fd5a2d5c-565f-4cff-ab8d-0fd43ef71310",
+      "providerTxId": "1001262272098_rev",
+      "amountCents": 20,
+      "points": 2000,
+      "grossCents": 40,
+      "adminProfitCents": 20,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81426857 Reversed (-2,000 Pts • Tx #1001262272098)",
+      "createdAt": "2026-11-02T02:40:34.609+00:00",
+      "processedAt": "2026-11-02T02:40:34.609+00:00"
+    },
+    {
+      "id": "le_cpx_1001262279882_rev",
+      "userId": "usr_fd5a2d5c-565f-4cff-ab8d-0fd43ef71310",
+      "providerTxId": "1001262279882_rev",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81406064 Reversed (-1,200 Pts • Tx #1001262279882)",
+      "createdAt": "2026-11-02T02:40:34.677+00:00",
+      "processedAt": "2026-11-02T02:40:34.677+00:00"
+    },
+    {
+      "id": "le_cpx_1001262291560_rev",
+      "userId": "usr_be936210-b688-42a6-b024-0b2d7127c2f7",
+      "providerTxId": "1001262291560_rev",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81276421 Reversed (-1,000 Pts • Tx #1001262291560)",
+      "createdAt": "2026-11-02T02:41:02.772+00:00",
+      "processedAt": "2026-11-02T02:41:02.772+00:00"
+    },
+    {
       "id": "le_cpx_1001260786499_rev",
       "userId": "usr_a097a348-f66b-4c25-975d-41d5df65c145",
       "providerTxId": "1001260786499_rev",
@@ -4270,6 +4409,36 @@
       "description": "CPX Research Survey #81369342 Reversed (-1,200 Pts • Tx #1001260106043)",
       "createdAt": "2026-10-31T02:48:03.029+00:00",
       "processedAt": "2026-10-31T02:48:03.029+00:00"
+    },
+    {
+      "id": "le_cpx_1001261472945_rev",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
+      "providerTxId": "1001261472945_rev",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81339712 Reversed (-1,650 Pts • Tx #1001261472945)",
+      "createdAt": "2026-11-01T02:52:32.955+00:00",
+      "processedAt": "2026-11-01T02:52:32.955+00:00"
+    },
+    {
+      "id": "le_cpx_1001262305345_rev",
+      "userId": "usr_be936210-b688-42a6-b024-0b2d7127c2f7",
+      "providerTxId": "1001262305345_rev",
+      "amountCents": 13,
+      "points": 1300,
+      "grossCents": 26,
+      "adminProfitCents": 13,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81429638 Reversed (-1,300 Pts • Tx #1001262305345)",
+      "createdAt": "2026-11-02T02:42:01.867+00:00",
+      "processedAt": "2026-11-02T02:42:01.867+00:00"
     },
     {
       "id": "le_cpx_1001262186161_rev",
@@ -4450,6 +4619,21 @@
       "description": "CPX Research Survey #81386982 Reversed (-1,650 Pts • Tx #1001260587540)",
       "createdAt": "2026-10-31T02:55:06.509+00:00",
       "processedAt": "2026-10-31T02:55:06.509+00:00"
+    },
+    {
+      "id": "le_cpx_1001262016679_rev",
+      "userId": "usr_ba872c0d-95d2-45a6-a6b2-7f899b3c4d5f",
+      "providerTxId": "1001262016679_rev",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81421677 Reversed (-1,650 Pts • Tx #1001262016679)",
+      "createdAt": "2026-11-01T02:55:33.193+00:00",
+      "processedAt": "2026-11-01T02:55:33.193+00:00"
     },
     {
       "id": "le_cpx_1001261807995_rev",
@@ -4707,6 +4891,21 @@
       "processedAt": "2026-10-31T03:01:03.891+00:00"
     },
     {
+      "id": "le_cpx_1001262267061_rev",
+      "userId": "usr_fd5a2d5c-565f-4cff-ab8d-0fd43ef71310",
+      "providerTxId": "1001262267061_rev",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81421579 Reversed (-1,650 Pts • Tx #1001262267061)",
+      "createdAt": "2026-11-01T03:00:03.835+00:00",
+      "processedAt": "2026-11-01T03:00:03.835+00:00"
+    },
+    {
       "id": "le_cpx_1001262179614_rev",
       "userId": "usr_4981ca6d-c0cb-4206-944f-8686825f27ab",
       "providerTxId": "1001262179614_rev",
@@ -4825,6 +5024,51 @@
       "description": "CPX Research Survey #81426857 Reversed (-2,000 Pts • Tx #1001262098309)",
       "createdAt": "2026-10-30T14:46:32.829+00:00",
       "processedAt": "2026-10-30T14:46:32.829+00:00"
+    },
+    {
+      "id": "le_cpx_1001260822933_rev",
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "providerTxId": "1001260822933_rev",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81381916 Reversed (-800 Pts • Tx #1001260822933)",
+      "createdAt": "2026-11-01T02:40:34.703+00:00",
+      "processedAt": "2026-11-01T02:40:34.703+00:00"
+    },
+    {
+      "id": "le_cpx_1001260810179_rev",
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "providerTxId": "1001260810179_rev",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81387045 Reversed (-1,650 Pts • Tx #1001260810179)",
+      "createdAt": "2026-11-01T02:41:02.888+00:00",
+      "processedAt": "2026-11-01T02:41:02.888+00:00"
+    },
+    {
+      "id": "le_cpx_1001262231131_rev",
+      "userId": "usr_cb3b4751-0a7f-4cac-ae28-7079993ccefa",
+      "providerTxId": "1001262231131_rev",
+      "amountCents": 20,
+      "points": 2000,
+      "grossCents": 40,
+      "adminProfitCents": 20,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81426857 Reversed (-2,000 Pts • Tx #1001262231131)",
+      "createdAt": "2026-11-01T03:00:04.707+00:00",
+      "processedAt": "2026-11-01T03:00:04.707+00:00"
     },
     {
       "id": "le_cpx_1001262095007_rev",
@@ -4962,6 +5206,51 @@
       "processedAt": "2026-10-30T14:47:02.303+00:00"
     },
     {
+      "id": "le_cpx_1001260817273_rev",
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "providerTxId": "1001260817273_rev",
+      "amountCents": 15,
+      "points": 1450,
+      "grossCents": 29,
+      "adminProfitCents": 14,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81378065 Reversed (-1,450 Pts • Tx #1001260817273)",
+      "createdAt": "2026-11-01T02:41:02.833+00:00",
+      "processedAt": "2026-11-01T02:41:02.833+00:00"
+    },
+    {
+      "id": "le_cpx_1001262241174_rev",
+      "userId": "usr_cb3b4751-0a7f-4cac-ae28-7079993ccefa",
+      "providerTxId": "1001262241174_rev",
+      "amountCents": 10,
+      "points": 1000,
+      "grossCents": 20,
+      "adminProfitCents": 10,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81276421 Reversed (-1,000 Pts • Tx #1001262241174)",
+      "createdAt": "2026-11-01T03:00:34.735+00:00",
+      "processedAt": "2026-11-01T03:00:34.735+00:00"
+    },
+    {
+      "id": "le_cpx_1001262046264_rev",
+      "userId": "usr_ba872c0d-95d2-45a6-a6b2-7f899b3c4d5f",
+      "providerTxId": "1001262046264_rev",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81406064 Reversed (-1,200 Pts • Tx #1001262046264)",
+      "createdAt": "2026-11-01T03:01:02.634+00:00",
+      "processedAt": "2026-11-01T03:01:02.634+00:00"
+    },
+    {
       "id": "le_cpx_1001260719757_rev",
       "userId": "usr_8569e8f4-423d-4b1b-8d28-7430adf7122a",
       "providerTxId": "1001260719757_rev",
@@ -5097,6 +5386,36 @@
       "processedAt": "2026-10-30T14:46:32.843+00:00"
     },
     {
+      "id": "le_cpx_1001260831679_rev",
+      "userId": "usr_1f141360-ca2f-4406-8d25-c53251b25004",
+      "providerTxId": "1001260831679_rev",
+      "amountCents": 8,
+      "points": 800,
+      "grossCents": 16,
+      "adminProfitCents": 8,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81381840 Reversed (-800 Pts • Tx #1001260831679)",
+      "createdAt": "2026-11-01T02:41:03.881+00:00",
+      "processedAt": "2026-11-01T02:41:03.881+00:00"
+    },
+    {
+      "id": "le_cpx_1001262219675_rev",
+      "userId": "usr_cb3b4751-0a7f-4cac-ae28-7079993ccefa",
+      "providerTxId": "1001262219675_rev",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81406064 Reversed (-1,200 Pts • Tx #1001262219675)",
+      "createdAt": "2026-11-01T03:01:02.61+00:00",
+      "processedAt": "2026-11-01T03:01:02.61+00:00"
+    },
+    {
       "id": "le_cpx_1001262196488_rev",
       "userId": "usr_692a0752-b483-45cf-bbf0-fc1a90926906",
       "providerTxId": "1001262196488_rev",
@@ -5200,6 +5519,51 @@
       "description": "CPX Research Survey #81387045 Reversed (-1,650 Pts • Tx #1001260617291)",
       "createdAt": "2026-10-30T14:46:32.826+00:00",
       "processedAt": "2026-10-30T14:46:32.826+00:00"
+    },
+    {
+      "id": "le_cpx_1001261504566_rev",
+      "userId": "usr_8fabc8cd-5c12-470e-ac36-971cd4122761",
+      "providerTxId": "1001261504566_rev",
+      "amountCents": 10,
+      "points": 950,
+      "grossCents": 19,
+      "adminProfitCents": 9,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81397330 Reversed (-950 Pts • Tx #1001261504566)",
+      "createdAt": "2026-11-01T02:51:02.494+00:00",
+      "processedAt": "2026-11-01T02:51:02.494+00:00"
+    },
+    {
+      "id": "le_cpx_1001262029834_rev",
+      "userId": "usr_ba872c0d-95d2-45a6-a6b2-7f899b3c4d5f",
+      "providerTxId": "1001262029834_rev",
+      "amountCents": 12,
+      "points": 1200,
+      "grossCents": 24,
+      "adminProfitCents": 12,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81406109 Reversed (-1,200 Pts • Tx #1001262029834)",
+      "createdAt": "2026-11-01T03:01:02.664+00:00",
+      "processedAt": "2026-11-01T03:01:02.664+00:00"
+    },
+    {
+      "id": "le_cpx_1001262184110_rev",
+      "userId": "usr_cb3b4751-0a7f-4cac-ae28-7079993ccefa",
+      "providerTxId": "1001262184110_rev",
+      "amountCents": 17,
+      "points": 1650,
+      "grossCents": 33,
+      "adminProfitCents": 16,
+      "appliedSharePercent": 50,
+      "entryType": "reversal",
+      "status": "confirmed",
+      "description": "CPX Research Survey #81421677 Reversed (-1,650 Pts • Tx #1001262184110)",
+      "createdAt": "2026-11-01T03:01:03.68+00:00",
+      "processedAt": "2026-11-01T03:01:03.68+00:00"
     }
   ],
   "withdrawalRequests": [],
@@ -5248,19 +5612,7 @@
     "sitemapEnabled": true,
     "turnstileSiteKey": "0x4AAAAAAFsriP1bMbtMNkub",
     "turnstileSecretKey": "0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw",
-    "timewallOid": "bbaca457a255e3e2",
-    "timewallPlacementUrl": "https://timewall.io/users/login?oid={oid}&uid={userid}",
-    "timewallApiKey": "tw_0fb821a06355392350c944a0e69ef60f40f0565fff6ffe62ce57629c76e8f04c",
-    "timewallSecret": "3e8f2c753e704d59013d34c6474363c3",
-    "timewallAllowedIps": "18.156.132.55,51.81.120.73,142.111.248.18",
-    "timewallCoinsPerUsd": 10000,
-    "timewallAllowDecimals": false,
-    "timewallCreditTypes": "",
-    "timewallReversalTypes": "chargeback,reversal,cancel,deduct,2",
-    "timewallNegativeBalanceMode": "allow",
-    "timewallMaxSingleRevenueUsd": "50.00",
-    "trustedProxies": "cloudflare,vercel,127.0.0.1,::1",
-    "updatedAt": "2026-10-30T09:39:48.673+00:00"
+    "updatedAt": "2026-11-02T13:44:03.641Z"
   },
   "adminAuditLogs": [
     {
@@ -6537,6 +6889,39 @@
       "createdAt": "2026-10-30T14:37:49.297+00:00"
     },
     {
+      "id": "log_adc9cab3-ed95-4965-9767-90ebcd6156c7",
+      "adminUserId": "system_cpx_postback",
+      "adminEmail": "system@reward-river",
+      "action": "CPX_POSTBACK_USER_NOT_FOUND",
+      "targetEntity": "users",
+      "targetId": "rr_cpx_williamscott728gma",
+      "details": "{\"transId\":\"1001260792715\",\"extUserId\":\"rr_cpx_williamscott728gma\",\"offerId\":\"81378065\",\"status\":\"2\"}",
+      "ipAddress": "157.90.97.92",
+      "createdAt": "2026-11-01T02:41:04.411+00:00"
+    },
+    {
+      "id": "log_e75bcb0f-7b5b-441c-bf73-2dd838d6c379",
+      "adminUserId": "system_cpx_postback",
+      "adminEmail": "system@reward-river",
+      "action": "CPX_POSTBACK_USER_NOT_FOUND",
+      "targetEntity": "users",
+      "targetId": "rr_cpx_williamscott728gma",
+      "details": "{\"transId\":\"1001260797126\",\"extUserId\":\"rr_cpx_williamscott728gma\",\"offerId\":\"81276421\",\"status\":\"2\"}",
+      "ipAddress": "157.90.97.92",
+      "createdAt": "2026-11-01T02:41:03.984+00:00"
+    },
+    {
+      "id": "log_1a9436be-09ae-4264-a012-e2a686468a4f",
+      "adminUserId": "system_cpx_postback",
+      "adminEmail": "system@reward-river",
+      "action": "CPX_POSTBACK_USER_NOT_FOUND",
+      "targetEntity": "users",
+      "targetId": "rr_cpx_williamscott728gma",
+      "details": "{\"transId\":\"1001260786143\",\"extUserId\":\"rr_cpx_williamscott728gma\",\"offerId\":\"77307516\",\"status\":\"2\"}",
+      "ipAddress": "157.90.97.92",
+      "createdAt": "2026-11-01T02:40:35.251+00:00"
+    },
+    {
       "id": "log_14de259c-3f65-498d-97bd-2e7738a93677",
       "adminUserId": "system_cpx_postback",
       "adminEmail": "system@reward-river",
@@ -6567,11 +6952,70 @@
       "details": "{\"before\":null,\"after\":{\"id\":\"team_5c3d82c8-c1b5-47ac-9fc1-c2be9454f85e\",\"name\":\"Team mohsin\",\"managerId\":\"usr_b79985df-6cb9-47b6-8370-8858ba62c02d\",\"teamCode\":\"3HVFRT\",\"isActive\":true,\"createdAt\":\"2026-10-30T14:41:59.024Z\"}}",
       "ipAddress": "39.58.139.238",
       "createdAt": "2026-10-30T14:41:59.024+00:00"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "CREATE_TEAM",
+      "targetEntity": "teams",
+      "targetId": "team_127617ea-0c02-4a40-b8d6-dd33f340a0f0",
+      "beforeState": null,
+      "afterState": {
+        "id": "team_127617ea-0c02-4a40-b8d6-dd33f340a0f0",
+        "name": "Lahore Elite Team",
+        "managerId": "usr_ba09ca16-31e8-4ad6-80b2-9e78fad0518b",
+        "teamCode": "Q6Z5UA",
+        "isActive": true,
+        "createdAt": "2026-11-02T13:43:58.390Z"
+      },
+      "details": "{\"before\":null,\"after\":{\"id\":\"team_127617ea-0c02-4a40-b8d6-dd33f340a0f0\",\"name\":\"Lahore Elite Team\",\"managerId\":\"usr_ba09ca16-31e8-4ad6-80b2-9e78fad0518b\",\"teamCode\":\"Q6Z5UA\",\"isActive\":true,\"createdAt\":\"2026-11-02T13:43:58.390Z\"}}",
+      "ipAddress": "127.0.0.1",
+      "id": "log_264d517c-1537-435f-a8d5-d42e197bd64f",
+      "createdAt": "2026-11-02T13:43:58.391Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_CREATE_MANAGER",
+      "targetEntity": "users",
+      "targetId": "usr_ba09ca16-31e8-4ad6-80b2-9e78fad0518b",
+      "details": "{\"email\":\"lahore_mgr@rewardriver.online\",\"displayName\":\"Lahore Lead\",\"initialTeam\":\"Lahore Elite Team\",\"teamCode\":\"Q6Z5UA\"}",
+      "id": "log_aaee9ac7-72ed-43b9-852d-a8e316ca0f1b",
+      "createdAt": "2026-11-02T13:43:58.898Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "UPDATE_SYSTEM_SETTINGS",
+      "targetEntity": "systemSettings",
+      "targetId": "global",
+      "details": "{\"cpxAppId\":\"37699\",\"cpxHashKey\":\"1u8hIFGwUYYORM76NM76PDxenCC50bCZ\",\"cpxApiKey\":\"2578500163e1998b3c8929e261a3e095\"}",
+      "id": "log_a5bc71ea-753f-4b48-95f7-415534e84404",
+      "createdAt": "2026-11-02T13:44:01.318Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "UPDATE_SYSTEM_SETTINGS",
+      "targetEntity": "systemSettings",
+      "targetId": "global",
+      "details": "{\"supabaseUrl\":\"https://vwoskusxfzmnoawbrpnr.supabase.co\",\"supabaseAnonKey\":\"sb_publishable_HVjFoLz84HMQ3ONultKhSA_rrnOtIpZ\",\"supabaseServiceKey\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3b3NrdXN4Znptbm9hd2JycG5yIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjcwNDczMiwiZXhwIjoyMTA4MjgwNzMyfQ.5zT9Gw3C1AI2IKDlpC9pmrm8BEh5-5M-Qw7f-edE1zk\",\"minWithdrawalCents\":2500,\"maxWithdrawalCents\":50000,\"feeCentsTrc20\":100,\"feeCentsErc20\":250,\"userSharePercent\":50,\"pointsPerUsdt\":5000,\"newUserDays\":7,\"timezone\":\"Asia/Karachi\",\"teamSystemEnabled\":true,\"managersCanCreateTeams\":true,\"maxTeamsPerManager\":5,\"teamBonusEnabled\":false,\"teamBonusPercent\":0,\"surveyDisplayMode\":\"points_only\",\"cpxAppId\":\"37699\",\"cpxHashKey\":\"1u8hIFGwUYYORM76NM76PDxenCC50bCZ\",\"cpxApiKey\":\"2578500163e1998b3c8929e261a3e095\",\"cpxIntegrationMode\":\"hybrid_api\",\"cpxMaxSurveys\":12,\"cpxThemeColor\":\"10b981\",\"cpxEnableFallback\":false,\"cpxVerifySignature\":true,\"aoyApiKey\":\"223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa\",\"aoySecretKey\":\"8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92\",\"aoyBearerToken\":\"\",\"aoyExchangeRate\":10000,\"aoyEnableFallback\":false,\"aoyVerifySignature\":true,\"maintenanceMode\":false,\"defaultNetwork\":\"TRC20\",\"googleAnalyticsId\":\"G-REWARDRIVER1\",\"googleAnalyticsEnabled\":true,\"metaTitle\":\"Reward River - Real Opinions. Real Value.\",\"metaDescription\":\"Discover available research surveys, share verified opinions, and earn Points.\",\"metaKeywords\":\"surveys, cpx research, paid surveys, market research, reward points\",\"ogImageUrl\":\"/favicon.svg\",\"googleSearchConsoleKey\":\"\",\"turnstileSiteKey\":\"0x4AAAAAAFsriP1bMbtMNkub\",\"turnstileSecretKey\":\"0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw\",\"sitemapEnabled\":true}",
+      "id": "log_7ecaa1cf-0236-4214-8e22-246a24a9392e",
+      "createdAt": "2026-11-02T13:44:03.641Z"
+    },
+    {
+      "adminUserId": "usr_admin_rewardriver",
+      "adminEmail": "admin@reward-river",
+      "action": "ADMIN_DELETE_USER",
+      "targetEntity": "users",
+      "targetId": "usr_ba09ca16-31e8-4ad6-80b2-9e78fad0518b",
+      "details": "Permanently deleted user lahore_mgr@rewardriver.online (Lahore Lead). Cleared associated ledger entries and withdrawal requests.",
+      "id": "log_0bb4677d-234b-426c-89f6-5c31799b56c5",
+      "createdAt": "2026-11-02T13:48:28.440Z"
     }
   ],
   "teams": [],
   "teamMembers": [],
   "callbackLogs": [],
-  "impersonationSessions": [],
-  "offerwallTransactions": []
+  "impersonationSessions": []
 }

@@ -318,6 +318,14 @@ test('Teams, Manager Roles, One-Manager-Many-Teams, Team Points Exclusion, and S
     updatedAt: new Date().toISOString()
   });
 
+  // Clean up any pre-existing test teams for mgrAId or mgrBId from previous test runs
+  for (const oldT of dbStore.getTeamsForManager(mgrAId)) {
+    await dbStore.deleteTeam({ teamId: oldT.id, actorUser: adminUser });
+  }
+  for (const oldT of dbStore.getTeamsForManager(mgrBId)) {
+    await dbStore.deleteTeam({ teamId: oldT.id, actorUser: adminUser });
+  }
+
   const mgrAUser = await dbStore.createUser({
     id: mgrAId,
     username: 'mgr_alpha',

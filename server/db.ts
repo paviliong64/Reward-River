@@ -17,14 +17,6 @@ import {
 } from '../src/utils/adminStats';
 export type { TaskDefinitionRecord, TaskCompletionRecord, DataIntegrityReport };
 import {
-  OfferwallTransactionRecord,
-  OfferwallTransactionStatus,
-  DEFAULT_TIMEWALL_ALLOWED_IPS,
-  parseDecimalToMicros,
-  formatMicrosToDecimal
-} from '../src/utils/timewall';
-export type { OfferwallTransactionRecord, OfferwallTransactionStatus };
-import {
   getActiveServerSupabase,
   defaultSupabaseUrl,
   defaultSupabaseAnonKey,
@@ -56,7 +48,6 @@ export interface UserAccount {
   hasPromptedPhone?: boolean;
   provider?: string;
   storedPoints?: number;
-  offerwallBlocked?: boolean;
 }
 
 export interface TeamRecord {
@@ -194,20 +185,6 @@ export interface SystemSettings {
   sitemapEnabled?: boolean;
   turnstileSiteKey?: string;
   turnstileSecretKey?: string;
-  timewallOid?: string;
-  timewallPlacementUrl?: string;
-  timewallApiKey?: string;
-  timewallSecret?: string;
-  timewallAllowedIps?: string;
-  timewallCoinsPerUsd?: number;
-  timewallAllowDecimals?: boolean;
-  timewallCreditTypes?: string;
-  timewallReversalTypes?: string;
-  timewallNegativeBalanceMode?: 'allow' | 'flag_account';
-  timewallMaxSingleRevenueUsd?: string;
-  trustedProxies?: string;
-  earnMaintenanceMode?: 'auto' | 'live' | 'maintenance';
-  taskMaintenanceMode?: 'auto' | 'live' | 'maintenance';
   updatedAt: string;
 }
 
@@ -224,7 +201,6 @@ export interface DatabaseSchema {
   teamMembers: TeamMemberRecord[];
   callbackLogs: CallbackLogRecord[];
   impersonationSessions: ImpersonationSessionRecord[];
-  offerwallTransactions: OfferwallTransactionRecord[];
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -236,7 +212,6 @@ class DatabaseStore {
   private initialized = false;
   private lastSupabaseSyncMs = 0;
   private writeQueue: Promise<void> = Promise.resolve();
-  private txMutex: Promise<unknown> = Promise.resolve();
 
   constructor() {
     this.data = this.getDefaultData();
@@ -362,26 +337,13 @@ class DatabaseStore {
         sitemapEnabled: true,
         turnstileSiteKey: process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || '0x4AAAAAAFsriP1bMbtMNkub',
         turnstileSecretKey: process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw',
-        timewallOid: process.env.TIMEWALL_OID || 'bbaca457a255e3e2',
-        timewallPlacementUrl: process.env.TIMEWALL_PLACEMENT_URL || 'https://timewall.io/users/login?oid={oid}&uid={userid}',
-        timewallApiKey: process.env.TIMEWALL_API_KEY || 'tw_0fb821a06355392350c944a0e69ef60f40f0565fff6ffe62ce57629c76e8f04c',
-        timewallSecret: process.env.TIMEWALL_SECRET || '3e8f2c753e704d59013d34c6474363c3',
-        timewallAllowedIps: process.env.TIMEWALL_ALLOWED_IPS || DEFAULT_TIMEWALL_ALLOWED_IPS.join(','),
-        timewallCoinsPerUsd: Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : 10000,
-        timewallAllowDecimals: String(process.env.TIMEWALL_ALLOW_DECIMALS || 'false').toLowerCase() === 'true',
-        timewallCreditTypes: process.env.TIMEWALL_CREDIT_TYPES ?? '',
-        timewallReversalTypes: process.env.TIMEWALL_REVERSAL_TYPES ?? 'chargeback,reversal,cancel,deduct,2',
-        timewallNegativeBalanceMode: process.env.TIMEWALL_NEGATIVE_BALANCE_MODE === 'flag_account' ? 'flag_account' : 'allow',
-        timewallMaxSingleRevenueUsd: process.env.TIMEWALL_MAX_SINGLE_REVENUE_USD || '50.00',
-        trustedProxies: process.env.TRUSTED_PROXIES || 'cloudflare,vercel,127.0.0.1,::1',
         updatedAt: '2026-10-20T00:00:00.000Z'
       },
       adminAuditLogs: [],
       teams: [],
       teamMembers: [],
       callbackLogs: [],
-      impersonationSessions: [],
-      offerwallTransactions: []
+      impersonationSessions: []
     };
   }
 
@@ -530,31 +492,25 @@ class DatabaseStore {
             ...this.getDefaultData().systemSettings,
             ...(parsed.systemSettings || {}),
             cpxAppId: parsed.systemSettings?.cpxAppId || '37699',
-            cpxHashKey: validCpxHash,
+            cpxHashKey: parsed.systemSettings?.cpxHashKey !== undefined && parsed.systemSettings.cpxHashKey !== '' ? parsed.systemSettings.cpxHashKey : validCpxHash,
             pointsPerUsdt: Number(parsed.systemSettings?.pointsPerUsdt) > 0 ? Number(parsed.systemSettings.pointsPerUsdt) : 5000,
             userSharePercent: Number(parsed.systemSettings?.userSharePercent) > 0 ? Number(parsed.systemSettings.userSharePercent) : 50,
             newUserDays: Number(parsed.systemSettings?.newUserDays) > 0 ? Number(parsed.systemSettings.newUserDays) : 7,
             timezone: 'Asia/Karachi',
-            teamSystemEnabled: Boolean(parsed.systemSettings?.teamSystemEnabled ?? false),
-            managersCanCreateTeams: Boolean(parsed.systemSettings?.managersCanCreateTeams ?? false),
-            maxTeamsPerManager: Number(parsed.systemSettings?.maxTeamsPerManager) > 0 ? Number(parsed.systemSettings.maxTeamsPerManager) : 5,
+            teamSystemEnabled: parsed.systemSettings?.teamSystemEnabled !== undefined ? Boolean(parsed.systemSettings.teamSystemEnabled) : true,
+            managersCanCreateTeams: parsed.systemSettings?.managersCanCreateTeams !== undefined ? Boolean(parsed.systemSettings.managersCanCreateTeams) : true,
+            maxTeamsPerManager: Number(parsed.systemSettings?.maxTeamsPerManager) > 0 ? Number(parsed.systemSettings.maxTeamsPerManager) : 10,
             teamBonusEnabled: Boolean(parsed.systemSettings?.teamBonusEnabled ?? false),
             teamBonusPercent: Math.max(0, Number(parsed.systemSettings?.teamBonusPercent) || 0),
             aoyApiKey: parsed.systemSettings?.aoyApiKey || process.env.AOY_API_KEY || '223f26cc088f5bab7b79022b1d728e7d45106754ea0d38aa',
             aoySecretKey: parsed.systemSettings?.aoySecretKey || process.env.AOY_SECRET_KEY || '8541bec43fd15ef8996554a07ef7c8942300227cecfdbe6408e26969c77b4e92',
-            timewallOid: parsed.systemSettings?.timewallOid || process.env.TIMEWALL_OID || 'bbaca457a255e3e2',
-            timewallApiKey: parsed.systemSettings?.timewallApiKey || process.env.TIMEWALL_API_KEY || 'tw_0fb821a06355392350c944a0e69ef60f40f0565fff6ffe62ce57629c76e8f04c',
-            timewallSecret: parsed.systemSettings?.timewallSecret || process.env.TIMEWALL_SECRET || '3e8f2c753e704d59013d34c6474363c3',
-            timewallAllowedIps: parsed.systemSettings?.timewallAllowedIps || process.env.TIMEWALL_ALLOWED_IPS || DEFAULT_TIMEWALL_ALLOWED_IPS.join(','),
-            timewallCoinsPerUsd: Number(process.env.TIMEWALL_COINS_PER_USD) > 0 ? Number(process.env.TIMEWALL_COINS_PER_USD) : 10000,
-            minWithdrawalCents: 2500
+            minWithdrawalCents: Number(parsed.systemSettings?.minWithdrawalCents) >= 500 ? Number(parsed.systemSettings.minWithdrawalCents) : 2500
           },
           adminAuditLogs: parsed.adminAuditLogs || [],
           teams: Array.isArray(parsed.teams) ? parsed.teams : [],
           teamMembers: Array.isArray(parsed.teamMembers) ? parsed.teamMembers : [],
           callbackLogs: Array.isArray(parsed.callbackLogs) ? parsed.callbackLogs : [],
-          impersonationSessions: Array.isArray(parsed.impersonationSessions) ? parsed.impersonationSessions : [],
-          offerwallTransactions: Array.isArray(parsed.offerwallTransactions) ? parsed.offerwallTransactions : []
+          impersonationSessions: Array.isArray(parsed.impersonationSessions) ? parsed.impersonationSessions : []
         };
         await this.persist();
       } else {
@@ -646,52 +602,118 @@ class DatabaseStore {
       let changed = false;
 
       // 1. Sync System Settings from Supabase (Global Platform Configuration)
-      const { data: sbSettings, error: settingsError } = await sb.from('system_settings').select('*').eq('id', 'global').single();
-      if (!settingsError && sbSettings) {
+      const { data: sbSettingsRows, error: settingsError } = await sb.from('system_settings').select('*').limit(1);
+      const sbSettings = !settingsError && Array.isArray(sbSettingsRows) && sbSettingsRows.length > 0 ? sbSettingsRows[0] : null;
+
+      // Also check optional key-value `settings` table for full JSON snapshot (`platform_system_settings`)
+      let kvSnapshot: Partial<SystemSettings> | null = null;
+      let kvUpdatedAt = '';
+      try {
+        const { data: kvRow, error: kvErr } = await sb
+          .from('settings')
+          .select('value, updated_at')
+          .eq('key', 'platform_system_settings')
+          .maybeSingle();
+        if (!kvErr && kvRow && kvRow.value && typeof kvRow.value === 'object') {
+          kvSnapshot = kvRow.value as Partial<SystemSettings>;
+          kvUpdatedAt = String(kvRow.updated_at || (kvSnapshot as any).updatedAt || '');
+        }
+      } catch {
+        // Optional table
+      }
+
+      if (sbSettings || kvSnapshot) {
         const current = this.data.systemSettings;
-        const sbMinW = Number(sbSettings.min_withdrawal_cents);
-        const sbPtsRate = Number(sbSettings.points_rate_per_usd);
-        const sbShare = Number(sbSettings.default_user_share_percent);
+        const localTime = current.updatedAt ? new Date(current.updatedAt).getTime() : 0;
+        const sbTime = sbSettings?.updated_at ? new Date(sbSettings.updated_at).getTime() : 0;
+        const kvTime = kvUpdatedAt ? new Date(kvUpdatedAt).getTime() : 0;
+        const remoteTime = Math.max(sbTime, kvTime);
 
-        const newSettings: SystemSettings = {
-          ...current,
-          supabaseUrl: current.supabaseUrl || defaultSupabaseUrl,
-          supabaseAnonKey: current.supabaseAnonKey || defaultSupabaseAnonKey,
-          supabaseServiceKey: current.supabaseServiceKey || defaultSupabaseServiceKey,
-          minWithdrawalCents: sbMinW >= 2500 ? sbMinW : 2500,
-          maxWithdrawalCents: Number(sbSettings.max_withdrawal_cents) || current.maxWithdrawalCents || 50000,
-          feeCentsTrc20: Number(sbSettings.fee_cents_trc20) ?? current.feeCentsTrc20,
-          feeCentsErc20: Number(sbSettings.fee_cents_erc20) ?? current.feeCentsErc20,
-          pointsPerUsdt: sbPtsRate === 5000 ? 5000 : (current.pointsPerUsdt || 5000),
-          userSharePercent: sbShare === 50 ? 50 : (current.userSharePercent || 50),
-          maintenanceMode: Boolean(sbSettings.maintenance_mode),
-          teamSystemEnabled: typeof sbSettings.team_system_enabled === 'boolean' ? sbSettings.team_system_enabled : true,
-          managersCanCreateTeams: typeof sbSettings.managers_can_create_teams === 'boolean' ? sbSettings.managers_can_create_teams : true,
-          maxTeamsPerManager: current.maxTeamsPerManager || 10,
-          teamBonusEnabled: Boolean(current.teamBonusEnabled),
-          teamBonusPercent: current.teamBonusPercent || 0,
-          turnstileSiteKey: current.turnstileSiteKey || process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || '0x4AAAAAAFsriP1bMbtMNkub',
-          turnstileSecretKey: current.turnstileSecretKey || process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || '0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw',
-          cpxAppId: sbSettings.cpx_app_id || current.cpxAppId,
-          cpxHashKey: sbSettings.cpx_hash_key || current.cpxHashKey,
-          cpxApiKey: sbSettings.cpx_api_key || current.cpxApiKey,
-          cpxIntegrationMode: (sbSettings.cpx_integration_mode as any) || current.cpxIntegrationMode,
-          cpxMaxSurveys: Number(sbSettings.cpx_max_surveys) || current.cpxMaxSurveys,
-          cpxThemeColor: sbSettings.cpx_theme_color || current.cpxThemeColor,
-          cpxEnableFallback: sbSettings.cpx_enable_fallback ?? current.cpxEnableFallback,
-          cpxVerifySignature: sbSettings.cpx_verify_signature ?? current.cpxVerifySignature,
-          aoyApiKey: sbSettings.aoy_api_key || current.aoyApiKey,
-          aoySecretKey: sbSettings.aoy_secret_key || current.aoySecretKey,
-          aoyBearerToken: sbSettings.aoy_bearer_token || current.aoyBearerToken,
-          aoyExchangeRate: Number(sbSettings.aoy_exchange_rate) || current.aoyExchangeRate,
-          metaTitle: sbSettings.meta_title || current.metaTitle,
-          metaDescription: sbSettings.meta_description || current.metaDescription,
-          updatedAt: sbSettings.updated_at || new Date().toISOString()
-        };
+        // Only allow remote Supabase settings to overwrite local settings if remote is strictly newer than local
+        if (remoteTime > localTime) {
+          const mergedFromKv = kvSnapshot && kvTime >= sbTime ? kvSnapshot : {};
+          const sbMinW = Number(sbSettings?.min_withdrawal_cents ?? mergedFromKv.minWithdrawalCents ?? current.minWithdrawalCents);
+          const sbPtsRate = Number(sbSettings?.points_rate_per_usd ?? mergedFromKv.pointsPerUsdt ?? current.pointsPerUsdt);
+          const sbShare = Number(sbSettings?.default_user_share_percent ?? mergedFromKv.userSharePercent ?? current.userSharePercent);
+          const sbHash =
+            mergedFromKv.cpxHashKey ||
+            sbSettings?.cpx_secure_hash_secret ||
+            sbSettings?.cpx_hash_key ||
+            current.cpxHashKey;
 
-        if (JSON.stringify(newSettings) !== JSON.stringify(current)) {
-          this.data.systemSettings = newSettings;
-          changed = true;
+          const newSettings: SystemSettings = {
+            ...current,
+            ...mergedFromKv,
+            supabaseUrl: current.supabaseUrl || defaultSupabaseUrl,
+            supabaseAnonKey: current.supabaseAnonKey || defaultSupabaseAnonKey,
+            supabaseServiceKey: current.supabaseServiceKey || defaultSupabaseServiceKey,
+            minWithdrawalCents: sbMinW >= 500 ? sbMinW : (current.minWithdrawalCents || 2500),
+            maxWithdrawalCents: Number(sbSettings?.max_withdrawal_cents ?? mergedFromKv.maxWithdrawalCents) || current.maxWithdrawalCents || 50000,
+            feeCentsTrc20: Number(sbSettings?.fee_cents_trc20 ?? mergedFromKv.feeCentsTrc20 ?? current.feeCentsTrc20),
+            feeCentsErc20: Number(sbSettings?.fee_cents_erc20 ?? mergedFromKv.feeCentsErc20 ?? current.feeCentsErc20),
+            pointsPerUsdt: sbPtsRate > 0 ? sbPtsRate : (current.pointsPerUsdt || 5000),
+            userSharePercent: sbShare > 0 && sbShare <= 100 ? sbShare : (current.userSharePercent || 50),
+            maintenanceMode:
+              mergedFromKv.maintenanceMode !== undefined
+                ? Boolean(mergedFromKv.maintenanceMode)
+                : sbSettings?.maintenance_mode !== undefined
+                ? Boolean(sbSettings.maintenance_mode)
+                : Boolean(current.maintenanceMode),
+            teamSystemEnabled:
+              mergedFromKv.teamSystemEnabled !== undefined
+                ? Boolean(mergedFromKv.teamSystemEnabled)
+                : typeof sbSettings?.team_system_enabled === 'boolean'
+                ? sbSettings.team_system_enabled
+                : current.teamSystemEnabled !== undefined
+                ? Boolean(current.teamSystemEnabled)
+                : true,
+            managersCanCreateTeams:
+              mergedFromKv.managersCanCreateTeams !== undefined
+                ? Boolean(mergedFromKv.managersCanCreateTeams)
+                : typeof sbSettings?.managers_can_create_teams === 'boolean'
+                ? sbSettings.managers_can_create_teams
+                : current.managersCanCreateTeams !== undefined
+                ? Boolean(current.managersCanCreateTeams)
+                : true,
+            maxTeamsPerManager: Number(mergedFromKv.maxTeamsPerManager ?? sbSettings?.max_teams_per_manager ?? current.maxTeamsPerManager) || 10,
+            teamBonusEnabled: Boolean(mergedFromKv.teamBonusEnabled ?? sbSettings?.team_bonus_enabled ?? current.teamBonusEnabled),
+            teamBonusPercent: Number(mergedFromKv.teamBonusPercent ?? sbSettings?.team_bonus_percent ?? current.teamBonusPercent) || 0,
+            turnstileSiteKey:
+              mergedFromKv.turnstileSiteKey ||
+              current.turnstileSiteKey ||
+              process.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY ||
+              '0x4AAAAAAFsriP1bMbtMNkub',
+            turnstileSecretKey:
+              mergedFromKv.turnstileSecretKey ||
+              current.turnstileSecretKey ||
+              process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ||
+              '0x4AAAAAAFsriCiA5xJEhvolMVq96CWpRdw',
+            cpxAppId: String(mergedFromKv.cpxAppId || sbSettings?.cpx_app_id || current.cpxAppId || '37699'),
+            cpxHashKey: String(sbHash || ''),
+            cpxApiKey: String(mergedFromKv.cpxApiKey || sbSettings?.cpx_api_key || current.cpxApiKey || ''),
+            cpxIntegrationMode: (mergedFromKv.cpxIntegrationMode || sbSettings?.cpx_integration_mode || current.cpxIntegrationMode || 'hybrid_api') as any,
+            cpxMaxSurveys: Number(mergedFromKv.cpxMaxSurveys ?? sbSettings?.cpx_max_surveys ?? current.cpxMaxSurveys) || 12,
+            cpxThemeColor: String(mergedFromKv.cpxThemeColor || sbSettings?.cpx_theme_color || current.cpxThemeColor || '10b981'),
+            cpxEnableFallback: Boolean(mergedFromKv.cpxEnableFallback ?? sbSettings?.cpx_enable_fallback ?? current.cpxEnableFallback),
+            cpxVerifySignature:
+              mergedFromKv.cpxVerifySignature !== undefined
+                ? Boolean(mergedFromKv.cpxVerifySignature)
+                : sbSettings?.cpx_verify_signature !== undefined
+                ? Boolean(sbSettings.cpx_verify_signature)
+                : Boolean(current.cpxVerifySignature),
+            aoyApiKey: String(mergedFromKv.aoyApiKey || sbSettings?.aoy_api_key || current.aoyApiKey || ''),
+            aoySecretKey: String(mergedFromKv.aoySecretKey || sbSettings?.aoy_secret_key || current.aoySecretKey || ''),
+            aoyBearerToken: String(mergedFromKv.aoyBearerToken || sbSettings?.aoy_bearer_token || current.aoyBearerToken || ''),
+            aoyExchangeRate: Number(mergedFromKv.aoyExchangeRate ?? sbSettings?.aoy_exchange_rate ?? current.aoyExchangeRate) || 10000,
+            metaTitle: String(mergedFromKv.metaTitle || sbSettings?.meta_title || current.metaTitle || ''),
+            metaDescription: String(mergedFromKv.metaDescription || sbSettings?.meta_description || current.metaDescription || ''),
+            updatedAt: new Date(remoteTime).toISOString()
+          };
+
+          if (JSON.stringify(newSettings) !== JSON.stringify(current)) {
+            this.data.systemSettings = newSettings;
+            changed = true;
+          }
         }
       }
 
@@ -802,13 +824,13 @@ class DatabaseStore {
               this.data.users[existingIdx].username = display;
               changed = true;
             }
-            // Preserve local 'manager' role if user owns teams or has manager role
-            const userOwnsTeamsNow = (this.data.teams || []).some(
-              t => t.managerId === current.id || t.managerId === canonicalId || t.managerId === current.email
+            // Preserve local role or active team ownership
+            const userOwnsActiveTeamsNow = (this.data.teams || []).some(
+              t => t.isActive && (t.managerId === current.id || t.managerId === canonicalId || t.managerId === current.email)
             );
             const desiredRole: 'user' | 'manager' | 'admin' = isSoleAdmin
               ? 'admin'
-              : effectiveRole === 'manager' || current.role === 'manager' || userOwnsTeamsNow
+              : current.role === 'manager' || effectiveRole === 'manager' || userOwnsActiveTeamsNow
               ? 'manager'
               : 'user';
             if (current.role !== desiredRole) {
@@ -1082,7 +1104,12 @@ class DatabaseStore {
             changed = true;
           } else {
             const cur = this.data.teams[existingIdx];
-            if (cur.name !== mapped.name || cur.isActive !== mapped.isActive || cur.teamCode !== mapped.teamCode) {
+            if (
+              cur.name !== mapped.name ||
+              cur.isActive !== mapped.isActive ||
+              cur.teamCode !== mapped.teamCode ||
+              cur.managerId !== mapped.managerId
+            ) {
               this.data.teams[existingIdx] = mapped;
               changed = true;
             }
@@ -1129,7 +1156,9 @@ class DatabaseStore {
       if (!sbMembersErr && Array.isArray(sbMembers)) {
         for (const row of sbMembers) {
           if (!row || !row.id || !row.team_id || !row.user_id) continue;
-          const existingIdx = (this.data.teamMembers || []).findIndex(tm => tm.id === row.id);
+          const existingIdx = (this.data.teamMembers || []).findIndex(
+            tm => tm.id === row.id || tm.userId === String(row.user_id)
+          );
           const mapped: TeamMemberRecord = {
             id: String(row.id),
             teamId: String(row.team_id),
@@ -1179,58 +1208,6 @@ class DatabaseStore {
             });
           } catch {
             // optional
-          }
-        }
-      }
-
-      // 9. Sync Offerwall Transactions from & to Supabase
-      const { data: sbOfferwall, error: sbOfferwallErr } = await sb
-        .from('offerwall_transactions')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(500);
-      if (!sbOfferwallErr && Array.isArray(sbOfferwall)) {
-        if (!Array.isArray(this.data.offerwallTransactions)) {
-          this.data.offerwallTransactions = [];
-        }
-        for (const row of sbOfferwall) {
-          if (!row || !row.id || !row.provider_txid) continue;
-          const existingIdx = this.data.offerwallTransactions.findIndex(
-            tx =>
-              tx.id === row.id ||
-              (tx.provider === (row.provider || 'timewall') && tx.providerTxid === String(row.provider_txid))
-          );
-          const mapped: OfferwallTransactionRecord = {
-            id: String(row.id),
-            provider: String(row.provider || 'timewall'),
-            providerTxid: String(row.provider_txid),
-            userId: row.user_id ? String(row.user_id) : null,
-            offerName: String(row.offer_name || ''),
-            offerDetail: String(row.offer_detail || ''),
-            revenueRaw: String(row.revenue_raw || '0'),
-            revenueUsd: String(row.revenue_usd || '0.000000'),
-            coins: String(row.coins || '0'),
-            coinsInt: Math.round(Number(row.coins) || 0),
-            type: String(row.type || ''),
-            withdrawid: String(row.withdrawid || ''),
-            reason: String(row.reason || ''),
-            userIp: String(row.user_ip || ''),
-            sourceIp: String(row.source_ip || ''),
-            status: (row.status as OfferwallTransactionStatus) || 'credited',
-            fraudFlags: Array.isArray(row.fraud_flags) ? row.fraud_flags : [],
-            rawQuery: typeof row.raw_query === 'object' && row.raw_query !== null ? row.raw_query : {},
-            createdAt: row.created_at || new Date().toISOString(),
-            reversedAt: row.reversed_at || null
-          };
-          if (existingIdx === -1) {
-            this.data.offerwallTransactions.push(mapped);
-            changed = true;
-          } else {
-            const cur = this.data.offerwallTransactions[existingIdx];
-            if (cur.status !== mapped.status || cur.reversedAt !== mapped.reversedAt) {
-              this.data.offerwallTransactions[existingIdx] = { ...cur, ...mapped };
-              changed = true;
-            }
           }
         }
       }
@@ -1438,13 +1415,25 @@ class DatabaseStore {
     const initialLen = this.data.users.length;
     this.data.users = this.data.users.filter(u => u.id !== userId);
     if (this.data.users.length === initialLen) return false;
-    // Clean up related ledger entries and withdrawal requests
+    // Clean up related ledger entries, withdrawal requests, team memberships, and teams managed by this user
     this.data.rewardLedger = this.data.rewardLedger.filter(l => l.userId !== userId);
     this.data.withdrawalRequests = this.data.withdrawalRequests.filter(w => w.userId !== userId);
+    const managedTeamIds = new Set((this.data.teams || []).filter(t => t.managerId === userId).map(t => t.id));
+    this.data.teamMembers = (this.data.teamMembers || []).filter(
+      tm => tm.userId !== userId && !managedTeamIds.has(tm.teamId)
+    );
+    this.data.teams = (this.data.teams || []).filter(t => t.managerId !== userId);
     await this.persist();
     const sb = this.getSupabaseClient();
     if (sb) {
       try {
+        await sb.from('team_members').delete().eq('user_id', userId);
+        if (managedTeamIds.size > 0) {
+          for (const tid of managedTeamIds) {
+            await sb.from('team_members').delete().eq('team_id', tid);
+            await sb.from('teams').delete().eq('id', tid);
+          }
+        }
         await sb.from('reward_ledger').delete().eq('user_id', userId);
         await sb.from('withdrawal_requests').delete().eq('user_id', userId);
         await sb.from('users').delete().eq('id', userId);
@@ -1920,8 +1909,7 @@ class DatabaseStore {
       .map(w => (w.userId === rawCleanId ? w : { ...w, userId: rawCleanId }));
     const pointsPerUsdt = this.data.systemSettings?.pointsPerUsdt || 5000;
     const userSharePercent = this.data.systemSettings?.userSharePercent || 50;
-    const allowNeg = (this.data.systemSettings?.timewallNegativeBalanceMode || 'allow') === 'allow';
-    const balances = calculateUserBalances(rawCleanId, entries, withdrawals, pointsPerUsdt, userSharePercent, allowNeg);
+    const balances = calculateUserBalances(rawCleanId, entries, withdrawals, pointsPerUsdt, userSharePercent);
 
     return balances;
   }
@@ -2178,11 +2166,14 @@ class DatabaseStore {
   }
 
   async updateSettings(settings: Partial<SystemSettings>, adminUserId: string): Promise<SystemSettings> {
+    const nowIso = new Date().toISOString();
     this.data.systemSettings = {
       ...this.data.systemSettings,
       ...settings,
-      updatedAt: new Date().toISOString()
+      updatedAt: nowIso
     };
+    this.lastSupabaseSyncMs = Date.now();
+
     await this.addAuditLog({
       adminUserId,
       adminEmail: this.getUserById(adminUserId)?.email || 'admin@reward-river',
@@ -2195,23 +2186,73 @@ class DatabaseStore {
 
     const sb = this.getSupabaseClient();
     if (sb) {
+      const s = this.data.systemSettings;
       try {
-        const { error } = await sb.from('system_settings').upsert({
-          id: 'global',
-          min_withdrawal_cents: this.data.systemSettings.minWithdrawalCents,
-          max_withdrawal_cents: this.data.systemSettings.maxWithdrawalCents,
-          fee_cents_trc20: this.data.systemSettings.feeCentsTrc20,
-          fee_cents_erc20: this.data.systemSettings.feeCentsErc20,
-          points_rate_per_usd: this.data.systemSettings.pointsPerUsdt,
-          default_user_share_percent: this.data.systemSettings.userSharePercent,
-          default_platform_share_percent: Math.max(0, 100 - (this.data.systemSettings.userSharePercent || 50)),
-          maintenance_mode: this.data.systemSettings.maintenanceMode,
-          default_network: this.data.systemSettings.defaultNetwork,
-          updated_at: this.data.systemSettings.updatedAt
-        });
-        if (error) console.warn('[Supabase Settings Sync Note]:', error.message);
+        // 1. Determine primary key id in system_settings (1 vs 'global')
+        const { data: existingRows } = await sb.from('system_settings').select('id').limit(1);
+        const targetPkId = Array.isArray(existingRows) && existingRows.length > 0 ? existingRows[0].id : 1;
+
+        const basePayload: Record<string, unknown> = {
+          id: targetPkId,
+          min_withdrawal_cents: s.minWithdrawalCents,
+          max_withdrawal_cents: s.maxWithdrawalCents,
+          fee_cents_trc20: s.feeCentsTrc20,
+          fee_cents_erc20: s.feeCentsErc20,
+          points_rate_per_usd: s.pointsPerUsdt,
+          default_user_share_percent: s.userSharePercent,
+          cpx_app_id: String(s.cpxAppId || '37699'),
+          cpx_secure_hash_secret: String(s.cpxHashKey || ''),
+          maintenance_mode: Boolean(s.maintenanceMode),
+          default_network: s.defaultNetwork || 'TRC20',
+          updated_at: nowIso
+        };
+
+        const extendedPayload: Record<string, unknown> = {
+          ...basePayload,
+          cpx_api_key: String(s.cpxApiKey || ''),
+          cpx_integration_mode: s.cpxIntegrationMode || 'hybrid_api',
+          cpx_max_surveys: Number(s.cpxMaxSurveys) || 12,
+          cpx_theme_color: String(s.cpxThemeColor || '10b981'),
+          cpx_enable_fallback: Boolean(s.cpxEnableFallback),
+          cpx_verify_signature: Boolean(s.cpxVerifySignature),
+          team_system_enabled: Boolean(s.teamSystemEnabled),
+          managers_can_create_teams: Boolean(s.managersCanCreateTeams),
+          max_teams_per_manager: Number(s.maxTeamsPerManager) || 10,
+          team_bonus_enabled: Boolean(s.teamBonusEnabled),
+          team_bonus_percent: Number(s.teamBonusPercent) || 0
+        };
+
+        const { error: extErr } = await sb.from('system_settings').upsert(extendedPayload);
+        if (extErr) {
+          // Fallback to base columns defined in supabase-schema.sql
+          const { error: baseErr } = await sb.from('system_settings').upsert(basePayload);
+          if (baseErr) {
+            // Try with id: 'global' in case table uses text id
+            await sb.from('system_settings').upsert({ ...basePayload, id: 'global' });
+          }
+        }
       } catch (e) {
-        console.warn('[Supabase Settings Sync Error]:', e);
+        console.warn('[Supabase system_settings Sync Note]:', e);
+      }
+
+      // 2. Also persist complete settings snapshot + individual flags to public.settings key-value table
+      try {
+        const kvEntries = [
+          { key: 'platform_system_settings', value: s, updated_at: nowIso },
+          { key: 'cpx_app_id', value: s.cpxAppId, updated_at: nowIso },
+          { key: 'cpx_api_key', value: s.cpxApiKey, updated_at: nowIso },
+          { key: 'cpx_hash_key', value: s.cpxHashKey, updated_at: nowIso },
+          { key: 'points_per_usd', value: s.pointsPerUsdt, updated_at: nowIso },
+          { key: 'user_share_percent', value: s.userSharePercent, updated_at: nowIso },
+          { key: 'team_system_enabled', value: Boolean(s.teamSystemEnabled), updated_at: nowIso },
+          { key: 'managers_can_create_teams', value: Boolean(s.managersCanCreateTeams), updated_at: nowIso },
+          { key: 'max_teams_per_manager', value: Number(s.maxTeamsPerManager) || 10, updated_at: nowIso },
+          { key: 'team_bonus_enabled', value: Boolean(s.teamBonusEnabled), updated_at: nowIso },
+          { key: 'team_bonus_percent', value: Number(s.teamBonusPercent) || 0, updated_at: nowIso }
+        ];
+        await sb.from('settings').upsert(kvEntries);
+      } catch {
+        // Optional key-value table
       }
     }
 
@@ -2381,18 +2422,6 @@ class DatabaseStore {
       }
       this.data.users[idx].role = 'manager';
       this.data.users[idx].updatedAt = new Date().toISOString();
-
-      // Auto-create an initial team if promoted manager currently has 0 teams
-      const existingTeams = this.getTeamsForManager(target.id);
-      if (existingTeams.length === 0) {
-        const defaultTeamName = `${target.displayName || target.username || target.email.split('@')[0]}'s Team`;
-        await this.createTeam({
-          name: defaultTeamName,
-          managerId: target.id,
-          actorUser,
-          ipAddress
-        });
-      }
     } else if (newRole === 'user') {
       this.data.users[idx].role = 'user';
       this.data.users[idx].updatedAt = new Date().toISOString();
@@ -2401,6 +2430,14 @@ class DatabaseStore {
         if (team.managerId === target.id && team.isActive) {
           team.isActive = false;
           deactivatedTeamsCount += 1;
+        }
+      }
+      const sb = this.getSupabaseClient();
+      if (sb && deactivatedTeamsCount > 0) {
+        try {
+          await sb.from('teams').update({ is_active: false }).eq('manager_id', target.id);
+        } catch {
+          // optional
         }
       }
     }
@@ -2723,6 +2760,14 @@ class DatabaseStore {
     });
 
     await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('teams').update({ team_code: after.teamCode }).eq('id', after.id);
+      } catch {
+        // optional
+      }
+    }
     return after;
   }
 
@@ -2758,6 +2803,14 @@ class DatabaseStore {
     });
 
     await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('teams').update({ manager_id: newManager.id }).eq('id', after.id);
+      } catch {
+        // optional
+      }
+    }
     return after;
   }
 
@@ -2790,6 +2843,14 @@ class DatabaseStore {
         ipAddress: params.ipAddress
       });
       await this.persist();
+      const sb = this.getSupabaseClient();
+      if (sb) {
+        try {
+          await sb.from('team_members').delete().eq('user_id', user.id);
+        } catch {
+          // optional
+        }
+      }
       return { removed: true, membership: null };
     }
 
@@ -2828,6 +2889,21 @@ class DatabaseStore {
     });
 
     await this.persist();
+    const sb = this.getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.from('team_members').delete().eq('user_id', user.id);
+        await sb.from('team_members').upsert({
+          id: record.id,
+          team_id: record.teamId,
+          user_id: record.userId,
+          joined_at: record.joinedAt,
+          consent_accepted_at: record.consentAcceptedAt
+        });
+      } catch {
+        // optional
+      }
+    }
     return { removed: false, membership: record };
   }
 
@@ -3066,7 +3142,9 @@ class DatabaseStore {
           consentAcceptedAt: tm.consentAcceptedAt,
           lastActiveAt,
           lastActiveAtKarachi: formatKarachiDateTime(lastActiveAt),
+          lastActiveKarachi: formatKarachiDateTime(lastActiveAt),
           surveysCompleted: surveysInRange,
+          periodPoints: pointsInRange,
           totalPoints: pointsInRange,
           allTimeSurveys,
           allTimePoints
@@ -3090,12 +3168,14 @@ class DatabaseStore {
       return b.totalPoints - a.totalPoints || b.surveysCompleted - a.surveysCompleted;
     });
 
+    const totalTeamPts = teamsSummary.reduce((sum, t) => sum + t.teamPoints, 0);
     const combinedSummary = {
       totalTeams: managerTeams.length,
       activeTeams: managerTeams.filter(t => t.isActive).length,
       totalMembers: allMemberships.filter(tm => tm.userId !== manager.id).length,
       activeMembersToday: teamsSummary.reduce((sum, t) => sum + t.activeTodayCount, 0),
-      totalTeamPoints: teamsSummary.reduce((sum, t) => sum + t.teamPoints, 0),
+      totalTeamPoints: totalTeamPts,
+      combinedTeamPoints: totalTeamPts,
       totalTeamSurveysCompleted: teamsSummary.reduce((sum, t) => sum + t.completedSurveysCount, 0),
       managerPersonalSurveyPoints,
       managerTeamBonusPoints
@@ -3327,717 +3407,6 @@ class DatabaseStore {
     await this.persist();
     return true;
   }
-
-  // --- Atomic Mutex Lock for Offerwall Postbacks (prevents race conditions under concurrent requests) ---
-  private runInTransactionLock<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.txMutex.then(fn, fn);
-    this.txMutex = next.then(
-      () => undefined,
-      () => undefined
-    );
-    return next;
-  }
-
-  private async upsertOfferwallTxToSupabase(tx: OfferwallTransactionRecord): Promise<void> {
-    const sb = this.getSupabaseClient();
-    if (!sb) return;
-    try {
-      await sb.from('offerwall_transactions').upsert(
-        {
-          id: tx.id,
-          provider: tx.provider,
-          provider_txid: tx.providerTxid,
-          user_id: tx.userId,
-          offer_name: tx.offerName,
-          offer_detail: tx.offerDetail,
-          revenue_raw: tx.revenueRaw,
-          revenue_usd: tx.revenueUsd,
-          coins: tx.coins,
-          type: tx.type,
-          withdrawid: tx.withdrawid,
-          reason: tx.reason,
-          user_ip: tx.userIp,
-          source_ip: tx.sourceIp,
-          status: tx.status,
-          fraud_flags: tx.fraudFlags,
-          raw_query: tx.rawQuery,
-          created_at: tx.createdAt,
-          reversed_at: tx.reversedAt || null
-        },
-        { onConflict: 'provider,provider_txid' }
-      );
-    } catch {
-      // Optional table prior to SQL migration
-    }
-  }
-
-  /**
-   * Executes an atomic TimeWall postback transaction inside an exclusive mutex lock:
-   * - Enforces UNIQUE (provider, provider_txid) idempotency for credits
-   * - Handles reversals (deducting original coins once, marking original tx reversed, writing ledger entry with reason='offerwall_timewall')
-   * - Handles blocked users, needs_review, and credited states atomically with reward_ledger
-   */
-  async processTimewallPostbackAtomic(params: {
-    providerTxid: string;
-    user: UserAccount;
-    offerName: string;
-    offerDetail: string;
-    revenueRaw: string;
-    revenueUsd: string;
-    coinsFormatted: string;
-    coinsInt: number;
-    type: string;
-    withdrawid: string;
-    reason: string;
-    userIp: string;
-    sourceIp: string;
-    rawQuery: Record<string, string>;
-    isReversal: boolean;
-    needsReview: boolean;
-    reviewReason?: string;
-    fraudFlags: string[];
-    negativeBalanceMode: 'allow' | 'flag_account';
-    coinsPerUsd: number;
-  }): Promise<{
-    outcome:
-      | 'credited'
-      | 'duplicate'
-      | 'reversed'
-      | 'duplicate_reversal'
-      | 'needs_review'
-      | 'blocked';
-    transaction: OfferwallTransactionRecord;
-    ledgerEntry?: LedgerEntry;
-    pointsDelta: number;
-    notes: string;
-  }> {
-    return this.runInTransactionLock(async () => {
-      if (!Array.isArray(this.data.offerwallTransactions)) {
-        this.data.offerwallTransactions = [];
-      }
-
-      const nowIso = new Date().toISOString();
-      const existingIdx = this.data.offerwallTransactions.findIndex(
-        t => t.provider === 'timewall' && t.providerTxid === params.providerTxid
-      );
-
-      // 1. Reversal Handling
-      if (params.isReversal) {
-        if (existingIdx !== -1) {
-          const origTx = this.data.offerwallTransactions[existingIdx];
-          if (origTx.status === 'reversed') {
-            return {
-              outcome: 'duplicate_reversal',
-              transaction: origTx,
-              pointsDelta: 0,
-              notes: `Duplicate reversal ignored for already-reversed txid=${params.providerTxid}`
-            };
-          }
-
-          const deductCoins = origTx.coinsInt > 0 ? origTx.coinsInt : Math.max(1, params.coinsInt);
-          const currentBalances = this.getUserBalances(params.user.id);
-          const wouldGoNegative = currentBalances.availablePoints - deductCoins < 0;
-
-          if (wouldGoNegative && params.negativeBalanceMode === 'flag_account') {
-            const uIdx = this.data.users.findIndex(u => u.id === params.user.id);
-            if (uIdx !== -1) {
-              this.data.users[uIdx].offerwallBlocked = true;
-              this.data.users[uIdx].updatedAt = nowIso;
-            }
-          }
-
-          origTx.status = 'reversed';
-          origTx.reversedAt = nowIso;
-          if (params.reason) origTx.reason = params.reason;
-          if (params.withdrawid) origTx.withdrawid = params.withdrawid;
-
-          const userAmountCents = Math.max(1, Math.round(deductCoins / 100));
-          const revParsed = parseDecimalToMicros(origTx.revenueRaw || params.revenueRaw);
-          const absRevMicros = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
-          const grossCents = Math.max(1, Number((absRevMicros + 5000n) / 10000n));
-          const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-
-          const reversalEntry: LedgerEntry = {
-            id: `le_tw_rev_${crypto.randomUUID()}`,
-            userId: params.user.id,
-            providerTxId: `tw_rev_${params.providerTxid}`,
-            taskId: 'offerwall_timewall',
-            cpxOfferId: origTx.offerName || 'timewall_offer',
-            amountCents: userAmountCents,
-            points: deductCoins,
-            grossCents,
-            adminProfitCents,
-            appliedSharePercent: 50,
-            entryType: 'reversal',
-            status: 'reversed',
-            reason: 'offerwall_timewall',
-            reversalRef: `tw_${params.providerTxid}`,
-            approvedBy: 'TimeWall S2S',
-            description: `TimeWall Offer Reversal: ${origTx.offerName || params.offerName || params.providerTxid} (-${deductCoins.toLocaleString('en-US')} Pts)${params.reason ? ` [${params.reason}]` : ''}`,
-            createdAt: nowIso,
-            processedAt: nowIso
-          };
-
-          this.data.rewardLedger.push(reversalEntry);
-          const updatedBalances = this.getUserBalances(params.user.id);
-          const uIdx = this.data.users.findIndex(u => u.id === params.user.id);
-          if (uIdx !== -1) {
-            this.data.users[uIdx].storedPoints = updatedBalances.availablePoints;
-            this.data.users[uIdx].updatedAt = nowIso;
-          }
-
-          await this.persist();
-          await this.upsertOfferwallTxToSupabase(origTx);
-          return {
-            outcome: 'reversed',
-            transaction: origTx,
-            ledgerEntry: reversalEntry,
-            pointsDelta: -deductCoins,
-            notes: `Reversed original TimeWall txid=${params.providerTxid} (-${deductCoins} coins)`
-          };
-        }
-
-        // Reversal arrived for a txid not previously credited: insert as 'reversed' and deduct
-        const deductCoins = Math.max(1, params.coinsInt);
-        const currentBalances = this.getUserBalances(params.user.id);
-        const wouldGoNegative = currentBalances.availablePoints - deductCoins < 0;
-        if (wouldGoNegative && params.negativeBalanceMode === 'flag_account') {
-          const uIdx = this.data.users.findIndex(u => u.id === params.user.id);
-          if (uIdx !== -1) {
-            this.data.users[uIdx].offerwallBlocked = true;
-            this.data.users[uIdx].updatedAt = nowIso;
-          }
-        }
-
-        const newRevTx: OfferwallTransactionRecord = {
-          id: `ow_tw_${crypto.randomUUID()}`,
-          provider: 'timewall',
-          providerTxid: params.providerTxid,
-          userId: params.user.id,
-          userEmail: params.user.email,
-          userDisplayName: params.user.displayName,
-          offerName: params.offerName || 'TimeWall Offer',
-          offerDetail: params.offerDetail || '',
-          revenueRaw: params.revenueRaw,
-          revenueUsd: params.revenueUsd,
-          coins: params.coinsFormatted,
-          coinsInt: deductCoins,
-          type: params.type,
-          withdrawid: params.withdrawid,
-          reason: params.reason,
-          userIp: params.userIp,
-          sourceIp: params.sourceIp,
-          status: 'reversed',
-          fraudFlags: params.fraudFlags,
-          rawQuery: params.rawQuery,
-          createdAt: nowIso,
-          reversedAt: nowIso
-        };
-        this.data.offerwallTransactions.unshift(newRevTx);
-
-        const userAmountCents = Math.max(1, Math.round(deductCoins / 100));
-        const revParsed = parseDecimalToMicros(params.revenueRaw);
-        const absRevMicros = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
-        const grossCents = Math.max(1, Number((absRevMicros + 5000n) / 10000n));
-        const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-
-        const reversalEntry: LedgerEntry = {
-          id: `le_tw_rev_${crypto.randomUUID()}`,
-          userId: params.user.id,
-          providerTxId: `tw_rev_${params.providerTxid}`,
-          taskId: 'offerwall_timewall',
-          cpxOfferId: params.offerName || 'timewall_offer',
-          amountCents: userAmountCents,
-          points: deductCoins,
-          grossCents,
-          adminProfitCents,
-          appliedSharePercent: 50,
-          entryType: 'reversal',
-          status: 'reversed',
-          reason: 'offerwall_timewall',
-          reversalRef: `tw_${params.providerTxid}`,
-          approvedBy: 'TimeWall S2S',
-          description: `TimeWall Offer Reversal: ${params.offerName || params.providerTxid} (-${deductCoins.toLocaleString('en-US')} Pts)`,
-          createdAt: nowIso,
-          processedAt: nowIso
-        };
-
-        this.data.rewardLedger.push(reversalEntry);
-        const updatedBalances = this.getUserBalances(params.user.id);
-        const uIdx = this.data.users.findIndex(u => u.id === params.user.id);
-        if (uIdx !== -1) {
-          this.data.users[uIdx].storedPoints = updatedBalances.availablePoints;
-          this.data.users[uIdx].updatedAt = nowIso;
-        }
-
-        await this.persist();
-        await this.upsertOfferwallTxToSupabase(newRevTx);
-        return {
-          outcome: 'reversed',
-          transaction: newRevTx,
-          ledgerEntry: reversalEntry,
-          pointsDelta: -deductCoins,
-          notes: `Recorded standalone reversal for txid=${params.providerTxid} (-${deductCoins} coins)`
-        };
-      }
-
-      // 2. Idempotency check on (provider='timewall', provider_txid)
-      if (existingIdx !== -1) {
-        const existingTx = this.data.offerwallTransactions[existingIdx];
-        return {
-          outcome: 'duplicate',
-          transaction: existingTx,
-          pointsDelta: 0,
-          notes: `Idempotent duplicate ignored: txid=${params.providerTxid} already recorded with status=${existingTx.status}`
-        };
-      }
-
-      // 3. Blocked user check (users.offerwallBlocked)
-      if (params.user.offerwallBlocked) {
-        const blockedTx: OfferwallTransactionRecord = {
-          id: `ow_tw_${crypto.randomUUID()}`,
-          provider: 'timewall',
-          providerTxid: params.providerTxid,
-          userId: params.user.id,
-          userEmail: params.user.email,
-          userDisplayName: params.user.displayName,
-          offerName: params.offerName || 'TimeWall Offer',
-          offerDetail: params.offerDetail || '',
-          revenueRaw: params.revenueRaw,
-          revenueUsd: params.revenueUsd,
-          coins: params.coinsFormatted,
-          coinsInt: params.coinsInt,
-          type: params.type,
-          withdrawid: params.withdrawid,
-          reason: params.reason || 'user_offerwall_blocked',
-          userIp: params.userIp,
-          sourceIp: params.sourceIp,
-          status: 'blocked',
-          fraudFlags: [...params.fraudFlags, 'user_offerwall_blocked'],
-          rawQuery: params.rawQuery,
-          createdAt: nowIso,
-          reversedAt: null
-        };
-        this.data.offerwallTransactions.unshift(blockedTx);
-        await this.persist();
-        await this.upsertOfferwallTxToSupabase(blockedTx);
-        return {
-          outcome: 'blocked',
-          transaction: blockedTx,
-          pointsDelta: 0,
-          notes: `User ${params.user.id} has offerwall_blocked=true; logged as blocked without crediting`
-        };
-      }
-
-      // 4. Needs Review (unconfirmed type, currency out of tolerance, or high-revenue fraud flag)
-      if (params.needsReview) {
-        const reviewTx: OfferwallTransactionRecord = {
-          id: `ow_tw_${crypto.randomUUID()}`,
-          provider: 'timewall',
-          providerTxid: params.providerTxid,
-          userId: params.user.id,
-          userEmail: params.user.email,
-          userDisplayName: params.user.displayName,
-          offerName: params.offerName || 'TimeWall Offer',
-          offerDetail: params.offerDetail || '',
-          revenueRaw: params.revenueRaw,
-          revenueUsd: params.revenueUsd,
-          coins: params.coinsFormatted,
-          coinsInt: params.coinsInt,
-          type: params.type,
-          withdrawid: params.withdrawid,
-          reason: params.reviewReason || params.reason || 'held_for_review',
-          userIp: params.userIp,
-          sourceIp: params.sourceIp,
-          status: 'needs_review',
-          fraudFlags: params.fraudFlags,
-          rawQuery: params.rawQuery,
-          createdAt: nowIso,
-          reversedAt: null
-        };
-        this.data.offerwallTransactions.unshift(reviewTx);
-        await this.persist();
-        await this.upsertOfferwallTxToSupabase(reviewTx);
-        return {
-          outcome: 'needs_review',
-          transaction: reviewTx,
-          pointsDelta: 0,
-          notes: params.reviewReason || 'Transaction placed in needs_review queue without balance change'
-        };
-      }
-
-      // 5. Atomic Credit: insert offerwall_transactions row + credit user balance + write ledger entry
-      const creditCoins = Math.max(1, params.coinsInt);
-      const creditedTx: OfferwallTransactionRecord = {
-        id: `ow_tw_${crypto.randomUUID()}`,
-        provider: 'timewall',
-        providerTxid: params.providerTxid,
-        userId: params.user.id,
-        userEmail: params.user.email,
-        userDisplayName: params.user.displayName,
-        offerName: params.offerName || 'TimeWall Offer',
-        offerDetail: params.offerDetail || '',
-        revenueRaw: params.revenueRaw,
-        revenueUsd: params.revenueUsd,
-        coins: params.coinsFormatted,
-        coinsInt: creditCoins,
-        type: params.type,
-        withdrawid: params.withdrawid,
-        reason: params.reason,
-        userIp: params.userIp,
-        sourceIp: params.sourceIp,
-        status: 'credited',
-        fraudFlags: params.fraudFlags,
-        rawQuery: params.rawQuery,
-        createdAt: nowIso,
-        reversedAt: null
-      };
-
-      const userAmountCents = Math.max(1, Math.round(creditCoins / 100));
-      const revParsed = parseDecimalToMicros(params.revenueRaw);
-      const absRevMicros = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
-      const grossCents = Math.max(1, Number((absRevMicros + 5000n) / 10000n));
-      const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-
-      const creditEntry: LedgerEntry = {
-        id: `le_tw_${crypto.randomUUID()}`,
-        userId: params.user.id,
-        providerTxId: `tw_${params.providerTxid}`,
-        taskId: 'offerwall_timewall',
-        cpxOfferId: params.offerName || 'timewall_offer',
-        amountCents: userAmountCents,
-        points: creditCoins,
-        grossCents,
-        adminProfitCents,
-        appliedSharePercent: 50,
-        entryType: 'credit',
-        status: 'confirmed',
-        reason: 'offerwall_timewall',
-        approvedBy: 'TimeWall S2S',
-        description: `TimeWall Offer: ${params.offerName || `#${params.providerTxid}`} (+${creditCoins.toLocaleString('en-US')} Pts)`,
-        createdAt: nowIso,
-        processedAt: nowIso
-      };
-
-      this.data.offerwallTransactions.unshift(creditedTx);
-      this.data.rewardLedger.push(creditEntry);
-
-      const updatedBalances = this.getUserBalances(params.user.id);
-      const uIdx = this.data.users.findIndex(u => u.id === params.user.id);
-      if (uIdx !== -1) {
-        this.data.users[uIdx].storedPoints = updatedBalances.availablePoints;
-        this.data.users[uIdx].updatedAt = nowIso;
-      }
-
-      await this.persist();
-      await this.upsertOfferwallTxToSupabase(creditedTx);
-
-      const sb = this.getSupabaseClient();
-      if (sb) {
-        try {
-          await sb.from('reward_ledger').upsert({
-            id: creditEntry.id,
-            user_id: creditEntry.userId,
-            provider_tx_id: creditEntry.providerTxId,
-            amount_cents: creditEntry.amountCents,
-            entry_type: creditEntry.entryType,
-            status: creditEntry.status,
-            description: creditEntry.description,
-            created_at: creditEntry.createdAt
-          });
-          await sb.from('users').update({
-            points: updatedBalances.availablePoints,
-            balance_cents: updatedBalances.availableCents,
-            total_earned_points: updatedBalances.totalEarnedPoints,
-            updated_at: nowIso
-          }).eq('id', params.user.id);
-        } catch {
-          // Optional
-        }
-      }
-
-      return {
-        outcome: 'credited',
-        transaction: creditedTx,
-        ledgerEntry: creditEntry,
-        pointsDelta: creditCoins,
-        notes: `Credited +${creditCoins} coins to user ${params.user.id} for TimeWall txid=${params.providerTxid}`
-      };
-    });
-  }
-
-  /**
-   * Admin action to approve or reject a `needs_review` offerwall transaction.
-   */
-  async reviewOfferwallTransaction(params: {
-    transactionId: string;
-    action: 'approve' | 'reject';
-    adminUserId: string;
-    adminEmail: string;
-    notes?: string;
-  }): Promise<OfferwallTransactionRecord> {
-    return this.runInTransactionLock(async () => {
-      if (!Array.isArray(this.data.offerwallTransactions)) {
-        this.data.offerwallTransactions = [];
-      }
-      const idx = this.data.offerwallTransactions.findIndex(t => t.id === params.transactionId);
-      if (idx === -1) {
-        throw new Error(`Offerwall transaction not found: ${params.transactionId}`);
-      }
-      const tx = this.data.offerwallTransactions[idx];
-      if (tx.status !== 'needs_review') {
-        throw new Error(`Only transactions with status "needs_review" can be reviewed (current: ${tx.status}).`);
-      }
-
-      const nowIso = new Date().toISOString();
-      if (params.action === 'reject') {
-        tx.status = 'rejected';
-        if (params.notes) tx.reason = params.notes;
-        await this.addAuditLog({
-          adminUserId: params.adminUserId,
-          adminEmail: params.adminEmail,
-          action: 'REJECT_OFFERWALL_TRANSACTION',
-          targetEntity: 'offerwall_transactions',
-          targetId: tx.id,
-          details: JSON.stringify({ providerTxid: tx.providerTxid, notes: params.notes })
-        });
-        await this.persist();
-        await this.upsertOfferwallTxToSupabase(tx);
-        return tx;
-      }
-
-      // Approve: credit user balance and write ledger entry
-      if (!tx.userId) {
-        throw new Error('Cannot approve transaction without a valid user_id.');
-      }
-      const user = this.getUserById(tx.userId);
-      if (!user) {
-        throw new Error(`User not found for transaction: ${tx.userId}`);
-      }
-
-      const creditCoins = Math.max(1, tx.coinsInt);
-      tx.status = 'credited';
-      if (params.notes) tx.reason = params.notes;
-
-      const userAmountCents = Math.max(1, Math.round(creditCoins / 100));
-      const revParsed = parseDecimalToMicros(tx.revenueRaw);
-      const absRevMicros = revParsed.micros < 0n ? -revParsed.micros : revParsed.micros;
-      const grossCents = Math.max(1, Number((absRevMicros + 5000n) / 10000n));
-      const adminProfitCents = Math.max(0, grossCents - userAmountCents);
-
-      const creditEntry: LedgerEntry = {
-        id: `le_tw_${crypto.randomUUID()}`,
-        userId: user.id,
-        providerTxId: `tw_${tx.providerTxid}`,
-        taskId: 'offerwall_timewall',
-        cpxOfferId: tx.offerName || 'timewall_offer',
-        amountCents: userAmountCents,
-        points: creditCoins,
-        grossCents,
-        adminProfitCents,
-        appliedSharePercent: 50,
-        entryType: 'credit',
-        status: 'confirmed',
-        reason: 'offerwall_timewall',
-        approvedBy: params.adminEmail,
-        description: `TimeWall Offer (Admin Approved): ${tx.offerName || `#${tx.providerTxid}`} (+${creditCoins.toLocaleString('en-US')} Pts)`,
-        createdAt: nowIso,
-        processedAt: nowIso
-      };
-
-      const alreadyInLedger = this.data.rewardLedger.some(l => l.providerTxId === creditEntry.providerTxId);
-      if (!alreadyInLedger) {
-        this.data.rewardLedger.push(creditEntry);
-      }
-
-      const updatedBalances = this.getUserBalances(user.id);
-      const uIdx = this.data.users.findIndex(u => u.id === user.id);
-      if (uIdx !== -1) {
-        this.data.users[uIdx].storedPoints = updatedBalances.availablePoints;
-        this.data.users[uIdx].updatedAt = nowIso;
-      }
-
-      await this.addAuditLog({
-        adminUserId: params.adminUserId,
-        adminEmail: params.adminEmail,
-        action: 'APPROVE_OFFERWALL_TRANSACTION',
-        targetEntity: 'offerwall_transactions',
-        targetId: tx.id,
-        details: JSON.stringify({
-          providerTxid: tx.providerTxid,
-          userId: user.id,
-          coinsCredited: creditCoins,
-          notes: params.notes
-        })
-      });
-
-      await this.persist();
-      await this.upsertOfferwallTxToSupabase(tx);
-      return tx;
-    });
-  }
-
-  async setUserOfferwallBlocked(params: {
-    userId: string;
-    blocked: boolean;
-    adminUserId: string;
-    adminEmail: string;
-  }): Promise<UserAccount> {
-    const idx = this.data.users.findIndex(u => u.id === params.userId);
-    if (idx === -1) {
-      throw new Error(`User not found: ${params.userId}`);
-    }
-    this.data.users[idx].offerwallBlocked = Boolean(params.blocked);
-    this.data.users[idx].updatedAt = new Date().toISOString();
-
-    await this.addAuditLog({
-      adminUserId: params.adminUserId,
-      adminEmail: params.adminEmail,
-      action: params.blocked ? 'BLOCK_USER_OFFERWALL' : 'UNBLOCK_USER_OFFERWALL',
-      targetEntity: 'users',
-      targetId: params.userId,
-      details: JSON.stringify({
-        userId: params.userId,
-        email: this.data.users[idx].email,
-        offerwallBlocked: params.blocked
-      })
-    });
-
-    await this.persist();
-    await this.upsertUserToSupabase(this.data.users[idx]);
-    return this.data.users[idx];
-  }
-
-  getOfferwallTransactionsForUser(
-    userId: string,
-    page = 1,
-    pageSize = 15
-  ): {
-    items: (OfferwallTransactionRecord & { createdAtKarachi: string })[];
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-  } {
-    const all = (this.data.offerwallTransactions || [])
-      .filter(tx => tx.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    const safePageSize = Math.min(100, Math.max(1, Math.round(pageSize || 15)));
-    const total = all.length;
-    const totalPages = Math.max(1, Math.ceil(total / safePageSize));
-    const safePage = Math.min(totalPages, Math.max(1, Math.round(page || 1)));
-    const start = (safePage - 1) * safePageSize;
-
-    const items = all.slice(start, start + safePageSize).map(tx => ({
-      ...tx,
-      createdAtKarachi: formatKarachiDateTime(tx.createdAt)
-    }));
-
-    return { items, total, page: safePage, pageSize: safePageSize, totalPages };
-  }
-
-  getAdminOfferwallTransactions(filters?: {
-    userQuery?: string;
-    status?: string;
-    dateFrom?: string;
-    dateTo?: string;
-    provider?: string;
-  }) {
-    const userById = new Map(this.data.users.map(u => [u.id, u]));
-    let list = [...(this.data.offerwallTransactions || [])].map(tx => {
-      const u = tx.userId ? userById.get(tx.userId) : undefined;
-      return {
-        ...tx,
-        userEmail: tx.userEmail || u?.email || undefined,
-        userDisplayName: tx.userDisplayName || u?.displayName || u?.username || undefined,
-        createdAtKarachi: formatKarachiDateTime(tx.createdAt)
-      };
-    });
-
-    if (filters?.provider && filters.provider !== 'all') {
-      list = list.filter(t => t.provider === filters.provider);
-    }
-    if (filters?.status && filters.status !== 'all') {
-      list = list.filter(t => t.status === filters.status);
-    }
-    if (filters?.userQuery && filters.userQuery.trim()) {
-      const q = filters.userQuery.trim().toLowerCase();
-      list = list.filter(
-        t =>
-          (t.userId && t.userId.toLowerCase().includes(q)) ||
-          (t.userEmail && t.userEmail.toLowerCase().includes(q)) ||
-          (t.userDisplayName && t.userDisplayName.toLowerCase().includes(q)) ||
-          t.providerTxid.toLowerCase().includes(q) ||
-          t.offerName.toLowerCase().includes(q)
-      );
-    }
-    if (filters?.dateFrom && filters.dateFrom.trim()) {
-      const fromMs = new Date(filters.dateFrom).getTime();
-      if (!isNaN(fromMs)) {
-        list = list.filter(t => new Date(t.createdAt).getTime() >= fromMs);
-      }
-    }
-    if (filters?.dateTo && filters.dateTo.trim()) {
-      const toMs = new Date(`${filters.dateTo}T23:59:59.999Z`).getTime();
-      if (!isNaN(toMs)) {
-        list = list.filter(t => new Date(t.createdAt).getTime() <= toMs);
-      }
-    }
-
-    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    // Compute exact decimal totals using BigInt micro-units
-    let grossRevenueMicros = 0n;
-    let reversedRevenueMicros = 0n;
-    let totalCoinsPaid = 0;
-    let totalCoinsReversed = 0;
-    let needsReviewCount = 0;
-    let blockedCount = 0;
-
-    for (const tx of list) {
-      const rev = parseDecimalToMicros(tx.revenueRaw);
-      const absRev = rev.micros < 0n ? -rev.micros : rev.micros;
-      if (tx.status === 'credited') {
-        grossRevenueMicros += absRev;
-        totalCoinsPaid += tx.coinsInt;
-      } else if (tx.status === 'reversed') {
-        reversedRevenueMicros += absRev;
-        totalCoinsReversed += tx.coinsInt;
-      } else if (tx.status === 'needs_review') {
-        needsReviewCount += 1;
-      } else if (tx.status === 'blocked') {
-        blockedCount += 1;
-      }
-    }
-
-    // 10,000 site coins = $1.00 USD user value -> 1 coin = 100 micro-USD
-    const userPayoutMicros = BigInt(Math.max(0, totalCoinsPaid)) * 100n;
-    const platformMarginMicros =
-      grossRevenueMicros > userPayoutMicros ? grossRevenueMicros - userPayoutMicros : 0n;
-
-    return {
-      transactions: list,
-      totals: {
-        totalCount: list.length,
-        creditedCount: list.filter(t => t.status === 'credited').length,
-        reversedCount: list.filter(t => t.status === 'reversed').length,
-        needsReviewCount,
-        blockedCount,
-        grossRevenueUsd: formatMicrosToDecimal(grossRevenueMicros, 4),
-        reversedRevenueUsd: formatMicrosToDecimal(reversedRevenueMicros, 4),
-        userPayoutUsd: formatMicrosToDecimal(userPayoutMicros, 4),
-        platformMarginUsd: formatMicrosToDecimal(platformMarginMicros, 4),
-        totalCoinsPaid,
-        totalCoinsReversed
-      }
-    };
-  }
-
-  getAllOfferwallTransactionsRaw(): OfferwallTransactionRecord[] {
-    return [...(this.data.offerwallTransactions || [])];
-  }
 }
 
 export const dbStore = new DatabaseStore();
-

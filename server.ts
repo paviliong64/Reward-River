@@ -43,8 +43,6 @@ import {
 import { runUserAndLedgerBackfill } from './server/migrateBackfillUsers';
 import { verifyCloudflareTurnstile } from './server/turnstile';
 export { verifyCloudflareTurnstile };
-import { timewallService } from './server/timewallService';
-import { computeTimewallHash, maskSecretOrHash } from './src/utils/timewall';
 
 dotenv.config();
 
@@ -57,13 +55,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Normalize rewritten Vercel Serverless URLs (e.g., /api?__pathname=/postback/timewall)
-// Preserves raw query string parameters byte-for-byte so revenue="0.50" or "0.002" is never altered
-app.use((req, res, next) => {
-  res.setHeader(
-    'Content-Security-Policy',
-    "frame-src 'self' https://timewall.io https://*.timewall.io https://offers.cpx-research.com https://*.cpx-research.com https://challenges.cloudflare.com https://*;"
-  );
+// Normalize rewritten Vercel Serverless URLs (e.g., /api?__pathname=/api/auth/login)
+app.use((req, _res, next) => {
   const rewrittenPath =
     (typeof req.query.__pathname === 'string' && req.query.__pathname) ||
     (typeof req.headers['x-invoke-path'] === 'string' && req.headers['x-invoke-path']) ||
@@ -72,12 +65,10 @@ app.use((req, res, next) => {
     const cleanPath = rewrittenPath.startsWith('/') ? rewrittenPath : `/${rewrittenPath}`;
     const qIndex = req.url.indexOf('?');
     if (qIndex !== -1) {
-      const rawQs = req.url
-        .slice(qIndex + 1)
-        .split('&')
-        .filter(part => !part.startsWith('__pathname='))
-        .join('&');
-      req.url = rawQs ? `${cleanPath}?${rawQs}` : cleanPath;
+      const params = new URLSearchParams(req.url.slice(qIndex + 1));
+      params.delete('__pathname');
+      const qs = params.toString();
+      req.url = qs ? `${cleanPath}?${qs}` : cleanPath;
     } else {
       req.url = cleanPath;
     }
@@ -1155,21 +1146,12 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
 
     const cpxSecureHash = generateCpxSecureHash(opaqueId, cpxResearchService.hashKey);
 
-    const earnMaintenanceMode = settings.earnMaintenanceMode || 'auto';
-    const isEarnLive =
-      earnMaintenanceMode === 'live'
-        ? true
-        : earnMaintenanceMode === 'maintenance'
-        ? false
-        : surveysWithHybridShare.length > 0;
-
     res.json({
       success: true,
       surveys: surveysWithHybridShare,
       totalAvailable: surveysWithHybridShare.length,
-      earnMaintenanceMode,
-      isEarnLive,
       pointsPerUsdt,
+      userSharePercent,
       surveyDisplayMode: settings.surveyDisplayMode || 'hybrid',
       usdtQuote,
       offerwallUrl: cpxResearchService.generateSurveyStartUrl(opaqueId),
@@ -1177,7 +1159,9 @@ app.get('/api/surveys', requireAuth, async (req: AuthenticatedRequest, res: Resp
         appId: cpxResearchService.appId,
         extUserId: opaqueId,
         secureHash: cpxSecureHash,
-        themeColor: (settings.cpxThemeColor || '10b981').replace('#', '')
+        themeColor: (settings.cpxThemeColor || '10b981').replace('#', ''),
+        integrationMode: settings.cpxIntegrationMode || 'hybrid_api',
+        maxSurveys: settings.cpxMaxSurveys || 12
       }
     });
   } catch (err: unknown) {
@@ -2185,8 +2169,8 @@ app.get('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentica
   res.json(dbStore.getSettings());
 });
 
-// POST /api/admin/settings
-app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+// POST /api/admin/settings (and alias /api/admin/cpx/settings)
+app.post(['/api/admin/settings', '/api/admin/cpx/settings'], requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const admin = req.user!;
     const {
@@ -2230,6 +2214,8 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
       metaKeywords,
       ogImageUrl,
       googleSearchConsoleKey,
+      turnstileSiteKey,
+      turnstileSecretKey,
       sitemapEnabled
     } = req.body;
 
@@ -2245,12 +2231,16 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
       : (current.pointsPerUsdt || 5000);
 
     const effectiveDisplayMode: 'hybrid' | 'points_only' =
-      surveyDisplayMode === 'points_only' ? 'points_only' : 'hybrid';
+      surveyDisplayMode === 'points_only'
+        ? 'points_only'
+        : surveyDisplayMode === 'hybrid'
+        ? 'hybrid'
+        : (current.surveyDisplayMode || 'hybrid');
 
     const effectiveCpxMode: 'hybrid_api' | 'direct_wall' | 'paused' =
-      cpxIntegrationMode === 'direct_wall' || cpxIntegrationMode === 'paused'
+      cpxIntegrationMode === 'direct_wall' || cpxIntegrationMode === 'paused' || cpxIntegrationMode === 'hybrid_api'
         ? cpxIntegrationMode
-        : 'hybrid_api';
+        : (current.cpxIntegrationMode || 'hybrid_api');
 
     const updated = await dbStore.updateSettings(
       {
@@ -2271,21 +2261,21 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
         teamBonusEnabled: teamBonusEnabled !== undefined ? Boolean(teamBonusEnabled) : Boolean(current.teamBonusEnabled),
         teamBonusPercent: teamBonusPercent !== undefined ? Math.max(0, Math.min(100, Number(teamBonusPercent) || 0)) : (current.teamBonusPercent || 0),
         surveyDisplayMode: effectiveDisplayMode,
-        cpxAppId: typeof cpxAppId === 'string' && cpxAppId.trim() ? cpxAppId.trim() : (current.cpxAppId || '37479'),
-        cpxHashKey: typeof cpxHashKey === 'string' && cpxHashKey.trim() ? cpxHashKey.trim() : (current.cpxHashKey || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY'),
-        cpxApiKey: typeof cpxApiKey === 'string' && cpxApiKey.trim() ? cpxApiKey.trim() : (current.cpxApiKey || '2578500163e1998b3c8929e261a3e095'),
+        cpxAppId: typeof cpxAppId === 'string' && cpxAppId.trim() ? cpxAppId.trim() : (current.cpxAppId || '37699'),
+        cpxHashKey: typeof cpxHashKey === 'string' ? (cpxHashKey.trim() || current.cpxHashKey || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY') : (current.cpxHashKey || 'yTrC9mntJwV1PSRJ5WdMbwMSel6qMheY'),
+        cpxApiKey: typeof cpxApiKey === 'string' ? (cpxApiKey.trim() || current.cpxApiKey || '2578500163e1998b3c8929e261a3e095') : (current.cpxApiKey || '2578500163e1998b3c8929e261a3e095'),
         cpxIntegrationMode: effectiveCpxMode,
         cpxMaxSurveys: Math.max(1, Math.min(50, Number(cpxMaxSurveys) || current.cpxMaxSurveys || 12)),
         cpxThemeColor: typeof cpxThemeColor === 'string' && cpxThemeColor.trim() ? cpxThemeColor.trim().replace('#', '') : (current.cpxThemeColor || '10b981'),
-        cpxEnableFallback: cpxEnableFallback !== undefined ? Boolean(cpxEnableFallback) : (current.cpxEnableFallback ?? true),
+        cpxEnableFallback: cpxEnableFallback !== undefined ? Boolean(cpxEnableFallback) : (current.cpxEnableFallback ?? false),
         cpxVerifySignature: cpxVerifySignature !== undefined ? Boolean(cpxVerifySignature) : (current.cpxVerifySignature ?? true),
         aoyApiKey: typeof aoyApiKey === 'string' ? aoyApiKey.trim() : (current.aoyApiKey || ''),
         aoySecretKey: typeof aoySecretKey === 'string' ? aoySecretKey.trim() : (current.aoySecretKey || ''),
         aoyBearerToken: typeof aoyBearerToken === 'string' ? aoyBearerToken.trim() : (current.aoyBearerToken || ''),
         aoyExchangeRate: Math.max(100, Number(aoyExchangeRate) || current.aoyExchangeRate || 10000),
-        aoyEnableFallback: aoyEnableFallback !== undefined ? Boolean(aoyEnableFallback) : (current.aoyEnableFallback ?? true),
+        aoyEnableFallback: aoyEnableFallback !== undefined ? Boolean(aoyEnableFallback) : (current.aoyEnableFallback ?? false),
         aoyVerifySignature: aoyVerifySignature !== undefined ? Boolean(aoyVerifySignature) : (current.aoyVerifySignature ?? true),
-        maintenanceMode: Boolean(maintenanceMode),
+        maintenanceMode: maintenanceMode !== undefined ? Boolean(maintenanceMode) : Boolean(current.maintenanceMode),
         defaultNetwork: defaultNetwork === 'ERC20' ? 'ERC20' : 'TRC20',
         googleAnalyticsId: typeof googleAnalyticsId === 'string' ? googleAnalyticsId.trim() : current.googleAnalyticsId,
         googleAnalyticsEnabled: googleAnalyticsEnabled !== undefined ? Boolean(googleAnalyticsEnabled) : current.googleAnalyticsEnabled,
@@ -2294,50 +2284,9 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, async (req: Authentic
         metaKeywords: typeof metaKeywords === 'string' ? metaKeywords.trim() : current.metaKeywords,
         ogImageUrl: typeof ogImageUrl === 'string' && ogImageUrl.trim() ? ogImageUrl.trim() : current.ogImageUrl,
         googleSearchConsoleKey: typeof googleSearchConsoleKey === 'string' ? googleSearchConsoleKey.trim() : current.googleSearchConsoleKey,
-        sitemapEnabled: sitemapEnabled !== undefined ? Boolean(sitemapEnabled) : current.sitemapEnabled,
-        timewallOid: typeof req.body.timewallOid === 'string' && req.body.timewallOid.trim() ? req.body.timewallOid.trim() : current.timewallOid,
-        timewallPlacementUrl:
-          typeof req.body.timewallPlacementUrl === 'string' && req.body.timewallPlacementUrl.trim()
-            ? req.body.timewallPlacementUrl.trim()
-            : current.timewallPlacementUrl,
-        timewallApiKey:
-          typeof req.body.timewallApiKey === 'string' && req.body.timewallApiKey.trim()
-            ? req.body.timewallApiKey.trim()
-            : current.timewallApiKey,
-        timewallSecret:
-          typeof req.body.timewallSecret === 'string' && req.body.timewallSecret.trim()
-            ? req.body.timewallSecret.trim()
-            : current.timewallSecret,
-        timewallAllowedIps:
-          typeof req.body.timewallAllowedIps === 'string' && req.body.timewallAllowedIps.trim()
-            ? req.body.timewallAllowedIps.trim()
-            : current.timewallAllowedIps,
-        timewallCoinsPerUsd:
-          Number(req.body.timewallCoinsPerUsd) > 0
-            ? Math.round(Number(req.body.timewallCoinsPerUsd))
-            : current.timewallCoinsPerUsd || 10000,
-        timewallAllowDecimals:
-          req.body.timewallAllowDecimals !== undefined
-            ? Boolean(req.body.timewallAllowDecimals)
-            : Boolean(current.timewallAllowDecimals),
-        timewallCreditTypes:
-          typeof req.body.timewallCreditTypes === 'string'
-            ? req.body.timewallCreditTypes.trim()
-            : current.timewallCreditTypes,
-        timewallReversalTypes:
-          typeof req.body.timewallReversalTypes === 'string'
-            ? req.body.timewallReversalTypes.trim()
-            : current.timewallReversalTypes,
-        timewallNegativeBalanceMode:
-          req.body.timewallNegativeBalanceMode === 'flag_account' ? 'flag_account' : 'allow',
-        timewallMaxSingleRevenueUsd:
-          typeof req.body.timewallMaxSingleRevenueUsd === 'string' && req.body.timewallMaxSingleRevenueUsd.trim()
-            ? req.body.timewallMaxSingleRevenueUsd.trim()
-            : current.timewallMaxSingleRevenueUsd || '50.00',
-        trustedProxies:
-          typeof req.body.trustedProxies === 'string' && req.body.trustedProxies.trim()
-            ? req.body.trustedProxies.trim()
-            : current.trustedProxies
+        turnstileSiteKey: typeof turnstileSiteKey === 'string' ? turnstileSiteKey.trim() : (current.turnstileSiteKey || ''),
+        turnstileSecretKey: typeof turnstileSecretKey === 'string' ? turnstileSecretKey.trim() : (current.turnstileSecretKey || ''),
+        sitemapEnabled: sitemapEnabled !== undefined ? Boolean(sitemapEnabled) : current.sitemapEnabled
       },
       admin?.id || 'usr_admin_rewardriver'
     );
@@ -2792,7 +2741,7 @@ app.patch('/api/admin/teams/:id', requireAuth, requireAdmin, async (req: Authent
       actorUser: req.user!,
       ipAddress
     });
-    res.json({ success: true, team: updated });
+    res.json({ success: true, team: { ...updated, teamName: updated.name } });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to update team.' });
   }
@@ -2821,12 +2770,18 @@ app.delete('/api/admin/teams/:id', requireAuth, requireAdmin, async (req: Authen
 app.post('/api/admin/teams/:id/regenerate-code', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const before = dbStore.getTeamById(req.params.id);
+    const oldCode = before?.teamCode || '';
     const updated = await dbStore.regenerateTeamCode({
       teamId: req.params.id,
       actorUser: req.user!,
       ipAddress
     });
-    res.json({ success: true, team: updated });
+    res.json({
+      success: true,
+      oldCode,
+      team: { ...updated, teamName: updated.name }
+    });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to regenerate team code.' });
   }
@@ -2836,13 +2791,14 @@ app.post('/api/admin/teams/:id/regenerate-code', requireAuth, requireAdmin, asyn
 app.post('/api/admin/teams/:id/reassign', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const newManagerId = String(req.body?.newManagerId || req.body?.managerId || '').trim();
     const updated = await dbStore.reassignTeamManager({
       teamId: req.params.id,
-      newManagerId: String(req.body?.newManagerId || ''),
+      newManagerId,
       actorUser: req.user!,
       ipAddress
     });
-    res.json({ success: true, team: updated });
+    res.json({ success: true, team: { ...updated, teamName: updated.name } });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to reassign team manager.' });
   }
@@ -2865,11 +2821,15 @@ app.post('/api/admin/team-members/move', requireAuth, requireAdmin, async (req: 
 });
 
 // GET /api/admin/callback-logs - CPX Postback Callback Logs (Admin-Only)
-app.get('/api/admin/callback-logs', requireAuth, requireAdmin, (_req: AuthenticatedRequest, res: Response) => {
-  const logs = dbStore.getCallbackLogs(300).map(l => ({
-    ...l,
-    createdAtKarachi: formatKarachiDateTime(l.createdAt)
-  }));
+app.get(['/api/admin/callback-logs', '/api/admin/cpx/callback-logs'], requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  const resultFilter = String(req.query.result || 'all').trim().toLowerCase();
+  const logs = dbStore
+    .getCallbackLogs(300)
+    .map(l => ({
+      ...l,
+      createdAtKarachi: formatKarachiDateTime(l.createdAt)
+    }))
+    .filter(l => (resultFilter === 'all' ? true : String(l.result || '').toLowerCase() === resultFilter));
   res.json({
     success: true,
     timezone: ASIA_KARACHI_TZ,
@@ -2878,7 +2838,7 @@ app.get('/api/admin/callback-logs', requireAuth, requireAdmin, (_req: Authentica
 });
 
 // GET /api/admin/completions - Survey Completions Side-by-Side (Our User + Team + CPX Data with Filters)
-app.get('/api/admin/completions', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+app.get(['/api/admin/completions', '/api/admin/survey-completions'], requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   await dbStore.syncFromSupabase();
   const users = dbStore.getAllUsers();
   const teams = dbStore.getTeams();
@@ -2897,7 +2857,7 @@ app.get('/api/admin/completions', requireAuth, requireAdmin, async (req: Authent
 
   const statusFilter = String(req.query.status || 'all').trim().toLowerCase();
   const teamFilter = String(req.query.teamId || 'all').trim();
-  const search = String(req.query.search || '').trim().toLowerCase();
+  const search = String(req.query.search || req.query.q || '').trim().toLowerCase();
 
   const completions = ledger
     .filter(l => l.entryType === 'credit' || l.entryType === 'reversal')
@@ -3040,7 +3000,7 @@ app.get('/api/manager/dashboard', requireAuth, requireManagerOrAdmin, (req: Auth
         ? req.query.managerId.trim()
         : actor.id;
 
-    const rawRange = String(req.query.range || 'all').trim().toLowerCase();
+    const rawRange = String(req.query.range || req.query.dateRange || 'all').trim().toLowerCase();
     const range: DateRangePreset =
       rawRange === 'today' || rawRange === '7d' || rawRange === '30d' || rawRange === 'custom'
         ? rawRange
@@ -3212,6 +3172,20 @@ app.post('/api/admin/test-cpx-connection', requireAuth, requireAdmin, async (req
     const startMs = Date.now();
     const admin = req.user!;
     const settings = dbStore.getSettings();
+
+    // If admin passes updated CPX credentials in the test request, persist them before testing so live test uses the exact entered credentials
+    if (req.body && (req.body.cpxAppId || req.body.cpxHashKey || req.body.cpxApiKey)) {
+      await dbStore.updateSettings(
+        {
+          cpxAppId: typeof req.body.cpxAppId === 'string' && req.body.cpxAppId.trim() ? req.body.cpxAppId.trim() : settings.cpxAppId,
+          cpxHashKey: typeof req.body.cpxHashKey === 'string' && req.body.cpxHashKey.trim() ? req.body.cpxHashKey.trim() : settings.cpxHashKey,
+          cpxApiKey: typeof req.body.cpxApiKey === 'string' && req.body.cpxApiKey.trim() ? req.body.cpxApiKey.trim() : settings.cpxApiKey
+        },
+        admin.id
+      );
+    }
+
+    const updatedSettings = dbStore.getSettings();
     const status = cpxResearchService.getConfigStatus();
     const liveFeed = await cpxResearchService.fetchEligibleSurveys({
       externalUserId: admin.externalOpaqueId || `rr_cpx_admin_${admin.id}`,
@@ -3224,9 +3198,9 @@ app.post('/api/admin/test-cpx-connection', requireAuth, requireAdmin, async (req
       success: true,
       latencyMs: Date.now() - startMs,
       cpxAppId: cpxResearchService.appId,
-      integrationMode: settings.cpxIntegrationMode || 'hybrid_api',
-      enableFallback: settings.cpxEnableFallback !== false,
-      verifySignature: settings.cpxVerifySignature !== false,
+      integrationMode: updatedSettings.cpxIntegrationMode || 'hybrid_api',
+      enableFallback: updatedSettings.cpxEnableFallback !== false,
+      verifySignature: updatedSettings.cpxVerifySignature !== false,
       configStatus: status,
       apiEndpoint: 'https://live-api.cpx-research.com/api/get-surveys.php',
       offerwallUrlSample: sampleWallUrl,
@@ -3527,396 +3501,6 @@ app.post('/api/admin/run-full-integration-check', requireAuth, requireAdmin, asy
     res.status(500).json({ error: 'Failed to run full integration check.' });
   }
 });
-
-// -----------------------------------------------------------------------------
-// TimeWall.io Offerwall Integration Routes (Postback, User Offerwall & History, Admin)
-// -----------------------------------------------------------------------------
-
-/**
- * GET /postback/timewall (and /api/postback/timewall)
- * Public S2S postback endpoint for TimeWall.io (no session auth, excluded from CSRF).
- * Enforces IP whitelist (TIMEWALL_ALLOWED_IPS via TRUSTED_PROXIES), raw revenue SHA-256 signature
- * verification with constant-time compare, idempotency on (provider, provider_txid), BigInt decimal math,
- * atomic balance + ledger crediting, and reversal handling.
- */
-const handleTimewallPostbackRoute = async (req: Request, res: Response) => {
-  const rawUrl = req.url || req.originalUrl || '';
-  const socketIp = req.socket?.remoteAddress || req.ip || '';
-  const result = await timewallService.handlePostback({
-    rawUrl,
-    socketIp,
-    headers: req.headers as Record<string, string | string[] | undefined>
-  });
-  res.status(result.httpStatus).type('text/plain').send(result.body);
-};
-
-app.get('/postback/timewall', handleTimewallPostbackRoute);
-app.get('/api/postback/timewall', handleTimewallPostbackRoute);
-
-/**
- * GET /api/earn/timewall
- * Auth-required route that builds the TimeWall offerwall URL SERVER-SIDE exclusively
- * from the logged-in user's ID (never accepts a user ID from the client).
- * Blocks access if `user.offerwallBlocked` is true.
- */
-app.get('/api/earn/timewall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  await dbStore.syncFromSupabase();
-  const sessionUser = req.user!;
-  const freshUser = dbStore.getUserById(sessionUser.id) || sessionUser;
-
-  if (freshUser.offerwallBlocked) {
-    res.status(403).json({
-      blocked: true,
-      error: 'Your offerwall access has been restricted by an administrator. Please contact support if you believe this is an error.'
-    });
-    return;
-  }
-
-  const cfg = timewallService.getConfig();
-  const iframeUrl = timewallService.buildOfferwallUrl(freshUser.id);
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const pageSize = Math.min(50, Math.max(5, Number(req.query.pageSize) || 15));
-  const history = dbStore.getOfferwallTransactionsForUser(freshUser.id, page, pageSize);
-  const balances = dbStore.getUserBalances(freshUser.id);
-
-  // Extract end-user's real IP and User-Agent for TimeWall S2S Survey API (`POST https://api.timewall.io/get-surveys`)
-  const endUserIp = (
-    (req.headers['cf-connecting-ip'] as string) ||
-    (req.headers['x-real-ip'] as string) ||
-    (req.headers['x-client-ip'] as string) ||
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-    req.ip ||
-    req.socket?.remoteAddress ||
-    ''
-  ).trim();
-  const userAgent =
-    (req.headers['user-agent'] as string) ||
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-  const screenWidth = Number(req.query.screenWidth) || 390;
-  const screenHeight = Number(req.query.screenHeight) || 844;
-  const limit = Number(req.query.limit) || 10;
-
-  const [surveyApi, offerwallProbe] = await Promise.all([
-    timewallService.fetchSurveysForUser({
-      userId: freshUser.id,
-      userIp: endUserIp,
-      userAgent,
-      screenWidth,
-      screenHeight,
-      limit,
-      provider: 'all'
-    }),
-    timewallService.probeOfferwallLive(freshUser.id, req.query.force === '1')
-  ]);
-
-  const settings = dbStore.getSettings();
-  const taskMaintenanceMode = settings.taskMaintenanceMode || 'auto';
-  const surveyApiLive = Boolean(
-    surveyApi.success && (surveyApi.surveys.length > 0 || surveyApi.prescreenerRequired)
-  );
-  const offerwallLive =
-    taskMaintenanceMode === 'live'
-      ? true
-      : taskMaintenanceMode === 'maintenance'
-      ? false
-      : Boolean(offerwallProbe.isLive && cfg.oid);
-
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.json({
-    blocked: false,
-    provider: 'reward_river_tasks',
-    displayName: 'Reward River Task & Offer Center',
-    isConfigured: timewallService.isConfigured(),
-    oidConfigured: Boolean(cfg.oid),
-    apiKeyConfigured: Boolean(cfg.apiKey),
-    offerwallLive,
-    offerwallReason: offerwallProbe.reason,
-    surveyApiLive,
-    taskMaintenanceMode,
-    iframeUrl,
-    coinsPerUsd: cfg.coinsPerUsd,
-    allowDecimals: cfg.allowDecimals,
-    note: 'Rewards are credited automatically to your Reward River balance after the advertiser confirms completion (usually within minutes).',
-    balances,
-    history,
-    surveyApi
-  });
-});
-
-/**
- * POST /api/admin/service-visibility
- * Allows Admin to set Earn or Task section visibility mode: 'auto' (live health check), 'live', or 'maintenance'.
- */
-app.post(
-  '/api/admin/service-visibility',
-  requireAuth,
-  requireAdmin,
-  blockWhenImpersonating,
-  async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { earnMaintenanceMode, taskMaintenanceMode } = req.body || {};
-      const validModes = ['auto', 'live', 'maintenance'];
-      const updates: Partial<Record<'earnMaintenanceMode' | 'taskMaintenanceMode', 'auto' | 'live' | 'maintenance'>> = {};
-      if (earnMaintenanceMode && validModes.includes(earnMaintenanceMode)) {
-        updates.earnMaintenanceMode = earnMaintenanceMode;
-      }
-      if (taskMaintenanceMode && validModes.includes(taskMaintenanceMode)) {
-        updates.taskMaintenanceMode = taskMaintenanceMode;
-      }
-      const updated = await dbStore.updateSettings(updates);
-      res.json({
-        success: true,
-        earnMaintenanceMode: updated.earnMaintenanceMode || 'auto',
-        taskMaintenanceMode: updated.taskMaintenanceMode || 'auto'
-      });
-    } catch (err) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'Failed to update service visibility mode.'
-      });
-    }
-  }
-);
-
-/**
- * POST /api/earn/timewall/surveys
- * Dedicated S2S proxy endpoint that fetches live TimeWall surveys (`POST https://api.timewall.io/get-surveys`)
- * using the server-side `TIMEWALL_API_KEY` (`Authorization: Bearer YOUR_API_KEY`) and the end-user's real IP and User-Agent.
- */
-app.post('/api/earn/timewall/surveys', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  const sessionUser = req.user!;
-  const freshUser = dbStore.getUserById(sessionUser.id) || sessionUser;
-  if (freshUser.offerwallBlocked) {
-    res.status(403).json({
-      blocked: true,
-      error: 'Your offerwall access has been restricted by an administrator.'
-    });
-    return;
-  }
-
-  const endUserIp = (
-    (req.headers['cf-connecting-ip'] as string) ||
-    (req.headers['x-real-ip'] as string) ||
-    (req.headers['x-client-ip'] as string) ||
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-    req.ip ||
-    req.socket?.remoteAddress ||
-    ''
-  ).trim();
-  const userAgent =
-    (req.headers['user-agent'] as string) ||
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-  const screenWidth = Number(req.body?.screen_width ?? req.body?.screenWidth) || 390;
-  const screenHeight = Number(req.body?.screen_height ?? req.body?.screenHeight) || 844;
-  const limit = Number(req.body?.limit) || 10;
-  const provider = typeof req.body?.provider === 'string' ? req.body.provider : 'all';
-
-  const surveyApi = await timewallService.fetchSurveysForUser({
-    userId: freshUser.id,
-    userIp: endUserIp,
-    userAgent,
-    screenWidth,
-    screenHeight,
-    limit,
-    provider
-  });
-
-  res.json(surveyApi);
-});
-
-/**
- * GET /api/user/offerwall-history
- * Paginated offerwall transaction history for the currently logged-in user.
- */
-app.get('/api/user/offerwall-history', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  await dbStore.syncFromSupabase();
-  const user = req.user!;
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const pageSize = Math.min(50, Math.max(5, Number(req.query.pageSize) || 15));
-  const history = dbStore.getOfferwallTransactionsForUser(user.id, page, pageSize);
-  const balances = dbStore.getUserBalances(user.id);
-
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.json({
-    history,
-    balances
-  });
-});
-
-/**
- * GET /api/admin/timewall/transactions
- * Admin view: filtered TimeWall transactions, USD revenue vs coins paid & platform margin totals,
- * and active configuration status.
- */
-app.get('/api/admin/timewall/transactions', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-  await dbStore.syncFromSupabase();
-  const userQuery = typeof req.query.user === 'string' ? req.query.user : undefined;
-  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
-  const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined;
-  const dateTo = typeof req.query.dateTo === 'string' ? req.query.dateTo : undefined;
-
-  const data = dbStore.getAdminOfferwallTransactions({
-    provider: 'timewall',
-    userQuery,
-    status,
-    dateFrom,
-    dateTo
-  });
-
-  const cfg = timewallService.getConfig();
-  res.json({
-    ...data,
-    configStatus: {
-      oidConfigured: Boolean(cfg.oid),
-      apiKeyConfigured: Boolean(cfg.apiKey),
-      apiKeyMasked: maskSecretOrHash(cfg.apiKey),
-      secretConfigured: Boolean(cfg.secret),
-      secretMasked: maskSecretOrHash(cfg.secret),
-      oid: cfg.oid,
-      placementUrlTemplate: cfg.placementUrlTemplate,
-      allowedIps: cfg.allowedIps,
-      coinsPerUsd: cfg.coinsPerUsd,
-      allowDecimals: cfg.allowDecimals,
-      creditTypes: cfg.creditTypes,
-      reversalTypes: cfg.reversalTypes,
-      negativeBalanceMode: cfg.negativeBalanceMode,
-      maxSingleRevenueUsd: cfg.maxSingleRevenueUsd,
-      trustedProxies: cfg.trustedProxies,
-      postbackUrlTemplate:
-        'https://rewardriver.online/postback/timewall?userid={userID}&txid={transactionID}&revenue={revenue}&currency={currencyAmount}&hash={hash}&ip={ip}&type={type}&withdrawid={withdrawid}&reason={reason}&offername={offername}&offerdetail={offerdetail}'
-    }
-  });
-});
-
-/**
- * POST /api/admin/timewall/transactions/:id/review
- * Approve or reject a `needs_review` TimeWall transaction.
- */
-app.post(
-  '/api/admin/timewall/transactions/:id/review',
-  requireAuth,
-  requireAdmin,
-  blockWhenImpersonating,
-  async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const admin = req.user!;
-      const action = req.body?.action === 'approve' ? 'approve' : req.body?.action === 'reject' ? 'reject' : null;
-      if (!action) {
-        res.status(400).json({ error: 'Action must be "approve" or "reject".' });
-        return;
-      }
-      const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined;
-      const updated = await dbStore.reviewOfferwallTransaction({
-        transactionId: req.params.id,
-        action,
-        adminUserId: admin.id,
-        adminEmail: admin.email,
-        notes
-      });
-      res.json({ success: true, transaction: updated });
-    } catch (err) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to review transaction.' });
-    }
-  }
-);
-
-/**
- * POST /api/admin/users/:id/offerwall-block
- * Admin toggle for `users.offerwall_blocked`.
- */
-app.post(
-  '/api/admin/users/:id/offerwall-block',
-  requireAuth,
-  requireAdmin,
-  blockWhenImpersonating,
-  async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const admin = req.user!;
-      const blocked = Boolean(req.body?.blocked);
-      const updatedUser = await dbStore.setUserOfferwallBlocked({
-        userId: req.params.id,
-        blocked,
-        adminUserId: admin.id,
-        adminEmail: admin.email
-      });
-      res.json({
-        success: true,
-        userId: updatedUser.id,
-        offerwallBlocked: Boolean(updatedUser.offerwallBlocked)
-      });
-    } catch (err) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to update offerwall block status.' });
-    }
-  }
-);
-
-/**
- * POST /api/admin/timewall/simulate
- * Local postback simulator for Admin & QA testing.
- * Supports testing valid credits, sub-cent revenue ("0.002", "0.50"), duplicate txids,
- * bad hashes, non-whitelisted IPs, currency mismatches, and reversals.
- */
-app.post(
-  '/api/admin/timewall/simulate',
-  requireAuth,
-  requireAdmin,
-  blockWhenImpersonating,
-  async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const cfg = timewallService.getConfig();
-      const testSecret = cfg.secret || 'sim_test_secret_key';
-      const userId = String(req.body?.userid || req.user!.id).trim();
-      const txid = String(req.body?.txid || `tw_sim_${Date.now()}`).trim();
-      const revenueRaw = String(req.body?.revenue ?? '0.50').trim();
-      const currencyRaw = String(
-        req.body?.currency ?? Math.round(Number(revenueRaw) * cfg.coinsPerUsd)
-      ).trim();
-      const type = String(req.body?.type ?? 'credit').trim();
-      const offerName = String(req.body?.offername ?? 'TimeWall QA Simulated Offer').trim();
-      const offerDetail = String(req.body?.offerdetail ?? 'Complete survey & verify email').trim();
-      const userIp = String(req.body?.ip ?? '203.0.113.45').trim();
-      const sourceIp = String(req.body?.sourceIp || cfg.allowedIps[0] || '18.156.132.55').trim();
-      const useBadHash = Boolean(req.body?.useBadHash);
-
-      const validHash = computeTimewallHash(userId, revenueRaw, testSecret);
-      const hashToSend = useBadHash
-        ? '0000000000000000000000000000000000000000000000000000000000000000'
-        : String(req.body?.hash || validHash);
-
-      const rawUrl =
-        `/postback/timewall?userid=${encodeURIComponent(userId)}` +
-        `&txid=${encodeURIComponent(txid)}` +
-        `&revenue=${revenueRaw}` +
-        `&currency=${encodeURIComponent(currencyRaw)}` +
-        `&hash=${encodeURIComponent(hashToSend)}` +
-        `&ip=${encodeURIComponent(userIp)}` +
-        `&type=${encodeURIComponent(type)}` +
-        `&offername=${encodeURIComponent(offerName)}` +
-        `&offerdetail=${encodeURIComponent(offerDetail)}`;
-
-      const simResult = await timewallService.handlePostback({
-        rawUrl,
-        socketIp: '127.0.0.1',
-        headers: {
-          'cf-connecting-ip': sourceIp,
-          'x-forwarded-for': sourceIp
-        },
-        overrideConfig: {
-          secret: testSecret,
-          trustedProxies: ['127.0.0.1', 'cloudflare']
-        }
-      });
-
-      res.json({
-        success: true,
-        simulatedUrl: rawUrl,
-        computedHashPreview: `${validHash.slice(0, 6)}...${validHash.slice(-6)}`,
-        result: simResult
-      });
-    } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : 'Simulation failed.' });
-    }
-  }
-);
 
 // -----------------------------------------------------------------------------
 // Vite Middleware / Static Serve Setup
