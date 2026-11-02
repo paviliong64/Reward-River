@@ -100,48 +100,52 @@ export const LegalModal: React.FC<LegalModalProps> = ({ page, onClose }) => {
             <div className="space-y-4 text-xs text-slate-700 dark:text-slate-300">
               <h3 className="text-sm font-bold text-[#192F40] dark:text-white">1. USDT-Only Payout Policy</h3>
               <p>
-                Tether USD (USDT) is the exclusive payout asset supported on Reward River. We do not support fiat bank wires, PayPal, paper checks, or unstable alternative tokens.
+                Tether USD (USDT) is the exclusive payout asset supported on Reward River. Every 10,000 Points in your available balance equals $1.00 USDT.
               </p>
 
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">2. Supported USDT Blockchain Networks</h3>
               <p>
-                Payouts are dispatched on either the TRON network (TRC-20, addresses starting with &quot;T&quot;) or Ethereum/EVM network (ERC-20, addresses starting with &quot;0x&quot;). TRC-20 is recommended for lowest transfer fees ($1.00 flat fee). Users are strictly responsible for verifying network compatibility before submission.
+                Payouts are dispatched on either the TRON network (TRC-20, addresses starting with &quot;T&quot;, $1.00 flat fee) or Ethereum/EVM network (ERC-20, addresses starting with &quot;0x&quot;, $2.50 flat fee). Users are strictly responsible for verifying network compatibility before submission.
               </p>
 
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">3. Minimums & Transfer Fees</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">3. Minimums &amp; Transfer Fees</h3>
               <p>
-                The minimum withdrawal request is $25.00 USDT (125,000 Points at 5,000 Points/USDT). On-chain transfer fees ($1.00 for TRC-20 or $2.50 for ERC-20) are subtracted from the gross amount to determine the net payout sent to your crypto wallet.
+                The minimum withdrawal request is $25.00 USDT (250,000 Points at 10,000 Points = $1.00 USD). On-chain transfer fees ($1.00 for TRC-20 or $2.50 for ERC-20) are subtracted from the gross amount to determine the net payout sent to your crypto wallet.
               </p>
 
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">4. Verification & Settlement</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">4. Verification &amp; Settlement</h3>
               <p>
-                To maintain fraud protection for research sponsors, withdrawal requests are audited against confirmed server-to-server callback ledgers. Settled payouts will display the corresponding immutable on-chain transaction hash (TxID).
+                To maintain fraud protection for research sponsors, withdrawal requests are audited against confirmed server-to-server callback ledgers. Settled payouts display the corresponding immutable on-chain transaction hash (TxHash).
               </p>
             </div>
           )}
 
           {activeTab === 'responsible-guidelines' && (
             <div className="space-y-4 text-xs text-slate-700 dark:text-slate-300">
-              <h3 className="text-sm font-bold text-[#192F40] dark:text-white">Guidelines for High-Quality Research Participation</h3>
+              <h3 className="text-sm font-bold text-[#192F40] dark:text-white">Community &amp; Respondent Quality Standards</h3>
               <ul className="list-disc pl-5 space-y-2">
-                <li><strong>Take Your Time:</strong> Read each question thoroughly. Speeding through questionnaires in seconds triggers automated quality red flags and survey cancellations.</li>
-                <li><strong>Be Truthful & Consistent:</strong> Providing consistent demographic answers ensures ongoing access to top-tier, high-paying corporate studies.</li>
-                <li><strong>Disable VPNs & Proxies:</strong> Research exchanges instantly block traffic originating from commercial VPN server IP addresses.</li>
-                <li><strong>Respect Demographic Quotas:</strong> When a researcher&apos;s specific quota (e.g. age bracket or occupation) is filled, early screenouts help you move quickly to another study.</li>
+                <li><strong>Read Questions Thoroughly:</strong> Speeding through questionnaires or failing embedded attention checks triggers automated quality rejections and sponsor reversals.</li>
+                <li><strong>Maintain Consistent Demographics:</strong> Providing honest, consistent demographic answers ensures ongoing access to high-paying corporate studies.</li>
+                <li><strong>Zero VPN / Proxy Policy:</strong> Research exchanges automatically block traffic originating from VPNs, proxies, Tor, or data-center IP addresses.</li>
+                <li><strong>Ethical Team Conduct:</strong> Team enrollment is 100% free and voluntary. Team Managers and members must never share passwords, private keys, or survey answer scripts.</li>
               </ul>
             </div>
           )}
 
           {activeTab === 'contact' && (
             <div className="space-y-4 text-xs text-slate-700 dark:text-slate-300">
-              <h3 className="text-sm font-bold text-[#192F40] dark:text-white">Platform Compliance & Inquiries</h3>
+              <h3 className="text-sm font-bold text-[#192F40] dark:text-white">24/7 Member Support &amp; Compliance Desk</h3>
               <p>
-                Reward River is operated in strict compliance with international market research standards. For any technical assistance, survey dispute audits, or withdrawal inquiries:
+                Reward River operates in strict compliance with international market research standards. For account assistance, missing S2S survey callback audits, or USDT withdrawal tracking:
               </p>
               <div className="p-4 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800 space-y-3 mt-2">
-                <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-sm">
+                <div className="space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white text-xs">Official Support Email:</div>
+                  <div className="font-mono text-xs text-[#079B55] font-bold">support@rewardriver.online</div>
+                </div>
+                <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-xs pt-1">
                   <Globe className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>Official Support & Corporate Portal:</span>
+                  <span>Corporate &amp; Technical Operations Portal:</span>
                 </div>
                 <a
                   href="https://www.injazify.com"
@@ -152,9 +156,6 @@ export const LegalModal: React.FC<LegalModalProps> = ({ page, onClose }) => {
                   <span>www.injazify.com</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
-                <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
-                  All platform support, account verification, and technical oversight are managed via <strong>www.injazify.com</strong>.
-                </p>
               </div>
             </div>
           )}

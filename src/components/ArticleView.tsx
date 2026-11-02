@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   FileText,
@@ -14,9 +14,18 @@ import {
   Send,
   Zap,
   Mail,
-  Building,
-  Globe
+  Globe,
+  Scale,
+  Users,
+  MessageSquare,
+  Award,
+  Ban,
+  Coins,
+  Copy,
+  Check
 } from 'lucide-react';
+import { PrivacyPolicy } from './PrivacyPolicy';
+import { TermsOfService } from './TermsOfService';
 
 interface ArticleViewProps {
   page: string;
@@ -24,397 +33,640 @@ interface ArticleViewProps {
 }
 
 export const ArticleView: React.FC<ArticleViewProps> = ({ page, onBack }) => {
+  const [activePage, setActivePage] = useState<string>(page || 'privacy');
+  const [supportName, setSupportName] = useState('');
+  const [supportEmail, setSupportEmail] = useState('');
+  const [supportCategory, setSupportCategory] = useState('missing_points');
+  const [supportRefId, setSupportRefId] = useState('');
+  const [supportMessage, setSupportMessage] = useState('');
+  const [ticketSubmitted, setTicketSubmitted] = useState<{ ticketId: string; timestamp: string } | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState(false);
+
   useEffect(() => {
+    if (page) {
+      setActivePage(page);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [page]);
 
-  const articleDetails: Record<
-    string,
-    { title: string; category: string; readTime: string; icon: React.ElementType }
-  > = {
-    'withdrawal-rules': {
-      title: 'Tether (USDT) Withdrawal Rules & Settlement Policies',
-      category: 'Payouts & Financial Rules',
-      readTime: '4 min read',
-      icon: RefreshCw
-    },
-    'responsible-guidelines': {
-      title: 'Responsible Survey Participation Guidelines',
-      category: 'Quality & Trust Standards',
-      readTime: '5 min read',
-      icon: HelpCircle
-    },
-    contact: {
-      title: 'Support Center & Contact Portal',
-      category: 'Customer Support',
-      readTime: '3 min read',
-      icon: Mail
-    },
-    terms: {
-      title: 'Master Terms of Service & User Agreement',
-      category: 'Legal & Governance',
-      readTime: '6 min read',
-      icon: FileText
-    },
-    privacy: {
-      title: 'Privacy Policy & Data Security Protection',
-      category: 'Privacy & Security',
-      readTime: '4 min read',
-      icon: Lock
+  const handleSelectPage = (nextPage: string) => {
+    setActivePage(nextPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCopySupportEmail = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText('support@rewardriver.online');
+      setCopiedEmail(true);
+      setTimeout(() => setCopiedEmail(false), 2500);
     }
   };
 
-  const current = articleDetails[page] || {
-    title: 'Platform Article',
+  const handleSubmitSupportTicket = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supportEmail.trim() || !supportMessage.trim()) return;
+    const randomNum = Math.floor(100000 + Math.random() * 900000);
+    setTicketSubmitted({
+      ticketId: `RR-SUP-${randomNum}`,
+      timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' })
+    });
+  };
+
+  const articleDetails: Record<
+    string,
+    { title: string; subtitle: string; category: string; readTime: string; icon: React.ElementType }
+  > = {
+    privacy: {
+      title: 'Privacy Policy & Data Protection Charter',
+      subtitle: 'Zero-PII Survey Routing, Cryptographic Security, GDPR/CCPA Rights & Data Governance',
+      category: 'Privacy & Security',
+      readTime: '6 min read',
+      icon: Lock
+    },
+    terms: {
+      title: 'Master Terms of Service & User Agreement',
+      subtitle: 'Platform Eligibility, Points Valuation (10,000 Pts = $1.00), Anti-Fraud Rules & USDT Settlement',
+      category: 'Legal & Governance',
+      readTime: '7 min read',
+      icon: Scale
+    },
+    'responsible-guidelines': {
+      title: 'Community & Survey Quality Guidelines',
+      subtitle: 'Official Standards for High Survey Matching, Respondent Integrity, Team Conduct & Zero Account Holds',
+      category: 'Quality & Community Standards',
+      readTime: '5 min read',
+      icon: ShieldCheck
+    },
+    contact: {
+      title: 'Official Support Center & Compliance Helpdesk',
+      subtitle: '24/7 Member Assistance, S2S Postback Audit Requests, USDT Payout Tracking & Direct Inquiry Portal',
+      category: 'Customer Support',
+      readTime: '4 min read',
+      icon: Mail
+    },
+    'withdrawal-rules': {
+      title: 'Tether (USDT) Withdrawal Rules & Settlement Policy',
+      subtitle: 'TRC-20 & ERC-20 Network Specifications, $25.00 Minimum Threshold & Atomic Balance Reservation',
+      category: 'Payouts & Financial Rules',
+      readTime: '4 min read',
+      icon: RefreshCw
+    }
+  };
+
+  const current = articleDetails[activePage] || {
+    title: 'Official Platform Policy & Documentation',
+    subtitle: 'Verified Legal, Compliance, and Operational Standards for Reward River Members',
     category: 'Documentation',
-    readTime: '3 min read',
+    readTime: '5 min read',
     icon: BookOpen
   };
+
+  const navTabs = [
+    { id: 'privacy', label: 'Privacy Policy', icon: Lock },
+    { id: 'terms', label: 'Terms of Service', icon: Scale },
+    { id: 'responsible-guidelines', label: 'Community Guidelines', icon: ShieldCheck },
+    { id: 'contact', label: 'Contact Support', icon: Mail },
+    { id: 'withdrawal-rules', label: 'Withdrawal Rules', icon: Coins }
+  ];
 
   const IconComponent = current.icon;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 pb-16 animate-fade-in-up">
-      {/* Top Header Bar */}
-      <div className="bg-white border-b border-slate-200 sticky top-16 z-30 shadow-2xs">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Main Page</span>
-          </button>
+    <div className="min-h-screen bg-slate-50 dark:bg-[#090d16] text-slate-800 dark:text-slate-100 pb-16 animate-fade-in-up transition-colors">
+      {/* Top Sticky Sub-Header Bar with Policy Switcher */}
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-20 z-30 shadow-2xs">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold transition-all cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Platform</span>
+            </button>
 
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <span className="px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 font-bold border border-sky-200/80">
+            <span className="sm:hidden px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold border border-emerald-200/80 dark:border-emerald-800">
               {current.category}
             </span>
-            <span className="hidden sm:inline text-slate-300">•</span>
-            <span className="hidden sm:flex items-center gap-1 font-mono">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              {current.readTime}
-            </span>
+          </div>
+
+          {/* Interactive Legal & Policies Navigation Bar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            {navTabs.map((tab) => {
+              const TabIcon = tab.icon;
+              const isActive = activePage === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleSelectPage(tab.id)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? 'bg-[#079B55] text-white shadow-xs'
+                      : 'bg-slate-100/80 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <TabIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* Main Blog Article Body */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8">
-        <article className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-6 sm:p-10 space-y-8">
-          {/* Article Title & Header */}
-          <div className="border-b border-slate-100 pb-6 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
-                <IconComponent className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-sky-600">
-                  Reward River Official Documentation
-                </span>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-snug">
-                  {current.title}
-                </h1>
+      {/* Main Legal & Documentation Container */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs p-6 sm:p-10 space-y-8">
+          {/* Document Header */}
+          <div className="border-b border-slate-100 dark:border-slate-800 pb-6 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#079B55]/10 dark:bg-[#079B55]/20 text-[#079B55] dark:text-[#4CC65A] flex items-center justify-center shrink-0">
+                  <IconComponent className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#079B55] dark:text-[#4CC65A]">
+                      Reward River Legal &amp; Compliance Center
+                    </span>
+                    <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                      <Clock className="w-3 h-3" />
+                      {current.readTime}
+                    </span>
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-[#192F40] dark:text-white tracking-tight leading-snug mt-0.5">
+                    {current.title}
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {current.subtitle}
+                  </p>
+                </div>
               </div>
             </div>
-            <p className="text-xs text-slate-400 font-mono pt-1">
-              Last updated &amp; verified: October 2026 • Official Platform Publication
-            </p>
           </div>
 
           {/* ====================================================================
-              ARTICLE 1: WITHDRAWAL RULES
+              PAGE 1: PRIVACY POLICY
              ==================================================================== */}
-          {page === 'withdrawal-rules' && (
-            <div className="space-y-6 text-sm text-slate-600 leading-relaxed">
-              <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200/80 text-sky-950 space-y-1">
-                <div className="font-bold text-base flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-sky-600" />
-                  <span>Key Policy Summary</span>
+          {activePage === 'privacy' && (
+            <PrivacyPolicy onContactClick={() => handleSelectPage('contact')} />
+          )}
+
+          {/* ====================================================================
+              PAGE 2: TERMS OF SERVICE
+             ==================================================================== */}
+          {activePage === 'terms' && (
+            <TermsOfService onContactClick={() => handleSelectPage('contact')} />
+          )}
+
+          {/* ====================================================================
+              PAGE 3: COMMUNITY GUIDELINES (responsible-guidelines)
+             ==================================================================== */}
+          {activePage === 'responsible-guidelines' && (
+            <div className="space-y-8 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+              {/* Banner */}
+              <div className="p-5 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/25 flex items-start gap-4">
+                <div className="w-11 h-11 rounded-2xl bg-[#079B55] text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <ShieldCheck className="w-6 h-6" />
                 </div>
-                <p className="text-xs text-sky-900">
-                  Withdrawals on Reward River are settled exclusively in Tether USD (USDT) on TRON (TRC-20) or Ethereum (ERC-20). The minimum request threshold is <strong>$25.00 USDT (250,000 Points)</strong>.
-                </p>
+                <div className="space-y-1.5">
+                  <h3 className="font-extrabold text-[#192F40] dark:text-white text-base sm:text-lg">
+                    Reward River Community &amp; Survey Quality Guidelines
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                    Official Respondent Quality Standard • Applies to Surveys, Teams &amp; Community Interactions
+                  </p>
+                  <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 pt-1">
+                    Fortune 500 brands, academic institutions, and market research agencies rely on Reward River respondents for genuine human insights. Following these community standards maximizes your survey qualification rate, unlocks higher-paying studies, and protects your account from sponsor reversals.
+                  </p>
+                </div>
               </div>
 
+              {/* Section 1: The 6 Core Pillars of Respondent Quality */}
               <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">1. Why USDT is Our Single Settlement Asset</h2>
-                <p>
-                  Reward River operates a streamlined digital reward architecture. To ensure ultra-fast, boundaryless payouts without high international bank wire fees, chargeback delays, or geographic restrictions, all points accumulated from market research surveys and instant tasks convert directly into Tether USD (USDT).
-                </p>
-                <p>
-                  USDT is a regulated 1:1 US Dollar-pegged stablecoin, ensuring that $1.00 of completed market research value always equals $1.00 in USDT on-chain.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">2. Blockchain Network Comparison (TRC-20 vs. ERC-20)</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-2">
-                  <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-2">
-                    <div className="font-extrabold text-emerald-900 flex items-center justify-between">
-                      <span>TRON Network (TRC-20)</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white uppercase">Recommended</span>
+                <h2 className="text-base font-extrabold text-[#192F40] dark:text-white flex items-center gap-2">
+                  <Award className="w-4 h-4 text-[#079B55]" />
+                  <span>1. Six Gold Standards for Survey Respondents</span>
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                    <div className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm flex items-center justify-between">
+                      <span>1. Read Every Question Carefully</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold">Critical</span>
                     </div>
-                    <ul className="text-xs text-emerald-950 space-y-1 list-disc list-inside">
-                      <li>Flat network fee: <strong>$1.00 USDT</strong></li>
-                      <li>Average block confirmation: <strong>~3 Seconds</strong></li>
-                      <li>Address format: Starts with letter <code className="font-mono font-bold">T...</code></li>
-                    </ul>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Market research studies embed quality-control attention checks (e.g., &ldquo;Select &lsquo;Strongly Agree&rsquo; for this row to confirm you are reading&rdquo;). Failing attention checks results in immediate screen-out.
+                    </p>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                    <div className="font-extrabold text-slate-900">Ethereum EVM Network (ERC-20)</div>
-                    <ul className="text-xs text-slate-700 space-y-1 list-disc list-inside">
-                      <li>Flat network fee: <strong>$2.50 USDT</strong></li>
-                      <li>Average block confirmation: <strong>~12 Seconds</strong></li>
-                      <li>Address format: Starts with <code className="font-mono font-bold">0x...</code></li>
-                    </ul>
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                    <div className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm flex items-center justify-between">
+                      <span>2. Maintain Consistent Demographics</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold">Profile Trust</span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Always provide your real age, gender, household size, employment industry, and postal region. Contradictory answers across different surveys lower your CPX Research respondent quality score.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                    <div className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm flex items-center justify-between">
+                      <span>3. Respect Survey Pacing (No Speeding)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold">Anti-Speeding</span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Each survey displays an estimated Length of Interview (LOI), such as ~10 Minutes. Completing a 10-minute study in 90 seconds triggers automated anti-speeding filters and sponsor chargebacks.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                    <div className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm flex items-center justify-between">
+                      <span>4. Provide Thoughtful Open-Ended Answers</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-bold">Human Review</span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      When asked to type your opinion in a text box, write 1–2 clear, relevant sentences in your own words. Never paste AI-generated text, random keyboard mashes (&ldquo;asdfgh&rdquo;), or single-word replies.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                    <div className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm flex items-center justify-between">
+                      <span>5. Genuine Residential Internet Connection</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 font-bold">Zero VPN</span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Always disable VPNs, proxy extensions, iCloud Private Relay, or ad-blocking DNS filters before launching a survey so that sponsor redirects and S2S completion callbacks register cleanly.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                    <div className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm flex items-center justify-between">
+                      <span>6. Complete Surveys in a Single Session</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold">Best Practice</span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Avoid leaving a survey tab idle for long periods, as research sessions expire after 15–20 minutes of inactivity. Wait until you are redirected back to the confirmation screen before closing the tab.
+                    </p>
                   </div>
                 </div>
               </section>
 
+              {/* Section 2: Team & Manager Community Ethics */}
               <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">3. Minimums, Maximums &amp; Atomic Balance Reservation</h2>
-                <ul className="space-y-2 list-disc list-inside">
-                  <li><strong>Minimum Threshold:</strong> $25.00 USDT (250,000 Points). Requests below $25.00 cannot be submitted.</li>
-                  <li><strong>Maximum Request:</strong> $500.00 USDT (5,000,000 Points) per single withdrawal request.</li>
-                  <li><strong>Atomic Holding:</strong> The moment you submit a payout request, your points are moved into <em>reserved status</em>. They remain reserved until our system dispatches the on-chain payout transaction hash (TxHash). If a request is rejected or canceled, reserved points immediately return to your available balance.</li>
+                <h2 className="text-base font-extrabold text-[#192F40] dark:text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#079B55]" />
+                  <span>2. Team Participation &amp; Manager Code of Conduct</span>
+                </h2>
+                <p>
+                  Reward River supports collaborative earning through official Teams led by verified Team Managers. All Team Managers and Team Members must uphold the following ethical standards:
+                </p>
+                <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                  <li><strong>Voluntary Enrollment &amp; Transparency:</strong> Joining a team via a Team Code is 100% free and voluntary. Team Managers may never charge registration fees or demand a share of a member&rsquo;s personal USDT withdrawals.</li>
+                  <li><strong>No Coaching to Cheat or Spoof:</strong> Team Managers and members must never share VPN configurations, fake demographic scripts, or survey answer keys. Teams found coordinating fraudulent survey submissions will be dissolved.</li>
+                  <li><strong>Strict Credential Privacy:</strong> Neither Team Managers nor Support staff will ever ask for your account password or wallet private keys.</li>
                 </ul>
               </section>
 
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">4. Step-by-Step Withdrawal Execution</h2>
-                <ol className="space-y-2 list-decimal list-inside text-slate-700">
-                  <li>Accumulate at least 250,000 Points ($25.00 USDT) through verified survey completions.</li>
-                  <li>Copy your personal USDT wallet address from Binance, Trust Wallet, MetaMask, OKX, or KuCoin.</li>
-                  <li>Select the exact network (TRC-20 or ERC-20) that matches your wallet address.</li>
-                  <li>Enter your requested USDT amount and click <strong>Submit USDT Withdrawal Request</strong>.</li>
-                  <li>Track live progress and view your transaction hash in your <strong>History &amp; Ledger</strong> tab.</li>
-                </ol>
+              {/* Section 3: Understanding Screen-Outs & Quota Full Notices */}
+              <section className="space-y-2.5">
+                <h2 className="text-base font-extrabold text-[#192F40] dark:text-white flex items-center gap-2">
+                  <HelpCircle className="w-4 h-4 text-[#079B55]" />
+                  <span>3. Understanding Survey Screen-Outs &amp; Demographic Quotas</span>
+                </h2>
+                <p className="text-xs sm:text-sm">
+                  Every market research study targets a specific consumer profile (for example, &ldquo;smartphone owners aged 25–44 who purchase streaming subscriptions&rdquo;). If you are redirected early with a <em>&ldquo;Quota Full&rdquo;</em> or <em>&ldquo;Screen-Out&rdquo;</em> message, it simply means the sponsor has either filled your demographic bracket or is looking for a different household profile. Screen-outs do not penalize your account—simply refresh your survey feed to start the next matched study.
+                </p>
               </section>
             </div>
           )}
 
           {/* ====================================================================
-              ARTICLE 2: RESPONSIBLE GUIDELINES
+              PAGE 4: CONTACT SUPPORT (contact)
              ==================================================================== */}
-          {page === 'responsible-guidelines' && (
-            <div className="space-y-6 text-sm text-slate-600 leading-relaxed">
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-950 space-y-1">
-                <div className="font-bold text-base flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>High Demographics Quality Policy</span>
+          {activePage === 'contact' && (
+            <div className="space-y-8 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+              {/* Support Hero Banner */}
+              <div className="p-5 rounded-2xl bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/25 flex items-start gap-4">
+                <div className="w-11 h-11 rounded-2xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Mail className="w-6 h-6" />
                 </div>
-                <p className="text-xs text-emerald-900">
-                  Market research sponsors pay for accurate, thoughtful human feedback. Adhering to these guidelines ensures you receive higher survey matching rates and zero account holds.
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-extrabold text-[#192F40] dark:text-white text-base sm:text-lg">
+                      24/7 Member Support &amp; Compliance Operations Desk
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider">
+                      Avg. Response &lt; 6 Hours
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 pt-0.5">
+                    Our dedicated support engineers handle account verification, missing survey S2S callback audits, Team Manager applications, and USDT withdrawal tracking 7 days a week.
+                  </p>
+                </div>
+              </div>
+
+              {/* Direct Contact Channels Grid */}
+              <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="w-9 h-9 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">Member Support Desk</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      For missing survey Points, account recovery, and USDT withdrawal status inquiries:
+                    </p>
+                  </div>
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-2">
+                    <a
+                      href="mailto:support@rewardriver.online"
+                      className="text-xs font-mono font-extrabold text-sky-600 dark:text-sky-400 hover:underline break-all"
+                    >
+                      support@rewardriver.online
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleCopySupportEmail}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 inline-flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      {copiedEmail ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedEmail ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">Legal, Privacy &amp; Compliance</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      For GDPR/CCPA data requests, account appeals, and Team Manager compliance:
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <a
+                      href="mailto:support@rewardriver.online"
+                      className="text-xs font-mono font-extrabold text-amber-600 dark:text-amber-400 hover:underline block"
+                    >
+                      support@rewardriver.online
+                    </a>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">Technical &amp; Corporate Partner</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Platform engineering, enterprise S2S infrastructure, and partnership operations:
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <a
+                      href="https://www.injazify.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-mono font-extrabold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1"
+                    >
+                      <span>www.injazify.com</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              </section>
+
+              {/* Interactive Direct Support Ticket Form + SLA Guide */}
+              <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <div className="lg:col-span-7 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-[#079B55]" />
+                    <h3 className="text-base font-extrabold text-[#192F40] dark:text-white">
+                      Submit a Direct Support Ticket
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Fill out the form below to generate an official support reference ticket. Including your Survey Offer ID or Withdrawal ID helps our team audit your ledger immediately.
+                  </p>
+
+                  {ticketSubmitted ? (
+                    <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 space-y-3">
+                      <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-extrabold text-sm">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <span>Support Ticket Registered ({ticketSubmitted.ticketId})</span>
+                      </div>
+                      <p className="text-xs text-emerald-900/90 dark:text-emerald-200/90">
+                        We have logged your inquiry for <strong>{supportEmail}</strong> at {ticketSubmitted.timestamp} PKT. Our support specialists will review your account ledger and respond via email within 6–12 hours.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTicketSubmitted(null);
+                          setSupportMessage('');
+                          setSupportRefId('');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Submit Another Inquiry
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSubmitSupportTicket} className="space-y-3.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Your Display Name
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={supportName}
+                            onChange={(e) => setSupportName(e.target.value)}
+                            placeholder="e.g. Ali Khan"
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-[#079B55]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Account Email Address
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            value={supportEmail}
+                            onChange={(e) => setSupportEmail(e.target.value)}
+                            placeholder="you@example.com"
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-[#079B55]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Inquiry Category
+                          </label>
+                          <select
+                            value={supportCategory}
+                            onChange={(e) => setSupportCategory(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-[#079B55]"
+                          >
+                            <option value="missing_points">Missing Survey Points / S2S Callback</option>
+                            <option value="withdrawal">USDT Withdrawal Status / TxHash</option>
+                            <option value="teams_manager">Teams &amp; Manager Portal Inquiry</option>
+                            <option value="account_security">Account Verification &amp; Security</option>
+                            <option value="privacy_legal">Privacy / GDPR Data Request</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Survey ID / Transaction ID (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={supportRefId}
+                            onChange={(e) => setSupportRefId(e.target.value)}
+                            placeholder="e.g. RR #37699 or WTH-..."
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-[#079B55]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Detailed Description
+                        </label>
+                        <textarea
+                          rows={4}
+                          required
+                          value={supportMessage}
+                          onChange={(e) => setSupportMessage(e.target.value)}
+                          placeholder="Please describe your question, completion timestamp, or withdrawal details..."
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#079B55]"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#079B55] hover:bg-[#047A43] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Submit Official Support Ticket</span>
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                {/* Fast Resolution Checklist */}
+                <div className="lg:col-span-5 space-y-4">
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
+                    <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">
+                      How We Resolve Common Inquiries
+                    </h4>
+                    <div className="space-y-3 text-xs">
+                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                        <div className="font-bold text-slate-900 dark:text-white">1. Missing Survey Points</div>
+                        <p className="text-slate-600 dark:text-slate-400 mt-1">
+                          Over 99% of CPX Research completions credit automatically within seconds via S2S postback. If delayed, provide the Survey Offer ID and our admins will verify the transaction ID directly against the CPX Publisher API.
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                        <div className="font-bold text-slate-900 dark:text-white">2. USDT Withdrawal Tracking</div>
+                        <p className="text-slate-600 dark:text-slate-400 mt-1">
+                          Once your withdrawal ($25.00 Min = 250,000 Pts) is approved and dispatched, your on-chain TxHash appears in your Withdrawals tab for instant verification on TRONSCAN or Etherscan.
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+                        <div className="font-bold text-slate-900 dark:text-white">3. Team &amp; Manager Support</div>
+                        <p className="text-slate-600 dark:text-slate-400 mt-1">
+                          Want to apply as a Team Manager or need assistance with your Team Invite Code? Select <em>Teams &amp; Manager Portal Inquiry</em> for priority onboarding.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* ====================================================================
+              PAGE 5: WITHDRAWAL RULES (withdrawal-rules)
+             ==================================================================== */}
+          {activePage === 'withdrawal-rules' && (
+            <div className="space-y-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+              <div className="p-5 rounded-2xl bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/25 space-y-1.5">
+                <div className="font-extrabold text-base text-[#192F40] dark:text-white flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+                  <span>Official USDT Settlement &amp; Conversion Policy</span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                  Withdrawals on Reward River are settled exclusively in <strong>Tether USD (USDT)</strong> on TRON (TRC-20) or Ethereum (ERC-20). The conversion rate is <strong>10,000 Points = $1.00 USDT</strong>, and the minimum withdrawal threshold is <strong>$25.00 USDT (250,000 Points)</strong>.
                 </p>
               </div>
 
               <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">1. How Research Matching Works</h2>
-                <p>
-                  Global market research panels evaluate consumer sentiments for new products, brands, and media. Each survey contains specific eligibility filters (such as age group, employment field, or household interests). Passing demographic screening questions honestly ensures you are routed to the highest-paying surveys available in your region.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">2. Four Gold Rules for Survey Respondents</h2>
-                <div className="space-y-3">
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <h3 className="font-bold text-slate-900">Rule 1: Always Read Questions Fully</h3>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Do not click randomly. Attention checks (e.g. &ldquo;Please select the third option to prove you are reading&rdquo;) are regularly embedded to screen out automated bots.
-                    </p>
+                <h2 className="text-base font-extrabold text-[#192F40] dark:text-white">
+                  1. Supported Blockchain Networks (TRC-20 vs. ERC-20)
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-2">
+                  <div className="p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2">
+                    <div className="font-extrabold text-emerald-900 dark:text-emerald-300 flex items-center justify-between">
+                      <span>TRON Network (TRC-20)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white uppercase">Recommended</span>
+                    </div>
+                    <ul className="text-xs text-emerald-950 dark:text-emerald-200 space-y-1 list-disc list-inside">
+                      <li>Flat network fee: <strong>$1.00 USDT</strong></li>
+                      <li>Average block finality: <strong>~3 Seconds</strong></li>
+                      <li>Address format: Starts with capital <code className="font-mono font-bold">T...</code> (34 characters)</li>
+                    </ul>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <h3 className="font-bold text-slate-900">Rule 2: Maintain Consistent Demographics</h3>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Ensure your age, region, and industry profile remain consistent across survey sessions. Contradictory demographic profiles trigger automatic provider quality flags.
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <h3 className="font-bold text-slate-900">Rule 3: Avoid Pacing &amp; Speeding Through Surveys</h3>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Each survey has an estimated length of interview (LOI). Finishing a 15-minute survey in under 2 minutes triggers speeding algorithms that invalidate your participation reward.
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <h3 className="font-bold text-slate-900">Rule 4: Strictly No VPNs, Proxies or Tor</h3>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Survey providers cross-reference IP geolocation with respondent locations. VPN or proxy connections automatically block survey inventory and risk permanent account bans.
-                    </p>
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+                    <div className="font-extrabold text-slate-900 dark:text-white">Ethereum EVM Network (ERC-20)</div>
+                    <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1 list-disc list-inside">
+                      <li>Flat network fee: <strong>$2.50 USDT</strong></li>
+                      <li>Average block finality: <strong>~12 Seconds</strong></li>
+                      <li>Address format: Starts with <code className="font-mono font-bold">0x...</code> (42 characters)</li>
+                    </ul>
                   </div>
                 </div>
               </section>
 
               <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">3. Understanding Survey Screen-Outs</h2>
-                <p>
-                  If you start a survey and receive a message saying &ldquo;Quota Full&rdquo; or &ldquo;Not a Match&rdquo;, this means the research sponsor has already collected sufficient responses for your specific demographic segment. Screen-outs are a normal part of online research. When this happens, Reward River immediately routes you to the next available survey in your feed.
-                </p>
+                <h2 className="text-base font-extrabold text-[#192F40] dark:text-white">
+                  2. Minimums, Maximums &amp; Atomic Balance Reservation
+                </h2>
+                <ul className="space-y-2 list-disc list-inside text-xs sm:text-sm">
+                  <li><strong>Minimum Threshold:</strong> $25.00 USDT (250,000 Points). Requests below 250,000 Points cannot be submitted.</li>
+                  <li><strong>Maximum Single Request:</strong> $500.00 USDT (5,000,000 Points) per withdrawal transaction.</li>
+                  <li><strong>Atomic Balance Reservation:</strong> When you submit a withdrawal request, the corresponding Points are immediately reserved from your available balance until on-chain settlement is completed and a public TxHash is recorded. If a request is rejected or cancelled, reserved Points automatically return to your available balance.</li>
+                </ul>
               </section>
             </div>
           )}
 
-          {/* ====================================================================
-              ARTICLE 3: SUPPORT & CONTACT
-             ==================================================================== */}
-          {page === 'contact' && (
-            <div className="space-y-6 text-sm text-slate-600 leading-relaxed">
-              <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-indigo-950 space-y-1">
-                <div className="font-bold text-base flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-indigo-600" />
-                  <span>24/7 Dedicated Platform Desk</span>
-                </div>
-                <p className="text-xs text-indigo-900">
-                  Our support team responds to all account inquiries, missing reward postbacks, and withdrawal tracking questions within 12 hours.
-                </p>
-              </div>
-
-              <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-2">
-                  <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-bold text-slate-900">Official Support Email</h3>
-                  <p className="text-xs text-slate-500">For account issues, survey postback logs, and technical questions:</p>
-                  <a
-                    href="mailto:support@rewardriver.com"
-                    className="text-xs font-mono font-bold text-sky-600 hover:underline block"
-                  >
-                    support@rewardriver.com
-                  </a>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                    <Globe className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-bold text-slate-900">Technical Support Partner</h3>
-                  <p className="text-xs text-slate-500">Platform hosting, S2S infrastructure, and engineering support:</p>
-                  <a
-                    href="https://www.injazify.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-mono font-bold text-emerald-600 hover:underline inline-flex items-center gap-1"
-                  >
-                    <span>www.injazify.com</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">Frequently Requested Support Actions</h2>
-                <div className="space-y-2">
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <div className="font-bold text-slate-900">Missing Survey Points Callback</div>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Over 99% of completed surveys credit instantly via server-to-server (S2S) callbacks. If a survey completion does not show up within 10 minutes, please send us the Survey Offer ID and completion timestamp.
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <div className="font-bold text-slate-900">Tracking Your USDT Withdrawal</div>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Once processed, your transaction hash (TxHash) will appear in your <strong>History</strong> tab. You can paste this hash into <a href="https://tronscan.org" target="_blank" rel="noreferrer" className="text-sky-600 underline">TRONSCAN</a> (TRC-20) or <a href="https://etherscan.io" target="_blank" rel="noreferrer" className="text-sky-600 underline">Etherscan</a> (ERC-20) to verify on-chain settlement.
-                    </p>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* ====================================================================
-              ARTICLE 4: TERMS OF SERVICE
-             ==================================================================== */}
-          {page === 'terms' && (
-            <div className="space-y-6 text-sm text-slate-600 leading-relaxed">
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">1. Acceptance of Terms &amp; Agreement</h2>
-                <p>
-                  By creating an account, accessing the platform, or participating in market research activities on Reward River, you enter into a legally binding agreement governing your platform access, point accumulation, and digital USDT settlements.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">2. Independent Research Marketplace Governance</h2>
-                <p>
-                  Reward River acts as an independent white-label rewards aggregator connecting registered respondents to verified market research exchanges (including CPX Research and AoyTasks). Survey availability, criteria, and completion validation are determined dynamically by third-party research sponsors.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">3. Reward Points Nature &amp; Conversion</h2>
-                <p>
-                  Points credited to your account represent internal platform reward credits. Points do not constitute fiat money, bank deposits, or securities until a valid withdrawal request is processed at the official platform points conversion rate.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">4. Zero-Tolerance Fraud Policy</h2>
-                <p>
-                  Creating multiple accounts, using automated scripts, submitting false demographics, or employing IP masking proxies is strictly prohibited. Any account found violating fraud safeguards will be permanently banned with complete forfeiture of reserved balances.
-                </p>
-              </section>
-            </div>
-          )}
-
-          {/* ====================================================================
-              ARTICLE 5: PRIVACY POLICY
-             ==================================================================== */}
-          {page === 'privacy' && (
-            <div className="space-y-6 text-sm text-slate-600 leading-relaxed">
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">1. Minimal Information Collection</h2>
-                <p>
-                  We adhere to strict data minimization. We only collect the necessary credentials needed to maintain your account: your chosen username, email address, salted password hash (PBKDF2), optional WhatsApp number for onboarding, and public destination USDT wallet addresses.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">2. Opaque External Identifiers</h2>
-                <p>
-                  To protect your privacy with third-party survey networks, Reward River generates a unique cryptographic opaque identifier (e.g. <code className="font-mono text-slate-900 font-bold">rr_cpx_...</code>). Your real email address, full name, and password are <strong>never shared with survey providers</strong>.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">3. Non-Custodial Architecture</h2>
-                <p>
-                  Reward River does not store, request, or have access to your personal crypto private keys, wallet seed phrases, or exchange credentials. You retain 100% control of your destination wallet.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-900">4. Account Deletion &amp; Data Purge Rights</h2>
-                <p>
-                  You have the right to request complete account deletion at any time. When an account is deleted, your credentials and associated ledger records are permanently purged from our primary database store.
-                </p>
-              </section>
-            </div>
-          )}
-
-          {/* Article Footer & Back Action */}
-          <div className="pt-8 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+          {/* Document Footer */}
+          <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <button
               type="button"
               onClick={onBack}
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#192F40] hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-extrabold transition-all cursor-pointer inline-flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Reward River App</span>
+              <span>Return to Reward River</span>
             </button>
 
-            <span className="text-xs text-slate-400 font-medium">
-              © {new Date().getFullYear()} Reward River Documentation • Powered by injazify.com
+            <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+              © {new Date().getFullYear()} Reward River Legal &amp; Compliance • Powered &amp; Supported by injazify.com
             </span>
           </div>
-        </article>
+        </div>
       </div>
     </div>
   );
